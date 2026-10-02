@@ -1,0 +1,9 @@
+{
+  "format_version": 1,
+  "pack_id": "SFDeepPack",
+  "name": "尖塔锻炉测试卡包",
+  "author": "SpireForge",
+  "description": "编辑器链路验证用卡包",
+  "cards": ["pack_strike", "pack_guard", "pack_mend"],
+  "workshop_id": null
+}

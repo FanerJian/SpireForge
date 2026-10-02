@@ -1,0 +1,11 @@
+{
+  "id": "SFVanTweak",
+  "name": "SF 覆盖测试包（改痛击）",
+  "author": "SpireForge",
+  "description": "原版卡覆盖功能验证：把 BASH 改为 1 费、伤害 10、升级 +2，文案同步替换。验证完删除本目录即可还原。",
+  "version": "0.1.0",
+  "has_pck": true,
+  "has_dll": false,
+  "dependencies": ["SpireForgeRuntime"],
+  "affects_gameplay": true
+}

@@ -1,0 +1,346 @@
+mod game;
+mod import;
+mod model;
+mod project;
+mod publish;
+mod vanilla;
+mod workshop;
+
+use game::EditorSettings;
+use model::{CardDef, ProjectMeta};
+use std::collections::HashSet;
+use std::sync::Mutex;
+use tauri::State;
+
+/// 全局编辑器状态：当前项目根
+pub struct AppState {
+    pub project_root: Mutex<Option<String>>,
+    pub settings: Mutex<EditorSettings>,
+}
+
+#[tauri::command]
+fn detect_game_dir() -> Option<String> {
+    game::detect_game_dir()
+}
+
+#[tauri::command]
+fn get_settings(state: State<AppState>) -> EditorSettings {
+    state.settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn set_game_dir(state: State<AppState>, dir: String) -> Result<(), String> {
+    if !game::validate_game_dir(&dir) {
+        return Err("目录中未找到 data_sts2_windows_x86_64/sts2.dll，请确认选择了游戏根目录".into());
+    }
+    let mut s = state.settings.lock().unwrap();
+    s.game_dir = dir;
+    game::save_settings(&s)
+}
+
+#[tauri::command]
+fn new_project(path: String, pack_id: String, name: String, author: String, state: State<AppState>) -> Result<(), String> {
+    project::create_project(&path, &pack_id, &name, &author)?;
+    *state.project_root.lock().unwrap() = Some(path);
+    Ok(())
+}
+
+#[tauri::command]
+fn open_project(path: String, state: State<AppState>) -> Result<(ProjectMeta, Vec<CardDef>), String> {
+    let data = project::load_project(&path)?;
+    *state.project_root.lock().unwrap() = Some(path);
+    Ok(data)
+}
+
+fn require_root(state: &State<AppState>) -> Result<String, String> {
+    state
+        .project_root
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| "尚未打开项目".into())
+}
+
+#[tauri::command]
+fn save_card(state: State<AppState>, card: CardDef) -> Result<(), String> {
+    let root = require_root(&state)?;
+    project::add_card(&root, &card)
+}
+
+#[tauri::command]
+fn delete_card(state: State<AppState>, id: String) -> Result<(), String> {
+    let root = require_root(&state)?;
+    project::remove_card(&root, &id)
+}
+
+#[tauri::command]
+fn update_project_meta(state: State<AppState>, meta: ProjectMeta) -> Result<(), String> {
+    let root = require_root(&state)?;
+    project::write_meta(&root, &meta)
+}
+
+#[tauri::command]
+fn save_portrait(state: State<AppState>, id: String, bytes: Vec<u8>) -> Result<String, String> {
+    let root = require_root(&state)?;
+    project::save_portrait(&root, &id, &bytes)
+}
+
+#[tauri::command]
+fn read_portrait(state: State<AppState>, rel: String) -> Result<Vec<u8>, String> {
+    let root = require_root(&state)?;
+    project::read_portrait_bytes(&root, &rel)
+}
+
+#[tauri::command]
+fn import_card_json(state: State<AppState>, raw: String) -> Result<CardDef, String> {
+    let root = require_root(&state)?;
+    project::import_card_json(&root, &raw)
+}
+
+#[tauri::command]
+fn export_card_json(state: State<AppState>, id: String) -> Result<String, String> {
+    let root = require_root(&state)?;
+    project::export_card_json(&root, &id)
+}
+
+/// 读取用户通过对话框选择的文本文件（导入卡牌 JSON 用）
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+/// 写入用户通过对话框指定的文本文件（导出卡牌 JSON 用）
+#[tauri::command]
+fn write_text_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+/// 构建卡包到指定目录（不安装）
+#[tauri::command]
+fn build_pack(
+    state: State<AppState>,
+    out_dir: String,
+    version: String,
+) -> Result<String, String> {
+    let root = require_root(&state)?;
+    let (meta, cards) = project::load_project(&root)?;
+    let dir = publish::build_pack(
+        &root,
+        &out_dir,
+        &meta.pack_id,
+        &meta.name,
+        &meta.author,
+        &meta.description,
+        &version,
+        &cards,
+    )?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// 一键安装到游戏 mods 目录
+#[tauri::command]
+fn install_to_game(state: State<AppState>, version: String) -> Result<String, String> {
+    let root = require_root(&state)?;
+    let game_dir = state.settings.lock().unwrap().game_dir.clone();
+    if game_dir.is_empty() {
+        return Err("尚未配置游戏目录".into());
+    }
+    let (meta, cards) = project::load_project(&root)?;
+    if cards.is_empty() {
+        return Err("卡包中没有卡牌".into());
+    }
+    publish::install_to_game(
+        &game_dir,
+        &root,
+        &meta.pack_id,
+        &meta.name,
+        &meta.author,
+        &meta.description,
+        &version,
+        &cards,
+    )
+}
+
+/// 导入他人制作的卡牌（原生格式完整保真；外来格式启发式映射并返回说明）
+#[tauri::command]
+fn import_card_any(state: State<AppState>, raw: String) -> Result<import::ImportReport, String> {
+    let report = import::import_any(&raw)?;
+    // 若与现有卡重名，追加后缀避免覆盖
+    let root = require_root(&state)?;
+    let (meta, _) = project::load_project(&root)?;
+    let mut card = report.card.clone();
+    if meta.cards.contains(&card.id) {
+        let mut n = 2;
+        while meta.cards.contains(&format!("{}_{n}", report.card.id)) {
+            n += 1;
+        }
+        card.id = format!("{}_{n}", report.card.id);
+    }
+    project::add_card(&root, &card)?;
+    Ok(import::ImportReport { card, ..report })
+}
+
+/// 批量导入卡牌 JSON（数组 / {cards:[...]} / SpireForge 整包），逐张入库并自动去重 id
+#[tauri::command]
+fn import_cards_any(state: State<AppState>, raw: String) -> Result<Vec<import::ImportReport>, String> {
+    let reports = import::import_many(&raw)?;
+    let root = require_root(&state)?;
+    let (meta, _) = project::load_project(&root)?;
+    let mut used: HashSet<String> = meta.cards.iter().cloned().collect();
+    let mut out = Vec::new();
+    for r in reports {
+        let mut card = r.card;
+        if used.contains(&card.id) {
+            let base = card.id.clone();
+            let mut n = 2;
+            while used.contains(&format!("{base}_{n}")) {
+                n += 1;
+            }
+            card.id = format!("{base}_{n}");
+        }
+        used.insert(card.id.clone());
+        project::add_card(&root, &card)?;
+        out.push(import::ImportReport { card, ..r });
+    }
+    Ok(out)
+}
+
+/// 从 .pck 卡包导入（解包 cards/*.json；原生 SpireForge 卡包完整保真）
+#[tauri::command]
+fn import_pack_pck(state: State<AppState>, path: String) -> Result<import::PckImportResult, String> {
+    let result = import::import_pck(&path)?;
+    let root = require_root(&state)?;
+    let (meta, _) = project::load_project(&root)?;
+    let mut used: HashSet<String> = meta.cards.iter().cloned().collect();
+    let mut imported = Vec::new();
+    for r in result.imported {
+        let mut card = r.card;
+        if used.contains(&card.id) {
+            let base = card.id.clone();
+            let mut n = 2;
+            while used.contains(&format!("{base}_{n}")) {
+                n += 1;
+            }
+            card.id = format!("{base}_{n}");
+        }
+        used.insert(card.id.clone());
+        project::add_card(&root, &card)?;
+        imported.push(import::ImportReport { card, ..r });
+    }
+    Ok(import::PckImportResult { imported, errors: result.errors })
+}
+
+/// 原版卡牌目录（导入原版卡用）
+#[tauri::command]
+fn vanilla_catalog() -> serde_json::Value {
+    vanilla::catalog().clone()
+}
+
+/// 确保内置 ModUploader 已释放；未设置上传器路径时自动指向内置副本
+#[tauri::command]
+fn ensure_bundled_uploader(state: State<AppState>) -> Result<String, String> {
+    let base = game::data_dir()
+        .ok_or("无法定位应用数据目录")?
+        .to_string_lossy()
+        .into_owned();
+    let exe = workshop::ensure_bundled_uploader(&base)?;
+    let mut s = state.settings.lock().unwrap();
+    let need = match &s.uploader_path {
+        Some(p) => !std::path::Path::new(p).exists(),
+        None => true,
+    };
+    if need {
+        s.uploader_path = Some(exe.clone());
+        game::save_settings(&s)?;
+    }
+    Ok(exe)
+}
+
+/// 设置 ModUploader.exe 路径
+#[tauri::command]
+fn set_uploader_path(state: State<AppState>, path: String) -> Result<(), String> {
+    let mut s = state.settings.lock().unwrap();
+    s.uploader_path = if path.is_empty() { None } else { Some(path) };
+    game::save_settings(&s)
+}
+
+/// 生成工坊上传工作区
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn prepare_workshop(
+    state: State<AppState>,
+    out_dir: String,
+    version: String,
+    visibility: String,
+    change_note: String,
+) -> Result<String, String> {
+    let root = require_root(&state)?;
+    let (meta, cards) = project::load_project(&root)?;
+    if cards.is_empty() {
+        return Err("卡包中没有卡牌".into());
+    }
+    workshop::prepare_workspace(
+        &out_dir,
+        &root,
+        &meta.pack_id,
+        &meta.name,
+        &meta.author,
+        &meta.description,
+        &version,
+        &visibility,
+        &change_note,
+        &cards,
+    )
+}
+
+/// 调用官方 ModUploader 上传
+#[tauri::command]
+fn publish_workshop(state: State<AppState>, workspace: String) -> Result<String, String> {
+    let uploader = state
+        .settings
+        .lock()
+        .unwrap()
+        .uploader_path
+        .clone()
+        .ok_or("尚未设置 ModUploader.exe 路径（设置 → 工坊上传器）")?;
+    workshop::run_uploader(&uploader, &workspace)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState {
+            project_root: Mutex::new(None),
+            settings: Mutex::new(game::load_settings()),
+        })
+        .invoke_handler(tauri::generate_handler![
+            detect_game_dir,
+            get_settings,
+            set_game_dir,
+            new_project,
+            open_project,
+            save_card,
+            delete_card,
+            update_project_meta,
+            save_portrait,
+            read_portrait,
+            import_card_json,
+            export_card_json,
+            read_text_file,
+            write_text_file,
+            build_pack,
+            install_to_game,
+            import_card_any,
+            import_cards_any,
+            import_pack_pck,
+            vanilla_catalog,
+            ensure_bundled_uploader,
+            set_uploader_path,
+            prepare_workshop,
+            publish_workshop,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

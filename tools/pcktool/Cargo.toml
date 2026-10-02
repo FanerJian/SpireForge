@@ -1,0 +1,10 @@
+[package]
+name = "pcktool"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+md5 = "0.7"
+
+[profile.release]
+opt-level = 2

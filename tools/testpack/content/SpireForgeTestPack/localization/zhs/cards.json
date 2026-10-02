@@ -1,0 +1,15 @@
+{
+  "SF_SPIKE_STRIKE.title": "尖塔打击",
+  "SF_SPIKE_STRIKE.description": "对一名敌人造成 {Damage} 点 [gold]伤害[/gold]。",
+  "SF_SPIKE_STRIKE.upgrade.description": "对一名敌人造成 {Damage:diff()} 点 [gold]伤害[/gold]。",
+  "SF_SPIKE_WARD.title": "尖塔护卫",
+  "SF_SPIKE_WARD.description": "获得 {Block} 点 [gold]格挡[/gold]。",
+  "SF_SPIKE_HEX.title": "尖塔诅咒",
+  "SF_SPIKE_HEX.description": "[unplayable]尖塔锻炉测试用诅咒。[/unplayable]",
+  "SF_SPIKE_STUPOR.title": "尖塔恍惚",
+  "SF_SPIKE_STUPOR.description": "[unplayable]尖塔锻炉测试用状态牌。[/unplayable]",
+  "SF_SPIKE_QUICKDRAW.title": "尖塔速抽",
+  "SF_SPIKE_QUICKDRAW.description": "抽 {Cards} 张牌。",
+  "SPIRE_FORGE_TEST_PACK_PACK_STRIKE.title": "锻炉重击",
+  "SPIRE_FORGE_TEST_PACK_PACK_STRIKE.description": "对一名敌人造成 {Damage} 点 [gold]伤害[/gold]。"
+}

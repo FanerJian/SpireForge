@@ -1,0 +1,23 @@
+{
+  "format_version": 1,
+  "id": "pack_strike",
+  "card_type": "Attack",
+  "rarity": "Uncommon",
+  "target": "AnyEnemy",
+  "cost": 2,
+  "costs_x": false,
+  "keywords": [],
+  "pool": "colorless",
+  "show_in_library": true,
+  "multiplayer": "none",
+  "max_upgrade_level": 1,
+  "portrait": "assets/cards/pack_strike.png",
+  "name": { "zhs": "锻炉重击", "eng": "Forge Strike" },
+  "description": {
+    "zhs": "对一名敌人造成 {Damage} 点 [gold]伤害[/gold]。",
+    "eng": "Deal {Damage} [gold]damage[/gold] to an enemy."
+  },
+  "flavor": { "zhs": "", "eng": "" },
+  "effects": [{ "kind": "damage", "amount": 9, "props": ["Move"] }],
+  "upgrades": { "damage": 4, "block": 0, "draw": 0, "energy": 0, "keywords": [] }
+}

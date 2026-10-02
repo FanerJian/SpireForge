@@ -1,0 +1,11 @@
+{
+  "id": "SpireForgeTestPack",
+  "name": "SpireForge Test Pack",
+  "author": "SpireForge",
+  "description": "SpireForge spike 测试卡包：验证 PCK 打包器与本地化合并。",
+  "version": "0.1.0",
+  "has_pck": true,
+  "has_dll": false,
+  "dependencies": ["SpireForgeRuntime"],
+  "affects_gameplay": true
+}

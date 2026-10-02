@@ -1,0 +1,29 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SpireForgeRuntime</AssemblyName>
+    <RootNamespace>SpireForge.Runtime</RootNamespace>
+    <!-- 游戏自带全部依赖，禁止拷贝到输出目录 -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <!-- 非 Godot 编辑器项目：不生成 Godot 启动代码 -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GameDir Condition="'$(GameDir)' == ''">E:\SteamLibrary\steamapps\common\Slay the Spire 2</GameDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Godot 渲染库等由游戏运行时提供（与 GodotSharp 同源），只引用游戏私有程序集 -->
+    <Reference Include="sts2">
+      <HintPath>$(GameDir)\data_sts2_windows_x86_64\sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameDir)\data_sts2_windows_x86_64\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

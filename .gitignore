@@ -1,0 +1,25 @@
+# ---- Rust 构建产物 ----
+**/target/
+*.pdb
+
+# ---- Node / 前端 ----
+**/node_modules/
+editor/dist/
+
+# ---- 反编译源码（版权物，勿入库；获取方式见 docs/BUILD.md）----
+tools/sts2-decompiled/
+
+# ---- 社区数据仓库（嵌套 git，单独 clone；提取产物 schema/vanilla-catalog.json 已入库）----
+tools/spire-codex/
+
+# ---- 上传器原始 zip 与解压沙盒（ModUploader.exe/steam_api64.dll/steam_appid.txt 本体已入库，见 SHA256SUMS）----
+tools/uploader/ModUploader-win-x64.zip
+tools/uploader/_sandbox/
+
+# ---- 测试/临时输出 ----
+tools/testproject-out/
+*.log
+*.tmp
+
+# ---- ZCode/Mimosa 钩子状态 ----
+.mimosa/

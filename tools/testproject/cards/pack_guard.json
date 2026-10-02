@@ -1,0 +1,23 @@
+{
+  "format_version": 1,
+  "id": "pack_guard",
+  "card_type": "Skill",
+  "rarity": "Common",
+  "target": "Self",
+  "cost": 1,
+  "costs_x": false,
+  "keywords": [],
+  "pool": "colorless",
+  "show_in_library": true,
+  "multiplayer": "none",
+  "max_upgrade_level": 1,
+  "portrait": "",
+  "name": { "zhs": "锻炉壁垒", "eng": "Forge Bulwark" },
+  "description": {
+    "zhs": "获得 {Block} 点 [gold]格挡[/gold]。",
+    "eng": "Gain {Block} [gold]Block[/gold]."
+  },
+  "flavor": { "zhs": "", "eng": "" },
+  "effects": [{ "kind": "block", "amount": 8, "props": ["Move"] }],
+  "upgrades": { "damage": 0, "block": 3, "draw": 0, "energy": 0, "keywords": [] }
+}

@@ -1,0 +1,19 @@
+{
+  "format_version": 1,
+  "id": "bash_tweak",
+  "vanilla_id": "BASH",
+  "card_type": "Attack",
+  "rarity": "Basic",
+  "target": "AnyEnemy",
+  "cost": 1,
+  "costs_x": false,
+  "keywords": [],
+  "pool": "colorless",
+  "show_in_library": true,
+  "multiplayer": "none",
+  "max_upgrade_level": 1,
+  "portrait": "",
+  "effects": [],
+  "stats": { "Damage": 10 },
+  "upgrade_stats": { "damage": 2 }
+}

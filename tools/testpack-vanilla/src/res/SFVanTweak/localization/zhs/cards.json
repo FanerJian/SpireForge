@@ -1,0 +1,4 @@
+{
+  "BASH.title": "痛击改",
+  "BASH.description": "造成{Damage:diff()}点伤害。（SpireForge 覆盖测试：1费、伤害10）"
+}

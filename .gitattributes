@@ -1,0 +1,12 @@
+* text=auto
+
+# 二进制文件明确标记，禁止换行符转换
+*.exe binary
+*.dll binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.pck binary
+*.zip binary
+*.ico binary
+*.ttf binary

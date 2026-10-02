@@ -1,0 +1,23 @@
+{
+  "format_version": 1,
+  "id": "pack_mend",
+  "card_type": "Skill",
+  "rarity": "Uncommon",
+  "target": "Self",
+  "cost": 1,
+  "costs_x": false,
+  "keywords": ["Exhaust"],
+  "pool": "colorless",
+  "show_in_library": true,
+  "multiplayer": "none",
+  "max_upgrade_level": 1,
+  "portrait": "",
+  "name": { "zhs": "锻炉修补", "eng": "Forge Mend" },
+  "description": {
+    "zhs": "回复 {Heal} 点生命。[gold]消耗[/gold]。",
+    "eng": "Heal {Heal} HP. [gold]Exhaust[/gold]."
+  },
+  "flavor": { "zhs": "", "eng": "" },
+  "effects": [{ "kind": "heal", "amount": 5 }],
+  "upgrades": { "damage": 0, "block": 0, "draw": 0, "energy": 0, "heal": 3, "keywords": [] }
+}

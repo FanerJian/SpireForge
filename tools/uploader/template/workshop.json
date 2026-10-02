@@ -1,0 +1,9 @@
+﻿{
+  "title": "Sts2ModTemplate",
+  "description": "Template for new STS2 mods.",
+  "visibility": "private",
+  "changeNote": "None",
+  "tags": [],
+  "dependencies": [],
+  "contentDescriptors": []
+}

@@ -1,0 +1,101 @@
+import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import type { CardDef, EditorSettings, ProjectMeta, VanillaCatalog } from './types';
+
+export const api = {
+  detectGameDir: () => invoke<string | null>('detect_game_dir'),
+  getSettings: () => invoke<EditorSettings>('get_settings'),
+  setGameDir: (dir: string) => invoke<void>('set_game_dir', { dir }),
+
+  newProject: (path: string, packId: string, name: string, author: string) =>
+    invoke<void>('new_project', { path, packId, name, author }),
+  openProject: (path: string) =>
+    invoke<[ProjectMeta, CardDef[]]>('open_project', { path }),
+
+  saveCard: (card: CardDef) => invoke<void>('save_card', { card }),
+  deleteCard: (id: string) => invoke<void>('delete_card', { id }),
+  updateProjectMeta: (meta: ProjectMeta) => invoke<void>('update_project_meta', { meta }),
+
+  savePortrait: (id: string, bytes: Uint8Array) =>
+    invoke<string>('save_portrait', { id, bytes: Array.from(bytes) }),
+  readPortrait: (rel: string) =>
+    invoke<number[]>('read_portrait', { rel }),
+
+  importCardJson: (raw: string) => invoke<CardDef>('import_card_json', { raw }),
+  importCardAny: (raw: string) => invoke<ImportReport>('import_card_any', { raw }),
+  importCardsAny: (raw: string) => invoke<ImportReport[]>('import_cards_any', { raw }),
+  importPackPck: (path: string) => invoke<PckImportResult>('import_pack_pck', { path }),
+  vanillaCatalog: () => invoke<VanillaCatalog>('vanilla_catalog'),
+  ensureBundledUploader: () => invoke<string>('ensure_bundled_uploader'),
+  exportCardJson: (id: string) => invoke<string>('export_card_json', { id }),
+  writeFile: (path: string, content: string) => invoke<void>('write_text_file', { path, content }),
+  buildPack: (outDir: string, version: string) => invoke<string>('build_pack', { outDir, version }),
+  installToGame: (version: string) => invoke<string>('install_to_game', { version }),
+  setUploaderPath: (path: string) => invoke<void>('set_uploader_path', { path }),
+  prepareWorkshop: (outDir: string, version: string, visibility: string, changeNote: string) =>
+    invoke<string>('prepare_workshop', { outDir, version, visibility, changeNote }),
+  publishWorkshop: (workspace: string) => invoke<string>('publish_workshop', { workspace }),
+};
+
+/** 外来卡牌导入结果（含字段映射说明） */
+export interface ImportReport {
+  card: CardDef;
+  notes: string[];
+  native: boolean;
+}
+
+/** .pck 卡包导入结果 */
+export interface PckImportResult {
+  imported: ImportReport[];
+  errors: string[];
+}
+
+export async function pickPckFile(): Promise<string | null> {
+  const path = await open({
+    filters: [{ name: '卡包 PCK', extensions: ['pck'] }],
+    title: '导入卡包（.pck）',
+  });
+  return typeof path === 'string' ? path : null;
+}
+
+export async function pickJsonRaw(): Promise<string | null> {
+  const path = await open({
+    filters: [{ name: '卡牌 JSON', extensions: ['json', 'sts2pack', 'txt'] }],
+    title: '导入卡牌（SpireForge / 第三方格式）',
+  });
+  if (typeof path !== 'string') return null;
+  return invoke<string>('read_text_file', { path });
+}
+
+export async function pickUploaderExe(): Promise<string | null> {
+  const path = await open({
+    filters: [{ name: 'ModUploader', extensions: ['exe'] }],
+    title: '选择官方 ModUploader.exe',
+  });
+  return typeof path === 'string' ? path : null;
+}
+
+export async function pickDirectory(): Promise<string | null> {
+  const dir = await open({ directory: true, title: '选择文件夹' });
+  return typeof dir === 'string' ? dir : null;
+}
+
+export async function pickJsonFile(): Promise<{ path: string; content: string } | null> {
+  const path = await open({
+    filters: [{ name: '卡牌 JSON', extensions: ['json'] }],
+    title: '导入卡牌',
+  });
+  if (typeof path !== 'string') return null;
+  // 通过导出接口读文件内容：走后端 open 文本
+  const raw = await invoke<string>('read_text_file', { path });
+  return { path, content: raw };
+}
+
+export async function pickSaveJsonFile(defaultName: string): Promise<string | null> {
+  const path = await save({
+    defaultPath: defaultName,
+    filters: [{ name: '卡牌 JSON', extensions: ['json'] }],
+    title: '导出卡牌',
+  });
+  return typeof path === 'string' ? path : null;
+}

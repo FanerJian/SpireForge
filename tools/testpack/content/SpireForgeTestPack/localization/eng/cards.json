@@ -1,0 +1,15 @@
+{
+  "SF_SPIKE_STRIKE.title": "Spike Strike",
+  "SF_SPIKE_STRIKE.description": "Deal {Damage} [gold]damage[/gold] to an enemy.",
+  "SF_SPIKE_STRIKE.upgrade.description": "Deal {Damage:diff()} [gold]damage[/gold] to an enemy.",
+  "SF_SPIKE_WARD.title": "Spike Ward",
+  "SF_SPIKE_WARD.description": "Gain {Block} [gold]Block[/gold].",
+  "SF_SPIKE_HEX.title": "Spike Hex",
+  "SF_SPIKE_HEX.description": "[unplayable]Spike Forge test curse.[/unplayable]",
+  "SF_SPIKE_STUPOR.title": "Spike Stupor",
+  "SF_SPIKE_STUPOR.description": "[unplayable]Spike Forge test status.[/unplayable]",
+  "SF_SPIKE_QUICKDRAW.title": "Spike Quickdraw",
+  "SF_SPIKE_QUICKDRAW.description": "Draw {Cards} cards.",
+  "SPIRE_FORGE_TEST_PACK_PACK_STRIKE.title": "Forge Strike",
+  "SPIRE_FORGE_TEST_PACK_PACK_STRIKE.description": "Deal {Damage} [gold]damage[/gold] to an enemy."
+}

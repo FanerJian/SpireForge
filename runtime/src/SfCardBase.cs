@@ -1,0 +1,207 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
+using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Models;
+
+namespace SpireForge.Runtime;
+
+/// <summary>
+/// 数据驱动卡牌的解释器基类。
+/// 每张 SpireForge 卡牌是本类的一个空壳子类（Reflection.Emit 生成，或编译进本程序集），
+/// 构造器以常量传入 cost/type/rarity/target（与原版卡一致）；
+/// 全部行为按"类型名 Slugify 后的 Entry"从 PackLoader.Defs 查定义。
+/// 打出效果与生命周期钩子共用同一解释器；kind 不属于内建五种时转交
+/// SpireForge.Api.SfEffects 注册表（第三方 mod 的扩展点）。
+/// </summary>
+public abstract class SfCardBase : CardModel
+{
+    protected SfCardBase(int cost, CardType type, CardRarity rarity, TargetType target)
+        : base(cost, type, rarity, target)
+    {
+    }
+
+    protected SfCardBase(SfCardDef def)
+        : base(def.CostsX ? 1 : def.Cost, def.Type, def.RarityEnum, def.TargetEnum)
+    {
+    }
+
+    private SfCardDef Def()
+    {
+        string entry = IdHelper.EntryOfTypeName(GetType().Name);
+        if (PackLoader.Defs.TryGetValue(entry, out var def))
+        {
+            return def;
+        }
+        // 兼容 spike 阶段的编译期注册表
+        return SfCardBase.SpikeDefs.TryGetValue(entry, out var spikeDef)
+            ? spikeDef.ToRuntimeDef()
+            : throw new System.InvalidOperationException(
+                $"SpireForge: no card definition registered for entry '{entry}' (type '{GetType().Name}')");
+
+    }
+
+    /// <summary>spike 编译卡注册表（正式内容走 PackLoader.Defs）。</summary>
+    public static readonly Dictionary<string, SpikeSfCardDef> SpikeDefs = new();
+
+    public override string PortraitPath
+    {
+        get
+        {
+            var def = TryDef();
+            if (def == null || string.IsNullOrEmpty(def.Portrait))
+            {
+                return MissingPortraitPath;
+            }
+            return $"res://{PackLoader.PackOf[IdHelper.EntryOfTypeName(GetType().Name)]}/{def.Portrait}";
+        }
+    }
+
+    private SfCardDef? TryDef()
+    {
+        string entry = IdHelper.EntryOfTypeName(GetType().Name);
+        if (PackLoader.Defs.TryGetValue(entry, out var d)) return d;
+        return SpikeDefs.TryGetValue(entry, out var s) ? s.ToRuntimeDef() : null;
+    }
+
+    public override bool GainsBlock => TryDef()?.HasBlock ?? false;
+
+    public override int MaxUpgradeLevel => TryDef()?.MaxUpgradeLevel ?? 1;
+
+    public override IEnumerable<CardKeyword> CanonicalKeywords =>
+        TryDef()?.KeywordEnums ?? Enumerable.Empty<CardKeyword>();
+
+    public override CardMultiplayerConstraint MultiplayerConstraint =>
+        (TryDef()?.Multiplayer) switch
+        {
+            "multiplayer_only" => CardMultiplayerConstraint.MultiplayerOnly,
+            "singleplayer_only" => CardMultiplayerConstraint.SingleplayerOnly,
+            _ => CardMultiplayerConstraint.None,
+        };
+
+    /// <summary>每个效果种类一个 DynamicVar（键名 = 效果种类名，供描述占位符引用）。
+    /// 钩子与 custom 效果使用字面数值，不参与变量绑定。</summary>
+    protected override IEnumerable<DynamicVar> CanonicalVars
+    {
+        get
+        {
+            var def = Def();
+            foreach (var e in def.Effects)
+            {
+                var props = SfEffectEngine.ParseProps(e.Props);
+                switch (e.Kind)
+                {
+                    case SfEffectKind.Damage:
+                        yield return new DamageVar(e.Amount, props);
+                        break;
+                    case SfEffectKind.Block:
+                        yield return new BlockVar(e.Amount, props);
+                        break;
+                    case SfEffectKind.Draw:
+                        yield return new CardsVar((int)e.Amount);
+                        break;
+                    case SfEffectKind.Energy:
+                        yield return new EnergyVar((int)e.Amount);
+                        break;
+                    case SfEffectKind.Heal:
+                        yield return new HealVar(e.Amount);
+                        break;
+                }
+            }
+        }
+    }
+
+    protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
+    {
+        await SfEffectEngine.RunAsync(this, Def().Effects, choiceContext, cardPlay, "play");
+    }
+
+    // ---- 生命周期钩子（自作用：card == this 时才执行；语义见 SCHEMA.md）----
+
+    public override bool HasTurnEndInHandEffect => TryDef()?.OnTurnEndInHand is { Count: > 0 };
+
+    public override async Task AfterCardDrawn(PlayerChoiceContext choiceContext, CardModel card, bool fromHandDraw)
+    {
+        if (card != this)
+        {
+            return;
+        }
+        await RunHook("on_draw", TryDef()?.OnDraw, choiceContext);
+    }
+
+    public override async Task AfterCardDiscarded(PlayerChoiceContext choiceContext, CardModel card)
+    {
+        if (card != this)
+        {
+            return;
+        }
+        await RunHook("on_discard", TryDef()?.OnDiscard, choiceContext);
+    }
+
+    public override async Task AfterCardExhausted(PlayerChoiceContext choiceContext, CardModel card, bool causedByEthereal)
+    {
+        if (card != this)
+        {
+            return;
+        }
+        await RunHook("on_exhaust", TryDef()?.OnExhaust, choiceContext);
+    }
+
+    public override async Task AfterCardEnteredCombat(CardModel card)
+    {
+        if (card != this)
+        {
+            return;
+        }
+        // 游戏的 AfterCardEnteredCombat 分发不携带 PlayerChoiceContext，
+        // 因此仅支持无需上下文的效果（block/heal/energy/custom）
+        await RunHook("on_enter_combat", TryDef()?.OnEnterCombat, null);
+    }
+
+    protected override async Task OnTurnEndInHand(PlayerChoiceContext choiceContext)
+    {
+        await RunHook("on_turn_end_in_hand", TryDef()?.OnTurnEndInHand, choiceContext);
+    }
+
+    private async Task RunHook(string trigger, List<SfEffect>? effects, PlayerChoiceContext? ctx)
+    {
+        if (effects == null || effects.Count == 0)
+        {
+            return;
+        }
+        Log.Info($"SPIREFORGE: hook {trigger} -> {Id}");
+        await SfEffectEngine.RunAsync(this, effects, ctx, null, trigger);
+    }
+
+    // ---- 效果解释器：见 SfEffectEngine（与原版卡覆盖共用） ----
+
+    protected override void OnUpgrade()
+    {
+        var def = Def();
+        var u = def.Upgrades;
+        foreach (var e in def.Effects)
+        {
+            switch (e.Kind)
+            {
+                case SfEffectKind.Damage when u.Damage != 0:
+                    DynamicVars.Damage.UpgradeValueBy(u.Damage);
+                    break;
+                case SfEffectKind.Block when u.Block != 0:
+                    DynamicVars.Block.UpgradeValueBy(u.Block);
+                    break;
+                case SfEffectKind.Draw when u.Draw != 0:
+                    DynamicVars.Cards.UpgradeValueBy(u.Draw);
+                    break;
+                case SfEffectKind.Energy when u.Energy != 0:
+                    DynamicVars.Energy.UpgradeValueBy(u.Energy);
+                    break;
+                case SfEffectKind.Heal when u.Heal != 0:
+                    DynamicVars.Heal.UpgradeValueBy(u.Heal);
+                    break;
+            }
+        }
+    }
+}

@@ -1,0 +1,206 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json.Serialization;
+using StsCards = MegaCrit.Sts2.Core.Entities.Cards;
+
+namespace SpireForge.Runtime;
+
+/// <summary>效果种类（对应编辑器 schema/effects 的 kind 字段）。
+/// Custom：kind 不属于内建五种时的一切效果，执行时转交 SpireForge.Api.SfEffects 注册表。</summary>
+public enum SfEffectKind
+{
+    Damage,
+    Block,
+    Draw,
+    Energy,
+    Heal,
+    Custom,
+}
+
+/// <summary>单条效果：种类 + 数值 + 修饰。</summary>
+public sealed class SfEffect
+{
+    public SfEffect()
+    {
+    }
+
+    /// <summary>内建种类便捷构造（spike 卡用）。</summary>
+    public SfEffect(SfEffectKind kind, decimal amount)
+    {
+        KindName = kind.ToString().ToLowerInvariant();
+        Amount = amount;
+    }
+
+    /// <summary>种类名（小写 snake）：damage/block/draw/energy/heal，或任意自定义名。</summary>
+    [JsonPropertyName("kind")]
+    public string KindName { get; set; } = "damage";
+
+    [JsonPropertyName("amount")]
+    public decimal Amount { get; set; }
+
+    /// <summary>ValueProp 枚举名列表，如 ["Move"]；可组合。</summary>
+    [JsonPropertyName("props")]
+    public List<string> Props { get; set; } = [];
+
+    /// <summary>custom 效果的处理器名（由其他 mod 通过 SpireForge.Api.SfEffects.Register 注册）。</summary>
+    [JsonPropertyName("handler")]
+    public string Handler { get; set; } = "";
+
+    /// <summary>钩子上下文的取敌方式：self / random_enemy / all_enemies。
+    /// damage 与 custom 在无 cardPlay 时使用，默认 random_enemy（与 Tingsha 同款 RNG）。</summary>
+    [JsonPropertyName("target")]
+    public string Target { get; set; } = "";
+
+    /// <summary>custom 效果的透传参数（任意 JSON 对象，处理器自解释）。</summary>
+    [JsonPropertyName("params")]
+    public Dictionary<string, System.Text.Json.JsonElement>? Params { get; set; }
+
+    /// <summary>解析后的种类（内建五种之外的 kind 一律视为 Custom）。
+    /// 只读计算属性：必须 Ignore，否则与 KindName 的 "kind" 序列化名冲突。</summary>
+    [JsonIgnore]
+    public SfEffectKind Kind => (KindName ?? "").Trim().ToLowerInvariant() switch
+    {
+        "damage" => SfEffectKind.Damage,
+        "block" => SfEffectKind.Block,
+        "draw" => SfEffectKind.Draw,
+        "energy" => SfEffectKind.Energy,
+        "heal" => SfEffectKind.Heal,
+        _ => SfEffectKind.Custom,
+    };
+}
+
+/// <summary>由卡包 JSON 反序列化的卡牌定义（与编辑器 schema/card.json 一一对应）。</summary>
+public sealed class SfCardDef
+{
+    // ---- JSON 反序列化字段（camelCase 由 PackLoader 的 naming policy 处理）----
+
+    [JsonPropertyName("format_version")]
+    public int FormatVersion { get; set; } = 1;
+
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("card_type")]
+    public string CardType { get; set; } = "Attack";
+
+    [JsonPropertyName("rarity")]
+    public string Rarity { get; set; } = "Common";
+
+    [JsonPropertyName("target")]
+    public string Target { get; set; } = "AnyEnemy";
+
+    [JsonPropertyName("cost")]
+    public int Cost { get; set; } = 1;
+
+    [JsonPropertyName("costs_x")]
+    public bool CostsX { get; set; }
+
+    [JsonPropertyName("keywords")]
+    public List<string> Keywords { get; set; } = [];
+
+    [JsonPropertyName("pool")]
+    public string Pool { get; set; } = "colorless";
+
+    [JsonPropertyName("show_in_library")]
+    public bool ShowInLibrary { get; set; } = true;
+
+    [JsonPropertyName("multiplayer")]
+    public string Multiplayer { get; set; } = "none";
+
+    [JsonPropertyName("max_upgrade_level")]
+    public int MaxUpgradeLevel { get; set; } = 1;
+
+    [JsonPropertyName("portrait")]
+    public string Portrait { get; set; } = "";
+
+    [JsonPropertyName("effects")]
+    public List<SfEffect> Effects { get; set; } = [];
+
+    /// <summary>原版卡覆盖：非空时本定义不新建卡牌，而是改写 ModelDb 中 Entry=此值 的原版卡
+    /// （费用/类型/稀有度/目标/数值；effects 非空时整体替换 OnPlay）。见 SfVanillaOverride。</summary>
+    [JsonPropertyName("vanilla_id")]
+    public string? VanillaId { get; set; }
+
+    /// <summary>原版卡数值覆盖：键 = DynamicVar.Name（如 Damage/Block/Vulnerable），值 = 覆盖后的 BaseValue。</summary>
+    [JsonPropertyName("stats")]
+    public Dictionary<string, decimal>? Stats { get; set; }
+
+    /// <summary>原版卡升级增量：键 = DynamicVar.Name，值 = 升级时的增量（OnUpgrade 被整体替换）。</summary>
+    [JsonPropertyName("upgrade_stats")]
+    public Dictionary<string, decimal>? UpgradeStats { get; set; }
+
+    [JsonPropertyName("upgrades")]
+    public SfUpgrades Upgrades { get; set; } = new();
+
+    // ---- 生命周期钩子（效果清单，自作用触发；语义见 SCHEMA.md）----
+
+    /// <summary>此牌被抽到时（含开局起手抽牌）。</summary>
+    [JsonPropertyName("on_draw")]
+    public List<SfEffect> OnDraw { get; set; } = [];
+
+    /// <summary>此牌被弃置时。</summary>
+    [JsonPropertyName("on_discard")]
+    public List<SfEffect> OnDiscard { get; set; } = [];
+
+    /// <summary>此牌被消耗时（含 Ethereal 消耗）。</summary>
+    [JsonPropertyName("on_exhaust")]
+    public List<SfEffect> OnExhaust { get; set; } = [];
+
+    /// <summary>战斗开始此牌进入战斗时（在抽牌堆中也会触发；仅支持 block/heal/energy/custom）。</summary>
+    [JsonPropertyName("on_enter_combat")]
+    public List<SfEffect> OnEnterCombat { get; set; } = [];
+
+    /// <summary>回合结束时此牌在手中时（配合 Retain 关键词使用）。</summary>
+    [JsonPropertyName("on_turn_end_in_hand")]
+    public List<SfEffect> OnTurnEndInHand { get; set; } = [];
+
+    // ---- 解析后的游戏枚举（运行时使用）----
+
+    public StsCards.CardType Type => System.Enum.TryParse<StsCards.CardType>(CardType, out var v) ? v : StsCards.CardType.Skill;
+    public StsCards.CardRarity RarityEnum => System.Enum.TryParse<StsCards.CardRarity>(Rarity, out var v) ? v : StsCards.CardRarity.Common;
+    public StsCards.TargetType TargetEnum => System.Enum.TryParse<StsCards.TargetType>(Target, out var v) ? v : StsCards.TargetType.AnyEnemy;
+
+    /// <summary>keywords 中可解析为 CardKeyword 的部分</summary>
+    public List<StsCards.CardKeyword> KeywordEnums =>
+        Keywords.Select(k => System.Enum.TryParse<StsCards.CardKeyword>(k, ignoreCase: true, out var v) ? (StsCards.CardKeyword?)v : null)
+            .Where(v => v != null).Select(v => v!.Value).ToList();
+
+    /// <summary>本卡是否包含格挡效果（GainsBlock 用）</summary>
+    public bool HasBlock => Effects.Any(e => e.Kind == SfEffectKind.Block);
+
+    /// <summary>本卡是否包含伤害效果（HasEnergyCostX / 提示用）</summary>
+    public bool HasDamage => Effects.Any(e => e.Kind == SfEffectKind.Damage);
+
+    /// <summary>本卡是否使用自定义效果</summary>
+    public bool HasCustom => Effects.Any(e => e.Kind == SfEffectKind.Custom)
+        || HookLists.Any(h => h.Any(e => e.Kind == SfEffectKind.Custom));
+
+    private List<List<SfEffect>> HookLists =>
+    [
+        OnDraw, OnDiscard, OnExhaust, OnEnterCombat, OnTurnEndInHand,
+    ];
+
+    /// <summary>调试用完整标识</summary>
+    public override string ToString() => $"{Id}({Type})";
+}
+
+public sealed class SfUpgrades
+{
+    [JsonPropertyName("damage")]
+    public decimal Damage { get; set; }
+
+    [JsonPropertyName("block")]
+    public decimal Block { get; set; }
+
+    [JsonPropertyName("draw")]
+    public int Draw { get; set; }
+
+    [JsonPropertyName("energy")]
+    public decimal Energy { get; set; }
+
+    [JsonPropertyName("heal")]
+    public decimal Heal { get; set; }
+
+    [JsonPropertyName("keywords")]
+    public List<string> Keywords { get; set; } = [];
+}

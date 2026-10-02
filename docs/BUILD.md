@@ -1,0 +1,94 @@
+# 构建与测试指南
+
+## 环境要求
+
+| 组件 | 版本 | 用途 | 安装 |
+|---|---|---|---|
+| Node.js + pnpm | 20+ / 10+ | 编辑器前端 | nodejs.org / `npm i -g pnpm` |
+| Rust (msvc) | stable | 编辑器后端 / pcktool | rustup.rs（默认工具链） |
+| VS BuildTools | 2022 + **Windows SDK** | Rust MSVC 链接 | winget: `Microsoft.VisualStudio.2022.BuildTools`；SDK: `Microsoft.WindowsSDK.10.0.18362` |
+| .NET SDK | 9.0 | Runtime mod 构建 | dotnet.microsoft.com |
+| Godot.NET.Sdk | 4.5.1（NuGet 自动还原） | Runtime mod（源生成器必需） | 无需手动安装 |
+| 《杀戮尖塔2》 | v0.111.0+ | 引用 sts2.dll / 游戏内测试 | Steam（建议安装在非 C 盘库以省空间） |
+
+## 一、编辑器
+
+```bash
+cd editor
+pnpm install
+
+# 开发模式（热重载）
+pnpm tauri dev
+
+# 发行版
+pnpm tauri build                 # 完整（含 MSI 安装器）
+pnpm tauri build --bundles msi   # 只出 MSI
+# 独立可执行文件（无需安装器）：src-tauri/target/release/editor.exe
+# MSI 安装器：src-tauri/target/release/bundle/msi/*.msi
+
+# 仅前端类型检查 / 构建
+npx tsc --noEmit && pnpm build
+```
+
+**发行产物说明**：
+- `target/release/editor.exe`（~6MB）可**直接双击运行**（依赖系统 WebView2，Win10/11 自带）
+- **安装器打包需要 GitHub 访问**：tauri-bundler 会从 GitHub 下载 WiX 3.14/NSIS 工具并缓存到
+  `%LOCALAPPDATA%/tauri/`。内网/受限网络下 MSI 打包会卡在下载（独立 exe 不受影响）。
+  离线方案：在有网机器上打包一次，把 `%LOCALAPPDATA%/tauri/` 整个目录拷到同路径。
+
+**踩坑**：
+- Git Bash 下 Rust 链接时 GNU `link` 会抢占 MSVC `link.exe`（报 `extra operand`）。
+  在纯 MSVC 场景（Tauri 构建）不受影响；跑 GNU 工具链测试时用
+  `rustup run stable-x86_64-pc-windows-gnu cargo ...`
+- `pnpm tauri dev` 卡在 "beforeDevCommand" 失败 = 1420 端口被上次的 vite 残留占用：
+  `netstat -ano | grep 1420` → `taskkill //PID <pid> //F`
+- 重建发行版前需关闭正在运行的 editor.exe（Windows 锁定可执行文件）
+
+## 二、Runtime mod
+
+```bash
+cd runtime
+dotnet build -c Release
+# 产物: .godot/mono/temp/bin/Release/SpireForgeRuntime.dll
+```
+
+**GameDir 配置**：csproj 中 `<GameDir>` 默认 `E:\SteamLibrary\steamapps\common\Slay the Spire 2`，
+换机器时改这里或传 `/p:GameDir=...`。
+
+**部署**：
+```bash
+# 复制到游戏 mods 目录（首次需自建目录）
+cp .godot/mono/temp/bin/Release/SpireForgeRuntime.dll  "<游戏>/mods/SpireForgeRuntime/"
+cp SpireForgeRuntime.json                              "<游戏>/mods/SpireForgeRuntime/"
+# 调试模式（可选）：放一个空文件启用回归测试卡 + 完整自检
+touch "<游戏>/mods/SpireForgeRuntime/SpireForgeRuntime.debug"
+```
+
+## 三、测试矩阵
+
+| 层级 | 命令/操作 | 期望 |
+|---|---|---|
+| Rust 单元测试（PCK 格式 + Entry 派生） | `cd tools/publish-test && rustup run stable-x86_64-pc-windows-gnu cargo test` | 3 passed（含游戏实测值断言） |
+| 编辑器后端编译 | `cd editor/src-tauri && cargo check` | 0 error |
+| 前端类型 | `cd editor && npx tsc --noEmit` | 0 error |
+| 打包链路（无 GUI） | `cd tools/publish-test && rustup run ... cargo run --example build_pack -- ../testproject ../testproject-out SFDeepPack 测试 SpireForge 0.2.0` | 输出 .pck + 清单 |
+| PCK 内容校验 | `tools/pcktool/target/release/pcktool.exe list <pck>` | 列出 cards/images/localization |
+| **游戏内端到端** | 安装卡包 → 启动游戏 → 看日志 | `SPIREFORGE: PASS`（全卡）+ `\[ERROR\] SPIREFORGE` 计数为 0 |
+| 视觉验证 | 启动编辑器 → 截图欢迎页/编辑页 | 深色 UI 正常渲染 |
+
+**游戏内日志过滤**：
+```bash
+grep -a "SPIREFORGE" "$APPDATA/SlayTheSpire2/logs/godot.log"
+# 关键行：loaded <ENTRY>（解析成功）/ injected+pooled（注册）/ PASS（最终状态）
+# 错误行：FAIL 或 [ERROR] SPIREFORGE
+```
+
+## 四、发布清单（打新版本时逐项过）
+
+- [ ] `tools/publish-test` 全部测试通过
+- [ ] runtime 在最新游戏版本上零错误（含调试模式自检 PASS）
+- [ ] 编辑器 `pnpm tauri build` 成功
+- [ ] 更新 `docs/api-notes-<版本>.md`（如游戏有 API 变更）
+- [ ] 更新 `RUNTIME-MOD.md` 的版本兼容性记录表
+- [ ] Runtime 版本号（`SpireForgeRuntime.json` 的 version + csproj）
+- [ ] （若发布 runtime 到工坊）用 ModUploader 更新条目
