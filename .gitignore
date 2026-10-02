@@ -23,3 +23,7 @@ tools/testproject-out/
 
 # ---- ZCode/Mimosa 钩子状态 ----
 .mimosa/
+
+# ---- Godot / Tauri 自动生成 ----
+runtime/.godot/
+editor/src-tauri/gen/
