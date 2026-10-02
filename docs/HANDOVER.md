@@ -226,3 +226,8 @@ spireforge/
 10. **git 约定**：仓库主分支 `main`；sts2-decompiled / spire-codex / 构建产物 / .mimosa
     不入库（恢复方式见 BUILD.md §〇）；uploader 二进制直接入库（include_bytes! 编译依赖，
     SHA256SUMS 校验）；桌面快捷方式别指向 target/release（clean 即失效），正式使用装 MSI。
+11. **构建 release exe 必须走 `pnpm tauri build`**（加 `--no-bundle` 只出 exe 不出安装包）。
+    直接 `cargo build --release` 不带 `tauri/custom-protocol` feature，编出来的 exe 启动后
+    WebView 显示「localhost 拒绝连接」——它在连 devUrl 而不是加载内嵌资源（前端改动
+    只重编 Rust 也一样会踩：exe 是"开发模式"二进制）。Cargo.toml 未声明 app 级
+    custom-protocol feature，所以 cargo 命令行救不回来，认准 tauri CLI。
