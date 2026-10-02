@@ -19,14 +19,19 @@
 ```json
 {
   "format_version": 1,
-  "pack_id": "Darkpack",          // mod id（工坊目录名基础）；发布后不可改
+  "pack_id": "Darkpack",          // mod id（工坊目录名基础）；发布后不可改；^[A-Za-z][A-Za-z0-9_]{1,63}$，非 Windows 保留名
   "name": "暗黑卡包",
   "author": "YourName",
   "description": "描述（进工坊简介）",
   "cards": ["my_strike", "my_guard"],
-  "workshop_id": null             // 首次发布后回填（M5）
+  "workshop_id": null,            // 本卡包的工坊 id：首次上传成功后由 mod_id.txt 回填；重新生成工作区时据此恢复
+  "last_version": "0.1.0",        // 上次安装/发布版本号（发布面板默认值）
+  "runtime_workshop_id": null     // SpireForge Runtime 的工坊 id → 写入 workshop.json dependencies
 }
 ```
+
+写入安全：project.json / cards/*.json / 设置文件全部原子写（`.tmp` → 旧文件转 `.bak` → 改名到位）；
+打开项目或导入时，`format_version` 高于编辑器支持版本的卡会被拒绝（防旧编辑器保存时静默删字段）。
 
 ## 卡牌定义（cards/<id>.json）
 

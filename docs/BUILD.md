@@ -11,6 +11,27 @@
 | Godot.NET.Sdk | 4.5.1（NuGet 自动还原） | Runtime mod（源生成器必需） | 无需手动安装 |
 | 《杀戮尖塔2》 | v0.111.0+ | 引用 sts2.dll / 游戏内测试 | Steam（建议安装在非 C 盘库以省空间） |
 
+## 〇、Git 仓库与外部数据管理
+
+项目根已初始化 git（主分支 `main`）。**不在仓库里的东西及恢复方式**：
+
+| 排除项 | 原因 | 恢复 |
+|---|---|---|
+| `tools/sts2-decompiled/` | sts2.dll 反编译产物（版权物，禁止分发） | ILSpy 反编译对应版本 sts2.dll，见 RESEARCH.md |
+| `tools/spire-codex/` | 社区数据仓库（本身是嵌套 git） | `git clone https://github.com/ptrlrd/spire-codex tools/spire-codex`（提取产物 `schema/vanilla-catalog.json` 已入库，不重跑脚本则不必 clone） |
+| `**/target/`、`**/node_modules/` | 构建产物 | `pnpm install` / `cargo build` |
+| `runtime/.godot/`、`editor/src-tauri/gen/` | Godot/Tauri 自动生成 | 构建时生成 |
+| `.mimosa/` | 安全钩子状态 | 运行时生成 |
+| `tools/uploader/*.zip`、`_sandbox/` | 上传器原始 zip 与解压沙盒 | 见下 |
+
+**内置上传器二进制**（`tools/uploader/ModUploader.exe`、`steam_api64.dll`、`steam_appid.txt`）
+**直接入库**（clean clone 即可编译，`workshop.rs` 编译期 `include_bytes!` 引用它们），
+完整性与版本记录见 `tools/uploader/SHA256SUMS`。换版本时：替换文件 → 重新生成
+`sha256sum ... > tools/uploader/SHA256SUMS` → 提交（编辑器的版本戳会随字节数指纹自动重释放）。
+
+**桌面快捷方式注意**：不要指向 `editor/src-tauri/target/release/editor.exe`
+（`cargo clean` 即失效）；正式使用请装 MSI/NSIS 安装产物，target 目录仅用于开发。
+
 ## 一、编辑器
 
 ```bash
@@ -31,10 +52,14 @@ npx tsc --noEmit && pnpm build
 ```
 
 **发行产物说明**：
-- `target/release/editor.exe`（~6MB）可**直接双击运行**（依赖系统 WebView2，Win10/11 自带）
+- `target/release/editor.exe`（~20MB，含内置上传器）可**直接双击运行**（依赖系统 WebView2，Win10/11 自带）
+- **安装器**（`target/release/bundle/{msi,nsis}/`）：`tauri.conf.json` 已配 WiX `language: zh-CN` /
+  NSIS 中英文——产品名含中文，默认 en-US codepage 1252 会导致 light.exe 报 LGHT0311，勿改回
 - **安装器打包需要 GitHub 访问**：tauri-bundler 会从 GitHub 下载 WiX 3.14/NSIS 工具并缓存到
-  `%LOCALAPPDATA%/tauri/`。内网/受限网络下 MSI 打包会卡在下载（独立 exe 不受影响）。
+  `%LOCALAPPDATA%/tauri/`。内网/受限网络下打包会卡在下载（独立 exe 不受影响）。
   离线方案：在有网机器上打包一次，把 `%LOCALAPPDATA%/tauri/` 整个目录拷到同路径。
+- **桌面快捷方式**：指向 `target/release/editor.exe` 的快捷方式在 `cargo clean` 后失效；
+  正式使用装 MSI/NSIS 产物
 
 **踩坑**：
 - Git Bash 下 Rust 链接时 GNU `link` 会抢占 MSVC `link.exe`（报 `extra operand`）。
@@ -68,7 +93,9 @@ touch "<游戏>/mods/SpireForgeRuntime/SpireForgeRuntime.debug"
 
 | 层级 | 命令/操作 | 期望 |
 |---|---|---|
-| Rust 单元测试（PCK 格式 + Entry 派生） | `cd tools/publish-test && rustup run stable-x86_64-pc-windows-gnu cargo test` | 3 passed（含游戏实测值断言） |
+| pcktool 解析器（含损坏输入回归） | `cd tools/pcktool && rustup run stable-x86_64-pc-windows-gnu cargo test` | 8 passed |
+| 项目事务/打包/导入（GNU 宿主） | `cd tools/publish-test && rustup run stable-x86_64-pc-windows-gnu cargo test` | 15 passed（含 rename 事务、原子写、立绘保真、版本拒绝） |
+| 同套测试（MSVC 直跑编辑器 crate） | `cd editor/src-tauri && cargo test` | 15 passed |
 | 编辑器后端编译 | `cd editor/src-tauri && cargo check` | 0 error |
 | 前端类型 | `cd editor && npx tsc --noEmit` | 0 error |
 | 打包链路（无 GUI） | `cd tools/publish-test && rustup run ... cargo run --example build_pack -- ../testproject ../testproject-out SFDeepPack 测试 SpireForge 0.2.0` | 输出 .pck + 清单 |

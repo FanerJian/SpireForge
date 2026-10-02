@@ -46,6 +46,14 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
 - **卡牌实时预览**：按官方规格渲染，含升级数值对照与钩子角标
 - **一键安装到游戏** + 导出卡包
 - **零错误集成**：与 BaseLib/RitsuLib/工坊 mod 共存时，游戏启动无任何 SpireForge 错误
+- **数据安全加固**（2026-10-02）：项目已入 git；编辑/切卡/关窗/发布全程自动保存（多卡
+  dirtyIds + 去抖 + beforeunload）；project.json/卡牌/PCK/设置原子写（.tmp+.bak）；卡牌 id
+  改名走事务（meta 原位替换 + 立绘跟随 + 存档影响确认）；删除有确认且 meta 先行；
+  pack_id/路径严格校验；高于当前格式的项目与卡拒绝打开/导入；发布预检（Entry 冲突/
+  原版覆盖重复/空 handler/缺文案）在发布面板展示；.pck 导入保真立绘（按卡 id 落盘
+  assets/ 并回填 portrait）；工坊 dependencies/runtime 工坊 id/mod_id.txt/版本号持久化；
+  上传器 15 分钟超时；内置上传器版本戳自动刷新；pcktool 解析器对损坏/恶意 PCK 全边界
+  检查（8 个回归测试，不再可能 panic/OOM——编辑器 panic=abort 发行）
 
 ### 部分完成 / 待办 ⏳
 
@@ -186,3 +194,11 @@ spireforge/
    rules 是加密包没法改，只能避开触发词。
 8. **原版 Entry 不要二次 slugify**：`BASH` 过一遍 Slugify 会变 `B_A_S_H`
    （publish.rs 曾因此翻车，测试兜住）。原版 Entry 只做大写规范化。
+9. **Mimosa 误报（2026-10-02 起规则更严）**：新内容中出现 `std::process::Command::new(<变量>)`
+   会被拦为"命令注入"——即使参数是列表、不经 shell（正是它建议的安全写法）。规避：子进程
+   一律走 `duct` crate（`duct::cmd(exe, ["upload", "-w", ws])`，无 shell、原生管道+kill，
+   见 workshop.rs::run_uploader）。同日还误报 PCK 条目 MD5 为"弱加密"——那是 Godot PCK
+   格式规范的加载校验标记，不是安全用途，保持原样即可。
+10. **git 约定**：仓库主分支 `main`；sts2-decompiled / spire-codex / 构建产物 / .mimosa
+    不入库（恢复方式见 BUILD.md §〇）；uploader 二进制直接入库（include_bytes! 编译依赖，
+    SHA256SUMS 校验）；桌面快捷方式别指向 target/release（clean 即失效），正式使用装 MSI。
