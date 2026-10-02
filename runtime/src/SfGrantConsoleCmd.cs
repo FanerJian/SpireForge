@@ -12,8 +12,9 @@ namespace SpireForge.Runtime;
 
 /// <summary>
 /// 游戏内控制台命令 sf_grant [ENTRY ...]：
-/// 无参数 = 列出已安装 SpireForge 卡包的全部 Entry；带参数 = 拿卡
-/// （战斗中 → 抽牌堆；否则 → 牌组）。原版 Entry 同样可用（如 sf_grant BASH）。
+/// 无参数 = 列出已安装 SpireForge 卡包的全部 Entry；带参数 = 永久拿卡
+/// （总是加入本局主牌组；战斗中额外克隆一份进当前抽牌堆立刻可用）。
+/// 原版 Entry 同样可用（如 sf_grant BASH）。
 /// DebugOnly 保持默认 true —— 拿卡属于测试/自查功能，仅在调试会话出现。
 /// 游戏通过 ReflectionHelper.GetSubtypesInMods 自动发现本类，无需手动注册。
 /// </summary>
@@ -24,7 +25,7 @@ public sealed class SfGrantConsoleCmd : AbstractConsoleCmd
     public override string Args => "[card-entry ...]";
 
     public override string Description =>
-        "List SpireForge card entries (no args), or add card(s) to deck / draw pile in combat.";
+        "List SpireForge card entries (no args), or permanently add card(s) to your run deck (plus current draw pile in combat).";
 
     public override bool IsNetworked => false;
 
@@ -49,7 +50,7 @@ public sealed class SfGrantConsoleCmd : AbstractConsoleCmd
         }
         bool inCombat = CombatManager.Instance is { IsInProgress: true };
         return new CmdResult(GrantAll(issuingPlayer, args, inCombat), success: true,
-            $"Granting {args.Length} card(s) to {(inCombat ? "draw pile" : "deck")}...");
+            $"Granting {args.Length} card(s) to run deck (permanent){(inCombat ? " + draw pile" : "")}...");
     }
 
     private static async Task GrantAll(Player player, string[] entries, bool inCombat)
@@ -66,7 +67,7 @@ public sealed class SfGrantConsoleCmd : AbstractConsoleCmd
                 }
                 else
                 {
-                    SpireForge.Api.SfLog.Info($"sf_grant: granted {entry} ({(inCombat ? "draw" : "deck")})");
+                    SpireForge.Api.SfLog.Info($"sf_grant: granted {entry} (deck{(inCombat ? "+draw" : "")})");
                 }
             }
             catch (Exception e)

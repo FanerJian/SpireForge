@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -67,11 +68,13 @@ public static class SfEffects
     /// <summary>查询某个自定义效果名是否已注册。</summary>
     public static bool IsRegistered(string kind) => Handlers.ContainsKey(kind);
 
-    /// <summary>执行自定义效果。返回 false 表示该名字未注册（调用方负责报错）。</summary>
+    /// <summary>执行自定义效果。返回 false 表示该名字未注册（调用方负责报错）。
+    /// 前后触发 SfEvents.BeforeEffect / AfterEffect（插件监听点）。</summary>
     public static async Task<bool> TryInvoke(SfEffectContext ctx)
     {
         // 编辑器保存的自定义效果是 {"kind":"custom","handler":"名字"}；
         // 文档风格则是 {"kind":"名字"} 直接把 kind 当处理器名。两种都接受。
+        SfEvents.RaiseBeforeEffect(ctx);
         var key = ctx.Effect.KindName;
         if (string.Equals(key, "custom", StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(ctx.Effect.Handler))
@@ -80,6 +83,7 @@ public static class SfEffects
         }
         if (!Handlers.TryGetValue(key, out var handler))
         {
+            SfEvents.RaiseAfterEffect(ctx, invoked: false);
             return false;
         }
         try
@@ -91,6 +95,10 @@ public static class SfEffects
         {
             Log.Error($"SPIREFORGE: custom effect '{key}' failed on {ctx.Card.Id}: {e}");
             return true;
+        }
+        finally
+        {
+            SfEvents.RaiseAfterEffect(ctx, invoked: true);
         }
     }
 }
@@ -112,6 +120,15 @@ public static class SfPacks
     public static bool TryGetDef(string packId, string cardId, out SpireForge.Runtime.SfCardDef? def) =>
         SpireForge.Runtime.PackLoader.Defs.TryGetValue(
             SpireForge.Runtime.IdHelper.EntryOf(packId, cardId), out def);
+
+    /// <summary>按 Entry 取运行时卡牌模型（SpireForge 新建卡与原版卡均可；找不到返回 false）。
+    /// 拿到的模板可 ToMutable() 后交给 CardPileCmd / SfGrant 等游戏 API 自由使用。</summary>
+    public static bool TryGetCardModel(string entry, out MegaCrit.Sts2.Core.Models.CardModel? model)
+    {
+        model = MegaCrit.Sts2.Core.Models.ModelDb.AllCards.FirstOrDefault(c =>
+            string.Equals(c.Id.Entry, entry, StringComparison.OrdinalIgnoreCase));
+        return model != null;
+    }
 }
 
 /// <summary>统一前缀日志（godot.log 中过滤 SPIREFORGE 即可看到）。</summary>

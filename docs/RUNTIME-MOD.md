@@ -31,6 +31,10 @@ Godot 源生成器缺失 → 引擎回调（`ResourceFormatLoader._Load` 等 GDV
 | `SfEffectEngine.cs` | 静态效果解释器：SfCardBase 与原版卡覆盖（Harmony 前缀）共用同一执行逻辑 |
 | `SfVanillaOverride.cs` | 原版卡覆盖：改模板费用/类型/稀有度/目标/数值 + Harmony 替换 OnPlay/OnUpgrade |
 | `SfEffects.cs` | 对外扩展 API（`SpireForge.Api`）：自定义效果注册表、卡包查询、日志 |
+| `SfEvents.cs` | 对外扩展 API：生命周期事件总线（BeforeEffect/AfterEffect/CardGranted，订阅者异常隔离） |
+| `SfGrant.cs` | 「一键在游戏中获得卡」文件桥：sf_grant.json 排队、**永久**发放（主牌组 + 战斗中抽牌堆副本） |
+| `SfGrantConsoleCmd.cs` | 控制台命令 `sf_grant`（列出/永久拿卡，调试模式） |
+| `SfKaka.cs` | 战斗中生成敌人 + 实例级改名（ConditionalWeakTable 标记 + Title getter 后缀 + loc 词条注入） |
 | `SfHookTestCmd.cs` | 调试自测控制台命令 `sf_hooktest`（自动验证钩子/自定义效果，debug 模式） |
 | `EmitCardFactory.cs` | Reflection.Emit 生成卡牌空壳类型（每卡一个类型，ModelId 之必需） |
 | `SfPngLoader.cs` | 原始 PNG/JPEG/WebP 的 ResourceFormatLoader（命名空间隔离） |
@@ -102,9 +106,19 @@ Runtime 直接 `new Harmony("com.spireforge.runtime.vanilla")` 打补丁。依�
 
 ## 三·五、扩展接口（其他 mod 如何接入）
 
-SpireForgeRuntime 把 `SpireForge.Api` 命名空间作为公共 API 暴露（`SfEffects.cs`）。
+SpireForgeRuntime 把 `SpireForge.Api` 命名空间作为公共 API 暴露（`SfEffects.cs` / `SfEvents.cs`）。
 第三方 mod 在自己的 csproj 里直接引用 `<游戏>/mods/SpireForgeRuntime/SpireForgeRuntime.dll`
-（或工坊版），即可：
+（或工坊版），即可使用五组接口：
+
+| 接口 | 用途 |
+|---|---|
+| `SfEffects` | 注册/注销自定义效果处理器（卡包 JSON 里 `{"kind":"名"}` 即可调用） |
+| `SfEvents` | 生命周期事件：`BeforeEffect` / `AfterEffect` / `CardGranted` |
+| `SfPacks` | 查询已加载卡包：`All` / `PackOf` / `TryGetDef` / `TryGetCardModel` |
+| `SfGrant` | 给玩家发卡：`Enqueue`（写清单，战斗开始时消费）/ `GrantAsync`（立即发放，**永久加入本局牌组**） |
+| `SfLog` | 统一前缀日志（godot.log 过滤 `SPIREFORGE`） |
+
+完整示例 mod：
 
 ```csharp
 using SpireForge.Api;
@@ -114,21 +128,37 @@ public static class MyMod
 {
     public static void Load()
     {
-        // 1) 注册自定义效果 —— 卡包 JSON 里即可写 {"kind":"mymod_storm","amount":2,"params":{...}}
+        // 1) 自定义效果 —— 卡包 JSON 里即可写 {"kind":"mymod_storm","amount":2,"params":{...}}
+        //    （编辑器保存的 {"kind":"custom","handler":"mymod_storm"} 等价）
         SfEffects.Register("mymod_storm", async ctx =>
         {
-            // ctx.Card / ctx.Effect(含 Params) / ctx.Choice / ctx.Play / ctx.Trigger / ctx.Target
+            // ctx.Card / ctx.Effect(含 Amount/Params) / ctx.Choice / ctx.Play / ctx.Trigger / ctx.Target
             // 这里可用整个游戏 Cmd API：DamageCmd/CreatureCmd/PowerCmd/RelicCmd/...
             if (ctx.Target != null && ctx.Choice != null)
                 await MegaCrit.Sts2.Core.Commands.CreatureCmd.Damage(
-                    ctx.Choice, ctx.Target, ctx.Effect.Amount, MegaCrit.Sts2.Core.ValueProps.ValueProp.Move, ctx.Card, ctx.Play);
+                    ctx.Choice, ctx.Target, ctx.Effect.Amount,
+                    MegaCrit.Sts2.Core.ValueProps.ValueProp.Move, ctx.Card, ctx.Play);
         });
 
-        // 2) 查询已加载卡包
-        foreach (var (entry, def) in SfPacks.All) { /* ... */ }
-        SfPacks.TryGetDef("Darkpack", "my_strike", out var def);
+        // 2) 生命周期事件（同步触发、逐订阅者异常隔离）
+        SfEvents.AfterEffect += (ctx, invoked) =>
+            SfLog.Info($"effect {ctx.Effect.KindName} on {ctx.Card.Id}: invoked={invoked}");
+        SfEvents.CardGranted += (entry, inCombat) =>
+            SfLog.Info($"card granted: {entry} (inCombat={inCombat})");
 
-        // 3) 统一前缀日志（godot.log 过滤 SPIREFORGE）
+        // 3) 查询卡包 / 拿卡牌模型（SpireForge 新建卡与原版卡均可）
+        foreach (var (entry, def) in SfPacks.All) { /* ... */ }
+        if (SfPacks.TryGetCardModel("MY_PACK_MY_CARD", out var model))
+        {
+            // model 可 ToMutable() 后交给任意游戏 API
+        }
+
+        // 4) 给玩家发卡（永久加入本局主牌组；战斗中还会克隆进当前抽牌堆）
+        SfGrant.Enqueue(["MY_PACK_MY_CARD", "BASH"]);   // 排队：下一场战斗开始时消费
+        // 或立即发放（需要 RunManager 进行中）：
+        // await SfGrant.GrantAsync(player, "MY_PACK_MY_CARD", inCombat: false);
+
+        // 5) 日志
         SfLog.Info("hello from my mod");
     }
 }
@@ -137,12 +167,16 @@ public static class MyMod
 要点：
 - **注册时机宽松**：效果在打出/触发时才查表，其他 mod 晚于卡包加载注册也生效
 - `Trigger` 取值：`play` / `on_draw` / `on_discard` / `on_exhaust` / `on_enter_combat` / `on_turn_end_in_hand`
-- 处理器抛异常会被捕获并记 `[ERROR] SPIREFORGE`，不会炸战斗流程
+- 处理器抛异常会被捕获并记 `[ERROR] SPIREFORGE`，不会炸战斗流程；事件订阅者同理
+- `SfGrant.GrantAsync` 的发放是**本局永久的**：先 `RunState.CreateCard` + `CardPileCmd.Add(Deck)`
+  （与游戏 `card <X> Deck` 命令同配方），战斗中再 `CombatState.CloneCard` + `DeckVersion`
+  回指克隆进当前抽牌堆（与开局 `PopulateCombatState` 同款）
 - Runtime 侧错误路径全都有日志兜底（未注册 kind → `unregistered custom effect`）
 
 **内置自测命令**（debug 模式）：游戏自动发现 mod 程序集里的 `AbstractConsoleCmd` 子类，
 Runtime 提供了 `sf_hooktest` —— 战斗中执行即可自动验证
-on_discard / on_draw / on_exhaust 钩子与自定义效果全链路（看日志 `SPIREFORGE: HOOKTEST`）。
+on_discard / on_draw / on_exhaust 钩子与自定义效果全链路（看日志 `SPIREFORGE: HOOKTEST`）；
+`sf_grant [ENTRY ...]` 可直接永久拿卡（无参数列出全部 SpireForge Entry）。
 
 ## 四、游戏版本升级适配流程
 

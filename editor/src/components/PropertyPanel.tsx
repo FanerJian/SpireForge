@@ -473,6 +473,35 @@ SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
 });
 // 卡牌 JSON 即可用 {"kind":"${e.handler || 'my_effect'}", "amount": 5} 调用`}</pre>
                 </details>
+                <details className="rounded-lg border border-sky-400/20 bg-sky-500/5 p-2 text-[11px] text-slate-500">
+                  <summary className="cursor-pointer select-none text-sky-300/80">{t('pp.exampleSummary')}</summary>
+                  <div className="mt-1.5 leading-relaxed text-slate-400">{t('pp.exampleIntro')}</div>
+                  <div className="mt-2 text-slate-500">{t('pp.exampleSaved')}</div>
+                  <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-slate-400">{'{\n  "kind": "custom",\n  "handler": "demo_kaka"\n}'}</pre>
+                  <div className="mt-2 text-slate-500">{t('pp.exampleHandler')}</div>
+                  <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-slate-400">{`// RuntimeEntry.cs —— 随 SpireForgeRuntime 常驻注册（真实源码，非示意）
+SpireForge.Api.SfEffects.Register("demo_kaka", async ctx =>
+{
+    var player = ctx.Card.Owner;
+    var combatState = player.Creature.CombatState
+        ?? MegaCrit.Sts2.Core.Combat.CombatManager.Instance.DebugOnlyGetState()
+        ?? throw new InvalidOperationException("combat state unavailable");
+    await SfKaka.SpawnKaka(combatState);   // 召唤邪教徒并改名「咔咔」（13 HP）
+    await PowerCmd.Apply<RitualPower>(     // 自身获得 1 层仪式（每回合结束 +1 力量）
+        ctx.Choice ?? new MegaCrit.Sts2.Core.GameActions.Multiplayer.ThrowingPlayerChoiceContext(),
+        player.Creature, 1m, null, ctx.Card, false);
+});
+
+// SfKaka.cs —— 召唤与改名（节选）
+public static async Task<Creature> SpawnKaka(ICombatState combatState)
+{
+    var model = ModelDb.Monster<DampCultist>().ToMutable();
+    Marked.Add(model, null);               // 标记实例 → Title getter 后缀把名字换成咔咔
+    var creature = await CreatureCmd.Add(model, combatState);
+    await CreatureCmd.SetMaxAndCurrentHp(creature, 13m);
+    return creature;
+}`}</pre>
+                </details>
               </div>
             ) : (
               <div className="mt-2 space-y-2">
