@@ -236,6 +236,10 @@ const STRINGS: Record<string, L> = {
   'pp.buffHint': { zh: '增益（力量/敏捷）选「自身」', en: 'For buffs (Strength/Dexterity) pick "Self"' },
   'pp.spawnEntry': { zh: '卡牌 Entry', en: 'Card Entry' },
   'pp.spawnEntryPh': { zh: '如 SF_MY_PACK_MY_STRIKE 或 BASH', en: 'e.g. SF_MY_PACK_MY_STRIKE or BASH' },
+  'pp.monster': { zh: '怪物', en: 'Monster' },
+  'pp.monsterPh': { zh: '如 DampCultist 或 JAW_WORM', en: 'e.g. DampCultist or JAW_WORM' },
+  'pp.summonHp': { zh: '生命', en: 'HP' },
+  'pp.summonHpOpt': { zh: '可选 · 留空用原生生命', en: 'optional · empty = native HP' },
   'pp.unpowered': { zh: '不受 buff 影响', en: 'Unaffected by buffs' },
   'pp.unpoweredTitle': { zh: '勾选后不吃属性 buff 加成（伤害的力量 / 格挡的敏捷）', en: 'When checked, Strength/Dexterity buffs don\'t modify it' },
   'pp.goldNegative': { zh: '负数 = 失去金币', en: 'negative = lose gold' },
@@ -412,6 +416,7 @@ export const EFFECT_META: Record<string, { label: L; varName: string; desc: L }>
   max_hp: { label: { zh: '生命上限', en: 'Max HP' }, varName: '', desc: { zh: '为自身增加 N 点生命上限', en: 'Gain N Max HP for self' } },
   power: { label: { zh: '施加增益/减益', en: 'Apply power' }, varName: '', desc: { zh: '对目标施加力量（下拉含全部游戏力量官方中文译名，也可输入任意 PowerModel 名）', en: 'Apply a power to the target (the dropdown lists every game power with its official Chinese name — or type any PowerModel name)' } },
   spawn: { label: { zh: '生成卡牌', en: 'Spawn card' }, varName: '', desc: { zh: '把一张卡（自定义或原版 Entry）加入抽牌堆/手牌/弃牌堆', en: 'Put a card (custom or vanilla Entry) into draw/hand/discard pile' } },
+  summon: { label: { zh: '召唤敌人', en: 'Summon enemy' }, varName: '', desc: { zh: '在对面召唤一只怪物（下拉含全部游戏怪物官方中文译名；不填生命用原生值）', en: 'Summon a monster on the enemy side (the dropdown lists every game monster with its official Chinese name; leave HP empty to use its native range)' } },
   custom: { label: { zh: '自定义', en: 'Custom' }, varName: '', desc: { zh: '行为由处理器 mod 定义（SfEffects 注册表）', en: 'Behavior defined by a handler mod (SfEffects registry)' } },
 };
 

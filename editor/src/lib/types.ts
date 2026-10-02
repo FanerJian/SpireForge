@@ -1,6 +1,7 @@
 // 与 src-tauri/src/model.rs 保持镜像；字段改动需双侧同步
 import type { L } from './i18n';
 import { POWER_DEBUFFS } from './powers';
+import { MONSTER_ZH } from './monsters';
 
 export type CardType = 'Attack' | 'Skill' | 'Power' | 'Status' | 'Curse' | 'Quest';
 export type CardRarity =
@@ -30,6 +31,7 @@ export type EffectDef =
   | { kind: 'max_hp'; amount: number }
   | { kind: 'power'; amount: number; power: string; target?: string }
   | { kind: 'spawn'; amount: number; card_entry: string; pile?: string }
+  | { kind: 'summon'; amount: number; monster: string; hp?: number }
   | { kind: 'custom'; handler: string; amount?: number; target?: string; params?: Record<string, unknown> };
 
 /** 生命周期钩子字段名（与 CardDef 上的可选 EffectDef[] 字段一致） */
@@ -233,6 +235,16 @@ export function composeDescription(card: CardDef): { zhs: string; eng: string } 
         const pile = PILE_ZH[fx.pile ?? 'draw'] ?? '抽牌堆';
         z.push(`将 ${Math.max(1, fx.amount)} 张「${fx.card_entry || '?'}」置入${pile}。`);
         e.push(`Put ${Math.max(1, fx.amount)} ${fx.card_entry || '?'} into your ${fx.pile ?? 'draw'} pile.`);
+        break;
+      }
+      case 'summon': {
+        const zh = MONSTER_ZH[fx.monster] ?? fx.monster;
+        const n = Math.max(1, fx.amount);
+        const hp = fx.hp && fx.hp > 0 ? (n > 1 ? `（每只 ${fx.hp} 点生命）` : `（${fx.hp} 点生命）`) : '';
+        z.push(n > 1 ? `召唤 ${n} 只「${zh}」${hp}。` : `召唤「${zh}」${hp}。`);
+        e.push(n > 1
+          ? `Summon ${n} ${fx.monster}s${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP each` : ''}.`
+          : `Summon a ${fx.monster}${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP` : ''}.`);
         break;
       }
       case 'custom': z.push(`【${fx.handler || '自定义效果'}】`); e.push(`[custom:${fx.handler || '?'}]`); break;

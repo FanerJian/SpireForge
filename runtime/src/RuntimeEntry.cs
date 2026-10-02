@@ -249,6 +249,21 @@ public static class RuntimeEntry
                         Params = new() { ["power"] = System.Text.Json.JsonSerializer.SerializeToElement("StrengthPower") } },
                 ],
             }),
+            // ---- 召唤敌人回归：summon 内建效果（怪物解析 + 指定 HP）----
+            ("SF_SPIKE_SUMMON", "SfSpikeSummon", new SpikeSfCardDef
+            {
+                Cost = 1, Type = CardType.Skill, Rarity = CardRarity.Token, Target = TargetType.Self,
+                Pool = typeof(ColorlessCardPool),
+                Effects = [new SfEffect
+                {
+                    KindName = "summon",
+                    Params = new()
+                    {
+                        ["monster"] = System.Text.Json.JsonSerializer.SerializeToElement("DampCultist"),
+                        ["hp"] = System.Text.Json.JsonSerializer.SerializeToElement(13m),
+                    },
+                }],
+            }),
             ("SF_SPIKE_PYRE", "SfSpikePyre", new SpikeSfCardDef
             {
                 Cost = 0, Type = CardType.Skill, Rarity = CardRarity.Token, Target = TargetType.Self,

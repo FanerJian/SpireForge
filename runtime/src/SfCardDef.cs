@@ -21,6 +21,7 @@ public enum SfEffectKind
     MaxHp,
     Power,
     Spawn,
+    Summon,
     Custom,
 }
 
@@ -79,6 +80,7 @@ public sealed class SfEffect
         "max_hp" => SfEffectKind.MaxHp,
         "power" => SfEffectKind.Power,
         "spawn" => SfEffectKind.Spawn,
+        "summon" => SfEffectKind.Summon,
         _ => SfEffectKind.Custom,
     };
 
@@ -90,6 +92,24 @@ public sealed class SfEffect
             return v.GetString() ?? "";
         }
         return "";
+    }
+
+    /// <summary>效果参数里的数值（params.hp 等）；缺失或非数字返回 null。</summary>
+    public decimal? DecimalParam(string key)
+    {
+        if (Params != null && Params.TryGetValue(key, out var v))
+        {
+            if (v.ValueKind == System.Text.Json.JsonValueKind.Number && v.TryGetDecimal(out var d))
+            {
+                return d;
+            }
+            if (v.ValueKind == System.Text.Json.JsonValueKind.String
+                && decimal.TryParse(v.GetString(), out var d2))
+            {
+                return d2;
+            }
+        }
+        return null;
     }
 }
 

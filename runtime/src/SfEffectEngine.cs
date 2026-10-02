@@ -209,6 +209,38 @@ public static class SfEffectEngine
                 break;
             }
 
+            case SfEffectKind.Summon:
+            {
+                // 召唤敌人：params.monster = 怪物类名或 Entry（DampCultist / DAMP_CULTIST），
+                // params.hp = 指定生命（缺省用怪物原生 HP 区间）；amount = 数量（默认 1）。
+                var combat = card.Owner.Creature.CombatState
+                    ?? MegaCrit.Sts2.Core.Combat.CombatManager.Instance.DebugOnlyGetState();
+                if (combat == null)
+                {
+                    SfLog.Error("card " + card.Id + ": summon has no combat state, skipped");
+                    break;
+                }
+                var monsterName = e.StringParam("monster");
+                var template = SfMonsterResolver.Find(monsterName);
+                if (template == null)
+                {
+                    SfLog.Error("card " + card.Id + ": unknown summon monster '" + monsterName + "'");
+                    break;
+                }
+                var hp = e.DecimalParam("hp");
+                var count = System.Math.Max(1, (int)e.Amount);
+                for (var i = 0; i < count; i++)
+                {
+                    var model = template.ToMutable();
+                    var creature = await CreatureCmd.Add(model, combat);
+                    if (hp is > 0)
+                    {
+                        await CreatureCmd.SetMaxAndCurrentHp(creature, hp.Value);
+                    }
+                }
+                break;
+            }
+
             case SfEffectKind.Custom:
             {
                 Creature? target = play?.Target;
@@ -319,6 +351,31 @@ public static class SfEffectEngine
             }
         }
         return p;
+    }
+}
+
+/// <summary>
+/// 怪物名 → MonsterModel 解析（summon 效果用）。遍历 ModelDb.Monsters（全部已注册怪物），
+/// 同时匹配类名（DampCultist）与 Id.Entry（DAMP_CULTIST），不区分大小写。
+/// </summary>
+internal static class SfMonsterResolver
+{
+    public static MonsterModel? Find(string name)
+    {
+        var n = (name ?? "").Trim();
+        if (n.Length == 0)
+        {
+            return null;
+        }
+        foreach (var m in ModelDb.Monsters)
+        {
+            if (string.Equals(m.GetType().Name, n, System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(m.Id.Entry, n, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return m;
+            }
+        }
+        return null;
     }
 }
 

@@ -12,6 +12,7 @@ import {
   type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
 import { POWERS } from '../lib/powers';
+import { MONSTERS, MONSTER_ZH } from '../lib/monsters';
 
 // ---- 原版目录缓存（模块级：整个会话只拉一次）----
 let vanillaCache: VanillaCatalog | null = null;
@@ -49,7 +50,7 @@ const NEEDS_CHOICE = ['damage', 'draw', 'lose_hp', 'power', 'discard', 'exhaust'
 
 /** 效果目录分组：常用 / 进阶与扩展 */
 const CORE_KINDS = ['damage', 'block', 'draw', 'energy', 'heal'];
-const EXTRA_KINDS = ['power', 'discard', 'exhaust', 'gold', 'lose_hp', 'max_hp', 'spawn', 'custom'];
+const EXTRA_KINDS = ['power', 'discard', 'exhaust', 'gold', 'lose_hp', 'max_hp', 'spawn', 'summon', 'custom'];
 
 /** 「按效果生成描述」：composeDescription 的 UI 包装（有内容先确认） */
 function useGenDescription() {
@@ -339,6 +340,7 @@ function EffectsTab({ card }: { card: CardDef }) {
       : kind === 'max_hp' ? { kind: 'max_hp', amount: 3 }
       : kind === 'power' ? { kind: 'power', amount: 2, power: 'Vulnerable' }
       : kind === 'spawn' ? { kind: 'spawn', amount: 1, card_entry: '' }
+      : kind === 'summon' ? { kind: 'summon', amount: 1, monster: 'DampCultist', hp: 13 }
       : kind === 'custom' ? { kind: 'custom', handler: '' }
       : null;
     if (def) setList([...list, def]);
@@ -556,6 +558,46 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                       </select>
                     </>
                   )}
+                  {e.kind === 'summon' && (() => {
+                    const me = e as { monster: string; hp?: number };
+                    const hit = MONSTERS.find((m) => m.name === me.monster);
+                    return (
+                      <>
+                        <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.monster')}</span>
+                        <input
+                          list="sf-monsters"
+                          className={inputCls + ' w-40 font-mono'}
+                          placeholder={t('pp.monsterPh')}
+                          value={me.monster}
+                          onChange={(ev) => patch(i, { monster: ev.target.value.replace(/[^a-zA-Z0-9_]/g, '') } as Partial<EffectDef>)}
+                        />
+                        <datalist id="sf-monsters">
+                          {MONSTERS.map((m) => (
+                            <option key={m.name} value={m.name}>{m.zh}</option>
+                          ))}
+                        </datalist>
+                        {MONSTER_ZH[me.monster] && (
+                          <span
+                            className="shrink-0 text-[10px] text-slate-600"
+                            title={[hit?.type, hit?.hp ? `HP ${hit.hp}` : ''].filter(Boolean).join(' · ')}
+                          >
+                            {MONSTER_ZH[me.monster]}
+                          </span>
+                        )}
+                        <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.summonHp')}</span>
+                        <input
+                          type="number"
+                          className={inputCls + ' w-20'}
+                          value={me.hp ?? ''}
+                          onChange={(ev) => {
+                            const v = ev.target.value === '' ? undefined : Number(ev.target.value);
+                            patch(i, { hp: v } as Partial<EffectDef>);
+                          }}
+                        />
+                        <span className="text-[10px] text-slate-600">{t('pp.summonHpOpt')}</span>
+                      </>
+                    );
+                  })()}
                   {('props' in e) && (
                     <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-400" title={t('pp.unpoweredTitle')}>
                       <input
