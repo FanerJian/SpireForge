@@ -34,8 +34,8 @@ public static class RuntimeEntry
     /// <summary>Entry → 具体类型（含编译类型与 Emit 类型）</summary>
     private static readonly Dictionary<string, Type> CardTypes = new();
 
-    /// <summary>Entry → 目标卡池类型</summary>
-    private static readonly Dictionary<string, Type> CardPools = new();
+    /// <summary>Entry → 目标卡池列表（多池卡注册进全部池；首池为自检对照的主池）</summary>
+    private static readonly Dictionary<string, List<Type>> CardPoolList = new();
 
     public static void Load()
     {
@@ -102,10 +102,25 @@ public static class RuntimeEntry
             PackLoader.ScanAllMods();
             foreach (var (entry, def) in PackLoader.Defs)
             {
-                var poolType = PoolFor(def.Pool);
-                if (poolType == null)
+                // 多池支持：pools 非空时注册进全部列出池，回退单 pool 字段
+                var pools = new List<Type>();
+                var unknown = false;
+                foreach (var poolName in def.PoolList)
                 {
-                    Log.Error($"{LogTag}: unknown pool '{def.Pool}' for {entry}");
+                    var poolType = PoolFor(poolName);
+                    if (poolType == null)
+                    {
+                        Log.Error($"{LogTag}: unknown pool '{poolName}' for {entry}");
+                        unknown = true;
+                        break;
+                    }
+                    if (!pools.Contains(poolType))
+                    {
+                        pools.Add(poolType);
+                    }
+                }
+                if (unknown || pools.Count == 0)
+                {
                     continue;
                 }
                 string typeName = IdHelper.Pascal(PackLoader.PackOf[entry]) + IdHelper.Pascal(def.Id);
@@ -117,7 +132,7 @@ public static class RuntimeEntry
                     Log.Error($"{LogTag}: entry mismatch: emitted '{actualEntry}' != '{entry}'");
                 }
                 CardTypes[entry] = emitted;
-                CardPools[entry] = poolType;
+                CardPoolList[entry] = pools;
             }
         }
         catch (System.Exception e)
@@ -148,9 +163,12 @@ public static class RuntimeEntry
                     ModelDb.Inject(type);
                     injected++;
                 }
-                if (CardPools.TryGetValue(entry, out var poolType))
+                if (CardPoolList.TryGetValue(entry, out var pools))
                 {
-                    ModHelper.AddModelToPool(poolType, type);
+                    foreach (var poolType in pools)
+                    {
+                        ModHelper.AddModelToPool(poolType, type);
+                    }
                 }
             }
             catch (System.Exception e)
@@ -203,6 +221,19 @@ public static class RuntimeEntry
                 Effects = [new SfEffect { KindName = "sf_test_echo", Amount = 2m,
                     Params = new() { ["note"] = System.Text.Json.JsonSerializer.SerializeToElement("hello-from-json") } }],
             }),
+            // ---- 2026-10 扩充效果回归：施加增益/减益（反射解析 PowerModel）----
+            ("SF_SPIKE_POWER", "SfSpikePower", new SpikeSfCardDef
+            {
+                Cost = 0, Type = CardType.Skill, Rarity = CardRarity.Token, Target = TargetType.AnyEnemy,
+                Pool = typeof(ColorlessCardPool),
+                Effects =
+                [
+                    new SfEffect { KindName = "power", Amount = 2m,
+                        Params = new() { ["power"] = System.Text.Json.JsonSerializer.SerializeToElement("Vulnerable") } },
+                    new SfEffect { KindName = "power", Amount = 1m, Target = "self",
+                        Params = new() { ["power"] = System.Text.Json.JsonSerializer.SerializeToElement("StrengthPower") } },
+                ],
+            }),
             ("SF_SPIKE_PYRE", "SfSpikePyre", new SpikeSfCardDef
             {
                 Cost = 0, Type = CardType.Skill, Rarity = CardRarity.Token, Target = TargetType.Self,
@@ -248,7 +279,7 @@ public static class RuntimeEntry
                 t = Emit.EmitCardFactory.Emit(typeName, def.Cost, def.Type, def.Rarity, def.Target);
             }
             CardTypes[entry] = t;
-            CardPools[entry] = def.Pool;
+            CardPoolList[entry] = [def.Pool];
         }
         Log.Info($"{LogTag}: spike cards enabled (debug mode)");
     }
@@ -387,7 +418,7 @@ public static class RuntimeEntry
             }
             var card = ModelDb.GetById<CardModel>(ModelDb.GetId(t));
             var pool = card.Pool;
-            bool pooled = CardPools.TryGetValue(entry, out var pt) && pool.GetType() == pt;
+            bool pooled = CardPoolList.TryGetValue(entry, out var pts) && pts.Contains(pool.GetType());
             Log.Info($"{LogTag}: PASS {entry} | type={card.Type} rarity={card.Rarity} " +
                      $"cost={card.EnergyCost.Canonical} target={card.TargetType} pool={pool.GetType().Name}(ok={pooled})");
         }

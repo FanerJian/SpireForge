@@ -95,22 +95,46 @@ Runtime 应用时机：`OneTimeInitialization.ExecuteEssential` 后缀（模板�
 | `status` | StatusCardPool | 状态牌（配合 card_type=Status） |
 | `ironclad`/`silent`/`regent`/`necrobinder`/`defect` | 各角色池 | 角色专属（决定卡框颜色/能量色） |
 
+**多池卡**：`pools: ["ironclad", "silent", ...]` 非空时本卡注册进列出的全部角色卡池
+（铁甲和沉默都能在奖励里抽到）；为空时只有 `pool` 单池。主池 = 数组首项。
+"新建角色/职业"需要游戏角色选择界面支持，纯数据 mod 做不到，暂不支持。
+
 ### effects（效果清单，按顺序执行）
-| kind | 参数 | 游戏 API | props 说明 |
+| kind | 参数 | 游戏 API | 说明 |
 |---|---|---|---|
-| `damage` | `amount: number`, `props: string[]`, `target?` | `CreatureCmd.Damage` | `Move`(受力量修正，默认) / `Unpowered`(不受力量) / `Unblockable`(不可格挡)，可组合 |
-| `block` | `amount`, `props` | `CreatureCmd.GainBlock` | 同上 |
+| `damage` | `amount: number`, `props: string[]`, `target?` | `CreatureCmd.Damage` | props：`Move`(受力量修正，默认) / `Unpowered`(不受力量) / `Unblockable`(不可格挡)，可组合 |
+| `block` | `amount`, `props` | `CreatureCmd.GainBlock` | props 同上 |
 | `draw` | `amount: number` | `CardPileCmd.Draw` | |
 | `energy` | `amount: number` | `PlayerCmd.GainEnergy` | |
 | `heal` | `amount: number` | `CreatureCmd.Heal` | 回复自身生命 |
+| `discard` | `amount: number` | `CardCmd.Discard` | 随机弃 N 张手牌（CombatCardSelection RNG）；需选择上下文 |
+| `exhaust` | `amount: number` | `CardCmd.Exhaust` | 随机消耗 N 张手牌；需选择上下文 |
+| `gold` | `amount: number` | `PlayerCmd.GainGold/LoseGold` | 负数 = 失去金币 |
+| `lose_hp` | `amount: number` | `CreatureCmd.Damage`（Unblockable\|Unpowered、无来源） | 自身失去生命；需选择上下文 |
+| `max_hp` | `amount: number` | `CreatureCmd.GainMaxHp` | 生命上限 +N（正数） |
+| `power` | `amount`, `power: string`, `target?` | `PowerCmd.Apply<T>`（反射解析） | 施加增益/减益，见下 |
+| `spawn` | `amount`, `card_entry: string`, `pile?` | `CardPileCmd.AddGeneratedCardToCombat` | 生成卡牌，见下 |
 | `custom` | `handler: string`, `amount?`, `target?`, `params?` | 由处理器定义 | 见下方「自定义效果」 |
 
 `damage.target` 只在钩子上下文生效（打出时永远以玩家指定目标为准）：
 `random_enemy`（默认，游戏 CombatTargets RNG 与 Tingsha 同款）/ `self` / `all_enemies`。
 
+**power（施加增益/减益）**：
+- `power` = 力量名：`Vulnerable` / `Weak` / `Poison` / `Strength` / `Focus` 等——
+  Runtime 按名字在全部已加载程序集里找 `PowerModel` 子类（完整类名或去掉 `Power` 后缀，
+  不区分大小写），因此第三方 mod 自定义的力量同样可用
+- `target`：缺省 = 打出目标（钩子时随机敌人）；`self` = 给自己上（Strength/Focus 等增益用）；
+  `all_enemies` = 全体敌人
+- 需要玩家选择上下文（on_enter_combat 不可用）
+
+**spawn（生成卡牌）**：
+- `card_entry` = 目标卡的 Entry（自定义卡 `SF_包ID_卡ID` 或原版 `BASH`），按 ToMutable 克隆
+- `pile`：`draw`（默认）/ `hand` / `discard`
+- 不需要选择上下文（on_enter_combat 可用）
+
 ### 自定义效果（custom —— 第三方扩展接口）
 
-内建五种之外的任何 `kind` 名都会被 Runtime 当作自定义效果，执行时转交
+内建种类之外的任何 `kind` 名都会被 Runtime 当作自定义效果，执行时转交
 `SpireForge.Api.SfEffects` 注册表（详见 [RUNTIME-MOD.md](./RUNTIME-MOD.md#扩展接口其他-mod-如何接入)）：
 
 ```json

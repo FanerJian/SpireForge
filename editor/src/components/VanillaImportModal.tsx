@@ -19,21 +19,8 @@ export function cardFromVanilla(v: VanillaEntry, existingIds: Set<string>): Card
     while (existingIds.has(`${id}_${n}`)) n++;
     id = `${id}_${n}`;
   }
-  // 只预填能映射到内建效果的变量；其余原版行为保持不变（effects 空 = 不替换 OnPlay）
-  const effects: CardDef['effects'] = [];
-  if (typeof v.vars.Damage === 'number') {
-    effects.push({ kind: 'damage', amount: v.vars.Damage, props: ['Move'] });
-  }
-  if (typeof v.vars.Block === 'number') {
-    effects.push({ kind: 'block', amount: v.vars.Block, props: ['Move'] });
-  }
-  if (typeof v.vars.CardsDraw === 'number') {
-    effects.push({ kind: 'draw', amount: v.vars.CardsDraw });
-  }
-  if (typeof v.vars.EnergyGain === 'number') {
-    effects.push({ kind: 'energy', amount: v.vars.EnergyGain });
-  }
-  // 升级增量（catalog 的键为小写；Runtime 端按变量名不区分大小写匹配）
+  // 覆盖卡不预填 effects：effects 空 = 保留原版打出行为（只改数值/文案/费用）。
+  // 想替换行为时在属性面板用「预填原版效果」按钮显式生成效果清单。
   const upgradeStats: Record<string, number> = {};
   for (const [k, raw] of Object.entries(v.upgrade ?? {})) {
     const n = typeof raw === 'string' ? parseFloat(raw.replace('+', '')) : Number(raw);

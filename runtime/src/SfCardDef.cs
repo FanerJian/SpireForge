@@ -6,7 +6,7 @@ using StsCards = MegaCrit.Sts2.Core.Entities.Cards;
 namespace SpireForge.Runtime;
 
 /// <summary>效果种类（对应编辑器 schema/effects 的 kind 字段）。
-/// Custom：kind 不属于内建五种时的一切效果，执行时转交 SpireForge.Api.SfEffects 注册表。</summary>
+/// Custom：kind 不属于内建种类时的一切效果，执行时转交 SpireForge.Api.SfEffects 注册表。</summary>
 public enum SfEffectKind
 {
     Damage,
@@ -14,6 +14,13 @@ public enum SfEffectKind
     Draw,
     Energy,
     Heal,
+    Discard,
+    Exhaust,
+    Gold,
+    LoseHp,
+    MaxHp,
+    Power,
+    Spawn,
     Custom,
 }
 
@@ -55,7 +62,7 @@ public sealed class SfEffect
     [JsonPropertyName("params")]
     public Dictionary<string, System.Text.Json.JsonElement>? Params { get; set; }
 
-    /// <summary>解析后的种类（内建五种之外的 kind 一律视为 Custom）。
+    /// <summary>解析后的种类（内建种类之外的 kind 一律视为 Custom）。
     /// 只读计算属性：必须 Ignore，否则与 KindName 的 "kind" 序列化名冲突。</summary>
     [JsonIgnore]
     public SfEffectKind Kind => (KindName ?? "").Trim().ToLowerInvariant() switch
@@ -65,8 +72,25 @@ public sealed class SfEffect
         "draw" => SfEffectKind.Draw,
         "energy" => SfEffectKind.Energy,
         "heal" => SfEffectKind.Heal,
+        "discard" => SfEffectKind.Discard,
+        "exhaust" => SfEffectKind.Exhaust,
+        "gold" => SfEffectKind.Gold,
+        "lose_hp" => SfEffectKind.LoseHp,
+        "max_hp" => SfEffectKind.MaxHp,
+        "power" => SfEffectKind.Power,
+        "spawn" => SfEffectKind.Spawn,
         _ => SfEffectKind.Custom,
     };
+
+    /// <summary>效果参数里的字符串值（params.power / params.card_entry / params.pile 等）</summary>
+    public string StringParam(string key)
+    {
+        if (Params != null && Params.TryGetValue(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            return v.GetString() ?? "";
+        }
+        return "";
+    }
 }
 
 /// <summary>由卡包 JSON 反序列化的卡牌定义（与编辑器 schema/card.json 一一对应）。</summary>
@@ -100,6 +124,15 @@ public sealed class SfCardDef
 
     [JsonPropertyName("pool")]
     public string Pool { get; set; } = "colorless";
+
+    /// <summary>额外卡池：非空时本卡注册进这里列出的所有角色卡池（含 pool 主池语义外的池），
+    /// 用于"一张卡进多个角色"的多池卡；为空时行为与单池一致。</summary>
+    [JsonPropertyName("pools")]
+    public List<string> Pools { get; set; } = [];
+
+    /// <summary>本卡应注册进的全部卡池名（pools 优先，回退 pool）</summary>
+    public List<string> PoolList =>
+        Pools is { Count: > 0 } ? Pools : [Pool];
 
     [JsonPropertyName("show_in_library")]
     public bool ShowInLibrary { get; set; } = true;

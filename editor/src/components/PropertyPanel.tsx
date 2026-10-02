@@ -3,10 +3,52 @@ import { api } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import {
   CARD_TYPE_LABEL, HOOK_LABEL, POOL_LABEL, RARITY_LABEL, TARGET_LABEL,
-  cardEntry, type CardDef, type CardType, type EffectDef, type HookField, type Pool, type TargetType,
+  cardEntry, effectsFromVanillaVars,
+  type CardDef, type CardType, type EffectDef, type HookField, type Pool, type TargetType,
+  type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
 
 type Tab = 'basic' | 'effects' | 'look' | 'loc';
+
+// ---- 原版目录缓存（模块级：整个会话只拉一次）----
+let vanillaCache: VanillaCatalog | null = null;
+
+/** 原版卡覆盖时的目录条目（原版描述/数值/关键词展示用） */
+function useVanillaEntry(vanillaId: string | null | undefined): VanillaEntry | null {
+  const [entry, setEntry] = useState<VanillaEntry | null>(null);
+  useEffect(() => {
+    const id = (vanillaId ?? '').trim();
+    if (!id) {
+      setEntry(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!vanillaCache) vanillaCache = await api.vanillaCatalog();
+        if (!cancelled) setEntry(vanillaCache.cards.find((c) => c.entry === id) ?? null);
+      } catch {
+        if (!cancelled) setEntry(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vanillaId]);
+  return entry;
+}
+
+/** 施加增益/减益的常用力量（可自由输入其他 PowerModel 名） */
+const COMMON_POWERS = [
+  'Vulnerable', 'Weak', 'Frail', 'Poison', 'Doom',
+  'Strength', 'Dexterity', 'Focus', 'Artifact', 'Intangible', 'Thorns', 'Barricade',
+];
+
+/** 参与升级变量的效果种类（其余种类用字面数值） */
+const UPGRADEABLE = ['damage', 'block', 'draw', 'energy', 'heal'];
+
+/** 需要玩家选择上下文的效果种类（on_enter_combat 不可用） */
+const NEEDS_CHOICE = ['damage', 'draw', 'lose_hp', 'power', 'discard', 'exhaust'];
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -26,11 +68,28 @@ const inputCls =
 const selectCls = inputCls + ' appearance-none';
 
 /** 原版卡覆盖区：vanilla_id 指向原版 Entry 时不新建卡牌，改写游戏内置卡牌本身。
- *  数值/升级增量按原版变量名（Damage/Block/Vulnerable…）覆盖，行为可用右侧效果页整体替换。 */
+ *  数值/升级增量按原版变量名（Damage/Block/Vulnerable…）覆盖，行为可用右侧效果页整体替换。
+ *  同时展示原版卡信息（描述/数值/关键词），支持一键按原版数据预填效果清单。 */
 function VanillaSection({ card }: { card: CardDef }) {
-  const { updateCard } = useStore();
+  const { updateCard, showToast } = useStore();
   const stats = card.stats ?? {};
   const upStats = card.upgrade_stats ?? {};
+  const vanilla = useVanillaEntry(card.vanilla_id);
+
+  const prefillEffects = () => {
+    if (!vanilla) return;
+    const fx = effectsFromVanillaVars(vanilla.vars ?? {});
+    if (fx.length === 0) {
+      showToast('原版数据无法映射出效果清单（行为多为硬编码），请手动编辑');
+      return;
+    }
+    const ok = confirm(
+      `按原版数据预填 ${fx.length} 条效果？\n\n` +
+        '效果清单非空 = 整体替换原版打出行为（原版效果不再执行）。\n' +
+        '数值型变量（伤害/格挡/抽牌/能量/施加）可映射；计算型行为无法静态还原，需手动补。',
+    );
+    if (ok) updateCard({ effects: fx });
+  };
 
   const setStats = (next: Record<string, number>) =>
     updateCard({ stats: Object.keys(next).length ? next : null });
@@ -128,7 +187,53 @@ function VanillaSection({ card }: { card: CardDef }) {
             <div className="mb-1 text-[11px] font-medium text-slate-400">升级增量（替换原版升级逻辑）</div>
             {rows(upStats, setUpStats, true)}
           </div>
+          {vanilla && <VanillaInfo vanilla={vanilla} onPrefill={prefillEffects} />}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** 原版卡信息展示（目录数据）：名称/费用/关键词/数值/升级/原版描述 */
+function VanillaInfo({ vanilla, onPrefill }: { vanilla: VanillaEntry; onPrefill: () => void }) {
+  const varEntries = Object.entries(vanilla.vars ?? {});
+  const upEntries = Object.entries(vanilla.upgrade ?? {});
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/30 p-2.5 text-[11px] leading-relaxed">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="font-semibold text-slate-300">
+          原版：{vanilla.name}
+          <span className="ml-1.5 text-slate-600">{vanilla.name_en}</span>
+        </span>
+        <button
+          onClick={onPrefill}
+          title="按原版数值生成效果清单（会整体替换原版打出行为）"
+          className="shrink-0 rounded border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20"
+        >
+          预填原版效果
+        </button>
+      </div>
+      <div className="text-slate-500">
+        {vanilla.x_cost ? 'X费' : `${vanilla.cost ?? '?'}费`}
+        {vanilla.keywords?.length ? ' · ' + vanilla.keywords.join(' / ') : ''}
+      </div>
+      {varEntries.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {varEntries.map(([k, v]) => (
+            <span key={k} className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-slate-400">
+              {k}={v}
+            </span>
+          ))}
+        </div>
+      )}
+      {upEntries.length > 0 && (
+        <div className="mt-1 text-[10px] text-slate-600">
+          升级：{upEntries.map(([k, v]) => `${k}${v}`).join('，')}
+        </div>
+      )}
+      <div className="mt-1.5 whitespace-pre-wrap text-slate-400">{vanilla.desc}</div>
+      {vanilla.desc_en && vanilla.desc_en !== vanilla.desc && (
+        <div className="mt-0.5 whitespace-pre-wrap text-[10px] text-slate-600">{vanilla.desc_en}</div>
       )}
     </div>
   );
@@ -161,6 +266,13 @@ const EFFECT_META: Record<string, { label: string; varName: string; desc: string
   draw: { label: '抽牌', varName: 'Cards', desc: '从抽牌堆抽牌（CardsVar）' },
   energy: { label: '获得能量', varName: 'Energy', desc: '获得能量（EnergyVar）' },
   heal: { label: '回复生命', varName: 'Heal', desc: '为自身回复生命（HealVar）' },
+  discard: { label: '随机弃牌', varName: '', desc: '随机弃置 N 张手牌（无法指定哪张）' },
+  exhaust: { label: '随机消耗', varName: '', desc: '随机消耗 N 张手牌（无法指定哪张）' },
+  gold: { label: '获得金币', varName: '', desc: '获得金币；负数 = 失去金币' },
+  lose_hp: { label: '失去生命', varName: '', desc: '自身失去 N 点生命（无来源、不可格挡）' },
+  max_hp: { label: '生命上限', varName: '', desc: '为自身增加 N 点生命上限' },
+  power: { label: '施加增益/减益', varName: '', desc: '对目标施加力量（易伤/中毒/力量等，可输入任意 PowerModel 名）' },
+  spawn: { label: '生成卡牌', varName: '', desc: '把一张卡（自定义或原版 Entry）加入抽牌堆/手牌/弃牌堆' },
   custom: { label: '自定义', varName: '', desc: '行为由处理器 mod 定义（SfEffects 注册表）' },
 };
 
@@ -235,6 +347,13 @@ function EffectsTab({ card }: { card: CardDef }) {
       : kind === 'draw' ? { kind: 'draw', amount: 1 }
       : kind === 'energy' ? { kind: 'energy', amount: 1 }
       : kind === 'heal' ? { kind: 'heal', amount: 3 }
+      : kind === 'discard' ? { kind: 'discard', amount: 1 }
+      : kind === 'exhaust' ? { kind: 'exhaust', amount: 1 }
+      : kind === 'gold' ? { kind: 'gold', amount: 10 }
+      : kind === 'lose_hp' ? { kind: 'lose_hp', amount: 3 }
+      : kind === 'max_hp' ? { kind: 'max_hp', amount: 3 }
+      : kind === 'power' ? { kind: 'power', amount: 2, power: 'Vulnerable' }
+      : kind === 'spawn' ? { kind: 'spawn', amount: 1, card_entry: '' }
       : kind === 'custom' ? { kind: 'custom', handler: '' }
       : null;
     if (def) setList([...list, def]);
@@ -253,9 +372,9 @@ function EffectsTab({ card }: { card: CardDef }) {
 
   const triggerMeta = TRIGGER_OPTIONS.find((t) => t.v === trigger)!;
   const isPlay = trigger === 'play';
-  const hookCtx = !isPlay; // 钩子上下文：无玩家指定目标，damage/custom 需要 target 字段
+  const hookCtx = !isPlay; // 钩子上下文：无玩家指定目标，需要 target 字段的效果走钩子取敌
   const enterCombatUnsupported = trigger === 'on_enter_combat'
-    && list.some((e) => e.kind === 'damage' || e.kind === 'draw');
+    && list.some((e) => NEEDS_CHOICE.includes(e.kind));
 
   return (
     <div className="space-y-3">
@@ -270,7 +389,7 @@ function EffectsTab({ card }: { card: CardDef }) {
 
       {enterCombatUnsupported && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
-          战斗开始钩子不带玩家选择上下文：伤害/抽牌无法执行，保存后会被 Runtime 跳过。
+          战斗开始钩子不带玩家选择上下文：伤害/抽牌/弃牌/消耗/施加/失去生命无法执行，保存后会被 Runtime 跳过。
         </div>
       )}
 
@@ -341,6 +460,18 @@ function EffectsTab({ card }: { card: CardDef }) {
                     onChange={(v) => patch(i, { params: v } as Partial<EffectDef>)}
                   />
                 </div>
+                <details className="rounded-lg border border-white/10 bg-black/30 p-2 text-[11px] text-slate-500">
+                  <summary className="cursor-pointer select-none text-slate-400">处理器 mod 模板（点开复制）</summary>
+                  <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-slate-400">{`// 独立 mod 引用 SpireForgeRuntime.dll，初始化时注册：
+SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
+{
+    // ctx.Card / ctx.Effect.Amount / ctx.Target / ctx.Choice / ctx.Play
+    await MegaCrit.Sts2.Core.Commands.CreatureCmd.Damage(
+        ctx.Choice!, ctx.Target!, ctx.Effect.Amount,
+        MegaCrit.Sts2.Core.ValueProps.ValueProp.Move, ctx.Card, ctx.Play);
+});
+// 卡牌 JSON 即可用 {"kind":"${e.handler || 'my_effect'}", "amount": 5} 调用`}</pre>
+                </details>
               </div>
             ) : (
               <div className="mt-2 space-y-2">
@@ -352,6 +483,44 @@ function EffectsTab({ card }: { card: CardDef }) {
                     value={(e as { amount: number }).amount}
                     onChange={(ev) => patch(i, { amount: Number(ev.target.value) } as Partial<EffectDef>)}
                   />
+                  {e.kind === 'gold' && (
+                    <span className="text-[10px] text-slate-600">负数 = 失去金币</span>
+                  )}
+                  {e.kind === 'power' && (
+                    <>
+                      <span className="ml-2 text-xs text-slate-400">力量</span>
+                      <input
+                        list="sf-common-powers"
+                        className={inputCls + ' w-36 font-mono'}
+                        placeholder="Vulnerable"
+                        value={(e as { power: string }).power}
+                        onChange={(ev) => patch(i, { power: ev.target.value.replace(/[^a-zA-Z0-9_]/g, '') } as Partial<EffectDef>)}
+                      />
+                      <datalist id="sf-common-powers">
+                        {COMMON_POWERS.map((p) => <option key={p} value={p} />)}
+                      </datalist>
+                    </>
+                  )}
+                  {e.kind === 'spawn' && (
+                    <>
+                      <span className="ml-2 text-xs text-slate-400">卡牌 Entry</span>
+                      <input
+                        className={inputCls + ' w-40 font-mono'}
+                        placeholder="如 SF_MY_PACK_MY_STRIKE 或 BASH"
+                        value={(e as { card_entry: string }).card_entry}
+                        onChange={(ev) => patch(i, { card_entry: ev.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') } as Partial<EffectDef>)}
+                      />
+                      <select
+                        className={selectCls + ' w-24'}
+                        value={(e as { pile?: string }).pile ?? 'draw'}
+                        onChange={(ev) => patch(i, { pile: ev.target.value } as Partial<EffectDef>)}
+                      >
+                        <option value="draw">抽牌堆</option>
+                        <option value="hand">手牌</option>
+                        <option value="discard">弃牌堆</option>
+                      </select>
+                    </>
+                  )}
                   {('props' in e) && (
                     <label className="ml-2 flex items-center gap-1.5 text-xs text-slate-400">
                       <input
@@ -367,6 +536,21 @@ function EffectsTab({ card }: { card: CardDef }) {
                     </label>
                   )}
                 </div>
+                {e.kind === 'power' && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-14 text-xs text-slate-400">目标</span>
+                    <select
+                      className={selectCls + ' w-40'}
+                      value={(e as { target?: string }).target ?? ''}
+                      onChange={(ev) => patch(i, { target: ev.target.value || undefined } as Partial<EffectDef>)}
+                    >
+                      <option value="">打出目标 / 随机敌人</option>
+                      <option value="self">自身（增益用）</option>
+                      <option value="all_enemies">全体敌人</option>
+                    </select>
+                    <span className="text-[10px] text-slate-600">增益（力量/敏捷）选「自身」</span>
+                  </div>
+                )}
                 {hookCtx && e.kind === 'damage' && (
                   <div className="flex items-center gap-2">
                     <span className="w-14 text-xs text-slate-400">目标</span>
@@ -381,7 +565,7 @@ function EffectsTab({ card }: { card: CardDef }) {
                     </select>
                   </div>
                 )}
-                {isPlay && (
+                {isPlay && UPGRADEABLE.includes(e.kind) && (
                   <div className="flex items-center gap-2">
                     <span className="w-14 text-xs text-slate-500">升级 +</span>
                     <input
@@ -614,6 +798,17 @@ export default function PropertyPanel() {
 
   const isCurseLike = card.card_type === 'Curse' || card.card_type === 'Status';
 
+  /** 卡池多选切换：pools 存全量，pool 保持主池（首个）——运行时按 pools 注册进全部池 */
+  const togglePool = (p: Pool) => {
+    const cur = card.pools?.length ? card.pools : [card.pool];
+    const next = cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p];
+    if (next.length === 0) return; // 至少保留一个卡池
+    updateCard({
+      pools: next,
+      pool: (next.includes(card.pool) ? card.pool : next[0]) as Pool,
+    });
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
@@ -660,13 +855,26 @@ export default function PropertyPanel() {
               <Field label="卡牌 id" hint="小写字母/数字/下划线；改名需确认（影响游戏内标识）">
                 <IdField card={card} />
               </Field>
-              <Field label="卡池" hint="决定卡框颜色">
-                <select className={selectCls} value={card.pool}
-                  onChange={(e) => updateCard({ pool: e.target.value as Pool })}>
-                  {(Object.entries(POOL_LABEL) as [Pool, string][]).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
+              <Field label="卡池（可多选）" hint="勾选多个 = 一张卡进多个角色的卡池">
+                <div className="flex flex-wrap gap-1">
+                  {(Object.entries(POOL_LABEL) as [Pool, string][]).map(([v, l]) => {
+                    const cur = card.pools?.length ? card.pools : [card.pool];
+                    const on = cur.includes(v);
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => togglePool(v)}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                          on
+                            ? 'bg-amber-500/90 text-black'
+                            : 'border border-white/10 bg-black/30 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    );
+                  })}
+                </div>
               </Field>
             </div>
 

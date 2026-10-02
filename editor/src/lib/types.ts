@@ -21,6 +21,13 @@ export type EffectDef =
   | { kind: 'draw'; amount: number }
   | { kind: 'energy'; amount: number }
   | { kind: 'heal'; amount: number }
+  | { kind: 'discard'; amount: number }
+  | { kind: 'exhaust'; amount: number }
+  | { kind: 'gold'; amount: number }
+  | { kind: 'lose_hp'; amount: number }
+  | { kind: 'max_hp'; amount: number }
+  | { kind: 'power'; amount: number; power: string; target?: string }
+  | { kind: 'spawn'; amount: number; card_entry: string; pile?: string }
   | { kind: 'custom'; handler: string; amount?: number; target?: string; params?: Record<string, unknown> };
 
 /** 生命周期钩子字段名（与 CardDef 上的可选 EffectDef[] 字段一致） */
@@ -55,6 +62,8 @@ export interface CardDef {
   costs_x: boolean;
   keywords: string[];
   pool: Pool;
+  /** 额外卡池：非空时本卡注册进全部列出池（多池卡） */
+  pools?: string[];
   show_in_library: boolean;
   multiplayer: MultiplayerConstraint;
   max_upgrade_level: number;
@@ -97,6 +106,26 @@ export interface EditorSettings {
   game_dir: string;
   runtime_version: string | null;
   uploader_path: string | null;
+}
+
+/** 对原版行为有减益效果的力量（默认施加给敌人；其余力量默认给自己） */
+const ENEMY_POWERS = ['Vulnerable', 'Weak', 'Frail', 'Poison', 'Doom'];
+
+/** 从原版目录 vars 推导效果清单（「预填原版效果」用）：
+ *  Damage/Block/Cards/Energy → 内建效果；XxxPower → 施加增益/减益。
+ *  计算型变量（CalculationBase 等）无法静态映射，跳过。 */
+export function effectsFromVanillaVars(vars: Record<string, number>): EffectDef[] {
+  const out: EffectDef[] = [];
+  if (typeof vars.Damage === 'number') out.push({ kind: 'damage', amount: vars.Damage, props: ['Move'] });
+  if (typeof vars.Block === 'number') out.push({ kind: 'block', amount: vars.Block, props: ['Move'] });
+  if (typeof vars.Cards === 'number') out.push({ kind: 'draw', amount: vars.Cards });
+  if (typeof vars.Energy === 'number') out.push({ kind: 'energy', amount: vars.Energy });
+  for (const [k, v] of Object.entries(vars)) {
+    if (typeof v !== 'number' || !k.endsWith('Power') || k === 'Power') continue;
+    const name = k.slice(0, -5); // 去掉 Power 后缀 → SfPowerResolver 可解析名
+    out.push({ kind: 'power', amount: v, power: name, target: ENEMY_POWERS.includes(name) ? undefined : 'self' });
+  }
+  return out;
 }
 
 /** 原版卡牌目录条目（schema/vanilla-catalog.json，v0.111.0 数据，spire-codex 提取） */

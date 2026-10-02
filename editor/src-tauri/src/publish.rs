@@ -465,6 +465,51 @@ mod tests {
     }
 
     #[test]
+    fn expanded_effect_kinds_and_pools_serialize() {
+        use crate::model::{CardDef, EffectDef, LocText};
+
+        let mut card = CardDef {
+            id: "kitchen_sink".into(),
+            name: LocText { eng: "Kitchen Sink".into(), zhs: "水槽".into() },
+            ..CardDef::default()
+        };
+        card.effects = vec![
+            EffectDef::Discard { amount: 1.0 },
+            EffectDef::Exhaust { amount: 2.0 },
+            EffectDef::Gold { amount: 10.0 },
+            EffectDef::LoseHp { amount: 3.0 },
+            EffectDef::MaxHp { amount: 4.0 },
+            EffectDef::Power { amount: 2.0, power: "Vulnerable".into(), target: None },
+            EffectDef::Spawn { amount: 2, card_entry: "BASH".into(), pile: Some("draw".into()) },
+        ];
+        card.pools = vec!["ironclad".into(), "silent".into()];
+        let v = serde_json::to_value(&card).unwrap();
+
+        // kind 蛇形命名与 Runtime 端 SfEffect.Kind 解析一致
+        assert_eq!(v["effects"][0]["kind"], "discard");
+        assert_eq!(v["effects"][3]["kind"], "lose_hp");
+        assert_eq!(v["effects"][5]["kind"], "power");
+        assert_eq!(v["effects"][5]["power"], "Vulnerable");
+        assert!(v["effects"][5].get("target").is_none(), "target=None 不序列化（=打出目标）");
+        assert_eq!(v["effects"][6]["kind"], "spawn");
+        assert_eq!(v["effects"][6]["card_entry"], "BASH");
+        assert_eq!(v["effects"][6]["pile"], "draw");
+        // 多池
+        assert_eq!(v["pools"], json!(["ironclad", "silent"]));
+        // 单池卡不序列化 pools（向后兼容）
+        let mut single = CardDef::default();
+        single.id = "solo".into();
+        let sv = serde_json::to_value(&single).unwrap();
+        assert!(sv.get("pools").is_none(), "pools 为空时不序列化");
+        // 往返一致
+        let back: CardDef = serde_json::from_value(v).unwrap();
+        assert_eq!(back.pools, vec!["ironclad".to_string(), "silent".to_string()]);
+        assert!(matches!(&back.effects[0], EffectDef::Discard { amount } if *amount == 1.0));
+        assert!(matches!(&back.effects[3], EffectDef::LoseHp { amount } if *amount == 3.0));
+        assert!(matches!(&back.effects[5], EffectDef::Power { power, .. } if power == "Vulnerable"));
+    }
+
+    #[test]
     fn legacy_card_without_hooks_parses() {
         use crate::model::CardDef;
         // 旧格式卡牌（无钩子字段、damage 无 target）必须照常反序列化

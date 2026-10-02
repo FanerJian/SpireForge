@@ -119,6 +119,50 @@ pub enum EffectDef {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         params: Option<serde_json::Map<String, serde_json::Value>>,
     },
+    /// 随机弃 N 张手牌（需要玩家选择上下文）
+    Discard {
+        #[serde(default = "default_amount")]
+        amount: f64,
+    },
+    /// 随机消耗 N 张手牌（需要玩家选择上下文）
+    Exhaust {
+        #[serde(default = "default_amount")]
+        amount: f64,
+    },
+    /// 获得金币（负数 = 失去）
+    Gold {
+        #[serde(default = "default_amount")]
+        amount: f64,
+    },
+    /// 失去生命（无来源、不可格挡、不受力量修正；需要玩家选择上下文）
+    LoseHp {
+        #[serde(default = "default_amount")]
+        amount: f64,
+    },
+    /// 上限增加（正数）
+    MaxHp {
+        #[serde(default = "default_amount")]
+        amount: f64,
+    },
+    /// 施加增益/减益：power = 力量名（Vulnerable/Poison/Strength/任意 PowerModel 子类名）；
+    /// target: self = 给自己上（Strength/Focus 等增益），缺省 = 打出目标/钩子取敌
+    Power {
+        #[serde(default = "default_amount")]
+        amount: f64,
+        #[serde(default)]
+        power: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<String>,
+    },
+    /// 生成卡牌：card_entry = 目标卡 Entry（自定义或原版），pile = draw/hand/discard
+    Spawn {
+        #[serde(default = "default_amount_int")]
+        amount: i64,
+        #[serde(default)]
+        card_entry: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pile: Option<String>,
+    },
 }
 
 fn default_amount() -> f64 {
@@ -157,6 +201,9 @@ pub struct CardDef {
     pub keywords: Vec<String>,
     /// colorless | curse | status | ironclad | silent | regent | necrobinder | defect
     pub pool: String,
+    /// 额外卡池：非空时本卡注册进全部列出池（多池卡）；为空时只有 pool
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pools: Vec<String>,
     pub show_in_library: bool,
     pub multiplayer: MultiplayerConstraint,
     pub max_upgrade_level: i64,
@@ -208,6 +255,7 @@ impl Default for CardDef {
             costs_x: false,
             keywords: vec![],
             pool: "colorless".into(),
+            pools: vec![],
             show_in_library: true,
             multiplayer: MultiplayerConstraint::None,
             max_upgrade_level: 1,

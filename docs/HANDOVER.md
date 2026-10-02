@@ -26,7 +26,8 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
 - **卡牌创建全流程**：编辑器建卡 → 打包 PCK → 安装到游戏 → 游戏内正确加载
 - **全部五类卡牌**：攻击 / 技能 / 能力(Power) / 诅咒 / 状态（游戏内自检 PASS）
 - **自定义费用**：含 0 费、X 费、-1（不可打出，诅咒/状态惯例）
-- **游戏中已有效果**：造成伤害、获得格挡、抽牌、获得能量、回复生命（数据驱动，见 §五）
+- **游戏中已有效果**：12 种内建（伤害/格挡/抽牌/能量/回复/弃牌/消耗/金币/失血/上限/
+  施加增益减益/生成卡牌）+ 自定义扩展（数据驱动，见 §五）
 - **生命周期钩子**：`on_draw`/`on_discard`/`on_exhaust`/`on_enter_combat`/`on_turn_end_in_hand`
   （自作用触发，编辑器「效果」页签按时机编辑；游戏内 15 卡注册 PASS、
   钩子分发经游戏源码比对 + `sf_hooktest` 自测命令验证路径）
@@ -36,7 +37,11 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
 - **原版卡覆盖**：编辑器卡牌库「原版卡」内置 577 张原版目录（spire-codex 数据），
   导入为覆盖卡后可改费用/类型/稀有度/目标/数值/文案/行为；Runtime 端
   `SfVanillaOverride` 改模板字段 + Harmony 替换 OnPlay/OnUpgrade（RUNTIME-MOD.md §三·6；
-  Rust 侧 7/7 测试含真实 PCK 往返，战斗内表现待人工实测——验证包 `tools/testpack-vanilla/`）
+  Rust 侧 16/16 测试含真实 PCK 往返，战斗内表现待人工实测——验证包 `tools/testpack-vanilla/`）。
+  属性面板显示原版卡信息（原版描述/数值/升级/关键词）+「预填原版效果」一键生成效果清单
+  （覆盖卡默认 effects 空=保留原版行为；预填/手填效果=整体替换打出行为）
+- **多池卡**：卡牌 `pools` 数组非空时注册进全部列出角色池（一张卡铁甲/沉默都能用）；
+  编辑器卡池多选。自定义"新角色"需游戏角色选择界面支持，纯数据 mod 做不到（见路线图）
 - **内置工坊上传器**：官方 ModUploader v0.2.0（MIT）以字节内嵌编辑器，
   打开发布面板自动释放到应用数据目录并自动设置路径，零下载门槛
 - **批量导入**：JSON 容器（数组 / `{cards:[...]}`）整批导入；`.pck` 卡包直读导入
@@ -118,7 +123,7 @@ spireforge/
 
 ## 五、效果目录（当前 + 扩展路径）
 
-运行时已实现（`runtime/src/SfCardBase.cs` 的解释器分派）：
+运行时已实现（`runtime/src/SfEffectEngine.cs` 统一解释，新建卡与原版覆盖共用）：
 
 | kind | 参数 | 游戏 API | 说明 |
 |---|---|---|---|
@@ -127,7 +132,16 @@ spireforge/
 | `draw` | amount | `CardPileCmd.Draw` | |
 | `energy` | amount | `PlayerCmd.GainEnergy` | |
 | `heal` | amount | `CreatureCmd.Heal` | 对应 HealVar |
+| `discard` | amount | `CardCmd.Discard` | 随机弃 N 张手牌 |
+| `exhaust` | amount | `CardCmd.Exhaust` | 随机消耗 N 张手牌 |
+| `gold` | amount | `PlayerCmd.GainGold/LoseGold` | 负数 = 失去 |
+| `lose_hp` | amount | `CreatureCmd.Damage`(Unblockable\|Unpowered) | 自身失去生命 |
+| `max_hp` | amount | `CreatureCmd.GainMaxHp` | 生命上限 |
+| `power` | amount, params.power, target? | `PowerCmd.Apply<T>` 反射 | 施加任意 PowerModel（原版+第三方），`self`=给自己 |
+| `spawn` | amount, params.card_entry, params.pile | `CardPileCmd.AddGeneratedCardToCombat` | 生成任意卡（ToMutable 克隆）进抽/手/弃 |
 | `custom` | handler, amount?, target?, params? | 处理器定义 | 任意 kind 名 → `SpireForge.Api.SfEffects` 注册表 |
+
+单效果失败只记日志不中断结算（RunAsync 逐条 try/catch）。
 
 另有 5 个生命周期钩子字段（`on_draw`/`on_discard`/`on_exhaust`/`on_enter_combat`/
 `on_turn_end_in_hand`），复用上述效果清单，字段语义见 [SCHEMA.md](./SCHEMA.md)。
@@ -170,9 +184,13 @@ spireforge/
    发布后把工坊 mod id 填进卡包 workshop.json 的 dependencies 即可自动带前置）
 4. **第三方格式字段级适配器（M4）**：通用启发式映射 + pck 导入已就绪，
    拿到真实样本后按 `import.rs` 扩展点补 `.sts2pack` / `created_cards.json` / Make Spire 适配
-5. **效果目录扩充**：按 §五 步骤逐个接入（建议顺序：弃牌 → 消耗 → 施加增益/减益 → 生成卡牌）
+5. **效果目录扩充（第二轮已完成 2026-10-02：弃牌/消耗/金币/失血/上限/施加/生成）**：
+   剩余候选——「选牌弃/消耗」（需 CardSelectCmd 选择 UI，数据驱动难）、
+   「按 Entry 精确生成已升级卡」、遗物交互类
 6. **钩子扩展**：「每当打出其他牌时」「回合开始时」等全局触发（需 hand-scope 过滤 + 实测）
 7. **多人模式实测**：动态程序集已在 ModMap 注册（`AfterAssemblyInfoInit`），需实际联机验证
+8. **自定义角色/职业**：需要游戏角色选择界面与开局流程支持，纯数据 mod 做不到；
+   多池卡（`pools` 数组）已支持作为替代——一张卡进多个现有角色池
 
 ## 七、接手须知（踩坑记录）
 
