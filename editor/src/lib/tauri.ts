@@ -13,11 +13,14 @@ export const api = {
     invoke<[ProjectMeta, CardDef[]]>('open_project', { path }),
 
   saveCard: (card: CardDef) => invoke<void>('save_card', { card }),
+  renameCard: (oldId: string, newId: string) =>
+    invoke<void>('rename_card', { oldId, newId }),
   deleteCard: (id: string) => invoke<void>('delete_card', { id }),
   updateProjectMeta: (meta: ProjectMeta) => invoke<void>('update_project_meta', { meta }),
+  getProjectMeta: () => invoke<ProjectMeta>('get_project_meta'),
 
-  savePortrait: (id: string, bytes: Uint8Array) =>
-    invoke<string>('save_portrait', { id, bytes: Array.from(bytes) }),
+  savePortrait: (id: string, ext: string, bytes: Uint8Array) =>
+    invoke<string>('save_portrait', { id, ext, bytes: Array.from(bytes) }),
   readPortrait: (rel: string) =>
     invoke<number[]>('read_portrait', { rel }),
 
@@ -31,6 +34,8 @@ export const api = {
   writeFile: (path: string, content: string) => invoke<void>('write_text_file', { path, content }),
   buildPack: (outDir: string, version: string) => invoke<string>('build_pack', { outDir, version }),
   installToGame: (version: string) => invoke<string>('install_to_game', { version }),
+  /** 发布预检：Entry 冲突 / vanilla_id 重复 / 空 handler / 缺失文案等问题清单 */
+  validateProject: () => invoke<string[]>('validate_project'),
   setUploaderPath: (path: string) => invoke<void>('set_uploader_path', { path }),
   prepareWorkshop: (outDir: string, version: string, visibility: string, changeNote: string) =>
     invoke<string>('prepare_workshop', { outDir, version, visibility, changeNote }),

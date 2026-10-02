@@ -17,7 +17,8 @@ function Toast({ msg }: { msg: string }) {
 }
 
 function Toolbar({ onPublish }: { onPublish: () => void }) {
-  const { meta, dirty, persistCard, showToast } = useStore();
+  const { meta, dirtyIds, persistAll, closeProject, showToast } = useStore();
+  const dirty = dirtyIds.length > 0;
   return (
     <div className="flex h-12 items-center gap-3 border-b border-white/10 bg-black/30 px-4">
       <div className="flex items-baseline gap-2">
@@ -26,13 +27,13 @@ function Toolbar({ onPublish }: { onPublish: () => void }) {
       </div>
       <div className="flex-1" />
       <button
-        onClick={async () => { await persistCard(); showToast('已保存'); }}
+        onClick={async () => { await persistAll(); showToast('已保存'); }}
         disabled={!dirty}
         className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
           dirty ? 'bg-white/10 text-amber-300 hover:bg-white/15' : 'bg-white/5 text-slate-600'
         }`}
       >
-        {dirty ? '保存 ●' : '已保存'}
+        {dirty ? `保存 ●（${dirtyIds.length}）` : '已保存'}
       </button>
       <button
         onClick={onPublish}
@@ -40,12 +41,19 @@ function Toolbar({ onPublish }: { onPublish: () => void }) {
       >
         发布 / 安装
       </button>
+      <button
+        onClick={() => { void closeProject(); }}
+        title="关闭当前项目，回到欢迎页（未保存修改会先落盘）"
+        className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
+      >
+        切换项目
+      </button>
     </div>
   );
 }
 
 function PreviewPane() {
-  const { cards, meta, projectRoot, showToast } = useStore();
+  const { cards, meta, projectRoot, persistAll, showToast } = useStore();
   const selectedId = useStore((s) => s.selectedId);
   const [upgraded, setUpgraded] = useState(false);
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
@@ -56,14 +64,17 @@ function PreviewPane() {
     setPortraitUrl(null);
     if (!card || !card.portrait || !projectRoot) return;
     let url: string | null = null;
+    let cancelled = false;
     api
       .readPortrait(card.portrait)
       .then((bytes) => {
+        if (cancelled) return;
         url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
         setPortraitUrl(url);
       })
-      .catch(() => setPortraitUrl(null));
+      .catch(() => { if (!cancelled) setPortraitUrl(null); });
     return () => {
+      cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
   }, [card, projectRoot]);
@@ -73,6 +84,8 @@ function PreviewPane() {
     const path = await pickSaveJsonFile(`${card.id}.json`);
     if (!path) return;
     try {
+      // 导出走磁盘读取：先落盘未保存修改，否则导出的是旧数据
+      await persistAll();
       const raw = await api.exportCardJson(card.id);
       await api.writeFile(path, raw);
       showToast('已导出卡牌 JSON');
@@ -113,11 +126,24 @@ export default function App() {
     if (saved && !projectRoot) {
       openProject(saved).catch(() => localStorage.removeItem('spireforge.lastProject'));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (projectRoot) localStorage.setItem('spireforge.lastProject', projectRoot);
   }, [projectRoot]);
+
+  // 关窗前有未落盘修改时拦截确认（自动保存去抖窗口内的最后一次兜底）
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useStore.getState().dirtyIds.length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
 
   if (!projectRoot || !meta) {
     return (

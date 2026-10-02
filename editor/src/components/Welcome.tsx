@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { api, pickDirectory } from '../lib/tauri';
 import { useStore } from '../lib/store';
 
+// 与后端 project::validate_pack_id 一致：字母开头，字母/数字/下划线，2–64 位
+const PACK_ID_RE = /^[A-Za-z][A-Za-z0-9_]{1,63}$/;
+
 export default function Welcome() {
   const { newProject, openProject, settings, refreshSettings } = useStore();
   const [mode, setMode] = useState<'none' | 'create'>('none');
@@ -10,6 +13,7 @@ export default function Welcome() {
   const [author, setAuthor] = useState('');
   const [busy, setBusy] = useState(false);
   const [gameDirHint, setGameDirHint] = useState(settings.game_dir ? '' : '未配置游戏目录');
+  const packIdOk = PACK_ID_RE.test(packId.trim());
 
   // 挂载时自动检测一次游戏目录（首次运行的关键体验）
   useEffect(() => {
@@ -119,6 +123,11 @@ export default function Welcome() {
               <span className="mb-1 block text-xs font-medium text-slate-400">包 id（工坊标识，驼峰）</span>
               <input value={packId} onChange={(e) => setPackId(e.target.value)}
                 className="w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-amber-400/60" />
+              {!packIdOk && (
+                <span className="mt-1 block text-[11px] text-rose-400/80">
+                  需以字母开头，仅字母/数字/下划线（2–64 位）；它会成为目录名与工坊 id
+                </span>
+              )}
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-400">项目名称</span>
@@ -132,7 +141,7 @@ export default function Welcome() {
             </label>
             <button
               onClick={doCreate}
-              disabled={busy || !packId.trim()}
+              disabled={busy || !packIdOk}
               className="w-full rounded-lg bg-amber-500/90 py-3 text-sm font-bold text-black transition hover:bg-amber-400 disabled:opacity-40"
             >
               选择目录并创建

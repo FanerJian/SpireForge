@@ -8,7 +8,7 @@
 //! 3. 已知第三方工具（STS2_Editor .sts2pack / Nexus #69 created_cards.json / Make Spire）
 //!    的字段级适配器留作扩展点；在拿到真实样本文件后按同样接口补齐即可。
 
-use crate::model::{CardDef, CardType, CardRarity, EffectDef, LocText, MultiplayerConstraint, TargetType};
+use crate::model::{CardDef, CardType, CardRarity, EffectDef, FORMAT_VERSION, LocText, MultiplayerConstraint, TargetType};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -21,6 +21,16 @@ pub struct ImportReport {
     pub native: bool,
 }
 
+/// 新于当前支持的格式版本会被拒绝：旧编辑器打开新格式再保存会静默删掉不认识的字段
+fn check_card_version(fmt: u32) -> Result<(), String> {
+    if fmt > FORMAT_VERSION {
+        return Err(format!(
+            "卡牌格式版本 {fmt} 高于当前支持版本 {FORMAT_VERSION}，请升级编辑器后再导入"
+        ));
+    }
+    Ok(())
+}
+
 /// 从任意 JSON 文本导入一张卡。
 pub fn import_any(raw: &str) -> Result<ImportReport, String> {
     let v: Value = serde_json::from_str(raw).map_err(|e| format!("JSON 解析失败: {e}"))?;
@@ -28,6 +38,7 @@ pub fn import_any(raw: &str) -> Result<ImportReport, String> {
     // 1) 原生格式
     if v.get("card_type").is_some() && v.get("effects").is_some() {
         let card: CardDef = serde_json::from_value(v).map_err(|e| format!("SpireForge 格式校验失败: {e}"))?;
+        check_card_version(card.format_version)?;
         return Ok(ImportReport { card, notes: vec!["SpireForge 原生格式，完整导入".into()], native: true });
     }
 
@@ -49,11 +60,22 @@ pub fn import_any(raw: &str) -> Result<ImportReport, String> {
     Ok(ImportReport { card: r.card, notes: r.notes, native: false })
 }
 
-/// PCK 卡包导入结果（imported = 成功入库的卡；errors = 逐文件解析失败信息）
+/// PCK 内的立绘文件（file_name = images/ 下的最后一段文件名，如 pack_strike.png）
+#[derive(Debug, Clone)]
+pub struct PckImage {
+    pub file_name: String,
+    pub data: Vec<u8>,
+}
+
+/// PCK 卡包导入结果（imported = 成功入库的卡；errors = 逐文件解析失败信息；
+/// images = 包内立绘，由命令层落盘到项目 assets 并回填 card.portrait）
 #[derive(Debug, Clone, Serialize)]
 pub struct PckImportResult {
     pub imported: Vec<ImportReport>,
     pub errors: Vec<String>,
+    /// 不序列化给前端（字节数据走 Rust 侧落盘）
+    #[serde(skip)]
+    pub images: Vec<PckImage>,
 }
 
 /// 批量导入：容器（数组 / {cards:[...]}）逐张导入。
@@ -74,6 +96,7 @@ pub fn import_many(raw: &str) -> Result<Vec<ImportReport>, String> {
         let partial = if native {
             let card: CardDef = serde_json::from_value(item)
                 .map_err(|e| format!("SpireForge 格式校验失败: {e}"))?;
+            check_card_version(card.format_version)?;
             notes.push("SpireForge 原生格式，完整导入".into());
             Partial { card, notes }
         } else {
@@ -87,28 +110,49 @@ pub fn import_many(raw: &str) -> Result<Vec<ImportReport>, String> {
     Ok(out)
 }
 
-/// 从 .pck 卡包文件导入：解出全部 cards/*.json 逐张导入（原生 SpireForge 卡包完整保真）。
+/// 从 .pck 卡包文件导入：解出全部 cards/*.json 逐张导入（原生 SpireForge 卡包完整保真），
+/// 同时提取 images/ 下的立绘——卡牌 portrait 指向的图片必须在项目里落盘，
+/// 否则重新打包时 publish.rs 会因找不到文件把 portrait 清空（立绘丢失）。
 pub fn import_pck(path: &str) -> Result<PckImportResult, String> {
     let entries = pcktool::read_entries(std::path::Path::new(path))
         .map_err(|e| format!("PCK 读取失败: {e}"))?;
     let mut imported = Vec::new();
     let mut errors = Vec::new();
+    let mut images: Vec<PckImage> = Vec::new();
+    let mut seen_images: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut found = 0;
     for (name, data) in entries {
-        if !name.contains("/cards/") || !name.ends_with(".json") {
+        if name.ends_with(".json") && name.contains("/cards/") {
+            found += 1;
+            let raw = String::from_utf8_lossy(&data).into_owned();
+            match import_many(&raw) {
+                Ok(mut rs) => imported.append(&mut rs),
+                Err(e) => errors.push(format!("{name}: {e}")),
+            }
             continue;
         }
-        found += 1;
-        let raw = String::from_utf8_lossy(&data).into_owned();
-        match import_many(&raw) {
-            Ok(mut rs) => imported.append(&mut rs),
-            Err(e) => errors.push(format!("{name}: {e}")),
+        // 立绘：res://<PackId>/images/cards/<file>（取最后一段文件名做匹配键）
+        if name.contains("/images/") {
+            let ext_ok = [".png", ".jpg", ".jpeg", ".webp"]
+                .iter()
+                .any(|e| name.to_ascii_lowercase().ends_with(e));
+            if !ext_ok {
+                continue;
+            }
+            let file_name = name
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            if seen_images.insert(file_name.clone()) {
+                images.push(PckImage { file_name, data });
+            }
         }
     }
     if found == 0 {
         return Err("PCK 中没有 cards/*.json —— 不是 SpireForge 卡包（或不含卡牌数据）".into());
     }
-    Ok(PckImportResult { imported, errors })
+    Ok(PckImportResult { imported, errors, images })
 }
 
 struct Partial {
@@ -382,5 +426,39 @@ mod tests {
         assert_eq!(card.stats.as_ref().unwrap()["Damage"], 10.0);
         assert_eq!(card.upgrade_stats.as_ref().unwrap()["damage"], 2.0);
         assert_eq!(card.cost, 1);
+    }
+
+    /// 立绘保真：含图 PCK 导入后必须解出立绘字节（与源文件一致）。
+    /// 此前导入器只读 cards/*.json，立绘全部丢失，重打包时 portrait 被清空。
+    #[test]
+    fn import_pck_preserves_portraits() {
+        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/testpack");
+        let r = import_pck(&format!("{base}/SpireForgeTestPack.pck")).unwrap();
+        assert!(r.errors.is_empty(), "errors: {:?}", r.errors);
+        assert_eq!(r.imported.len(), 1);
+        // 卡牌 JSON 里的 portrait 是 PCK 内路径（images/cards/...）
+        assert_eq!(r.imported[0].card.portrait, "images/cards/pack_strike.png");
+        // 立绘被解出且字节一致
+        let img = r
+            .images
+            .iter()
+            .find(|i| i.file_name == "pack_strike.png")
+            .expect("portrait must be extracted from pck");
+        let src = std::fs::read(format!(
+            "{base}/content/SpireForgeTestPack/images/cards/pack_strike.png"
+        ))
+        .unwrap();
+        assert_eq!(img.data, src, "extracted portrait must be byte-identical");
+    }
+
+    /// 新于当前版本的卡牌格式必须拒绝导入（防旧编辑器静默降级）
+    #[test]
+    fn future_format_version_is_rejected() {
+        let raw = format!(
+            r#"{{"format_version": {}, "id": "x", "card_type": "Attack", "effects": [], "name": {{"eng":"X","zhs":"X"}}}}"#,
+            crate::model::FORMAT_VERSION + 1
+        );
+        assert!(import_any(&raw).is_err());
+        assert!(import_many(&raw).is_err());
     }
 }

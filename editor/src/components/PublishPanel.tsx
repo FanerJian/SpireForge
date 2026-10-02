@@ -4,19 +4,27 @@ import { useStore } from '../lib/store';
 
 /** 发布面板：导出卡包 / 一键安装到游戏 / Steam 工坊发布 */
 export default function PublishPanel({ onClose }: { onClose: () => void }) {
-  const { meta, cards, settings, showToast, refreshSettings } = useStore();
-  const [version, setVersion] = useState('0.1.0');
+  const { meta, cards, settings, showToast, refreshSettings, persistAll, updateMeta, reloadMeta } = useStore();
+  const [version, setVersion] = useState(meta?.last_version ?? '0.1.0');
+  const [runtimeDep, setRuntimeDep] = useState(meta?.runtime_workshop_id?.toString() ?? '');
+  const [issues, setIssues] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string>('');
   const [visibility, setVisibility] = useState('private');
   const [changeNote, setChangeNote] = useState('');
   const [workspace, setWorkspace] = useState('');
 
-  // 内置 ModUploader（v0.2.0，MIT）：首次打开发布面板时自动释放，无需用户下载
+  const runtimeDepId = /^\d+$/.test(runtimeDep.trim()) ? Number(runtimeDep.trim()) : null;
+
+  // 打开面板：先落盘未保存修改，再跑发布预检；同时自动释放内置 ModUploader
   useEffect(() => {
-    api.ensureBundledUploader()
-      .then(() => refreshSettings())
-      .catch(() => undefined);
+    (async () => {
+      try {
+        await persistAll();
+        setIssues(await api.validateProject());
+      } catch { /* 预检失败不阻塞面板 */ }
+      api.ensureBundledUploader().then(() => refreshSettings()).catch(() => undefined);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -24,7 +32,9 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setLog('');
     try {
+      await persistAll();
       const dir = await api.installToGame(version);
+      await reloadMeta();
       setLog(`已安装到：${dir}\n\n启动游戏即可在卡牌图鉴（无色卡池）中看到本卡包卡牌。\n提示：首次使用需确保 SpireForge Runtime 已随编辑器安装（见文档）。`);
       showToast('安装成功');
     } catch (e) {
@@ -39,7 +49,9 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     if (!out) return;
     setBusy(true);
     try {
+      await persistAll();
       const dir = await api.buildPack(out, version);
+      await reloadMeta();
       setLog(`卡包已导出到：${dir}`);
       showToast('导出成功');
     } catch (e) {
@@ -54,7 +66,13 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     if (!out) return;
     setBusy(true);
     try {
+      await persistAll();
+      // Runtime 依赖 id 持久化进项目（workshop.json dependencies 从 meta 读取）
+      if (meta && meta.runtime_workshop_id !== runtimeDepId) {
+        await updateMeta({ runtime_workshop_id: runtimeDepId });
+      }
       const ws = await api.prepareWorkshop(out, version, visibility, changeNote);
+      await reloadMeta();
       setWorkspace(ws);
       setLog(`上传工作区已生成：${ws}\n\n内容：content/（卡包文件）+ workshop.json + image.png\n` +
         `下一步：${settings.uploader_path ? '点击「上传到工坊」' : '在下方设置 ModUploader.exe 路径后上传'}\n\n` +
@@ -75,7 +93,8 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     setBusy(true);
     try {
       const out = await api.publishWorkshop(workspace);
-      setLog(`上传完成：\n${out}\n\n首次上传后 workspase 内会生成 mod_id.txt（工坊 id），\n后续更新直接重跑本流程即可（条目不变）。`);
+      await reloadMeta();
+      setLog(`上传完成：\n${out}\n\n首次上传后 workspace 内会生成 mod_id.txt（工坊 id），已自动记入项目——\n后续更新换任何导出目录都会复用同一工坊条目。`);
       showToast('上传完成');
     } catch (e) {
       setLog(`上传失败：${String(e)}`);
@@ -102,13 +121,22 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
           <div>
             <div className="text-lg font-bold text-slate-100">发布卡包</div>
             <div className="mt-0.5 text-xs text-slate-500">
-              {meta?.pack_id} · {cards.length} 张卡
+              {meta?.pack_id} · {cards.length} 张卡 · 工坊 id {meta?.workshop_id ?? '未发布'}
             </div>
           </div>
           <button onClick={onClose} className="rounded-md px-2 py-1 text-slate-500 hover:bg-white/10 hover:text-slate-200">
             ✕
           </button>
         </div>
+
+        {issues.length > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <div className="mb-1 text-xs font-semibold text-amber-300">发布预检发现 {issues.length} 个问题（不阻断，建议先处理）：</div>
+            <ul className="list-inside list-disc space-y-0.5 text-[11px] leading-relaxed text-amber-200/80">
+              {issues.map((s, i) => <li key={i}>{s}</li>)}
+            </ul>
+          </div>
+        )}
 
         <div className="mb-4 grid grid-cols-2 gap-3">
           <label className="block">
@@ -134,6 +162,24 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
           </label>
         </div>
 
+        <label className="mb-4 block">
+          <span className="mb-1 block text-xs font-medium text-slate-400">
+            SpireForge Runtime 工坊 id（写入 workshop.json 依赖，玩家订阅时自动安装）
+          </span>
+          <input
+            value={runtimeDep}
+            onChange={(e) => setRuntimeDep(e.target.value.replace(/\D/g, ''))}
+            placeholder="发布 Runtime 后，把其工坊数字 id 填到这里"
+            className="w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 font-mono text-sm text-slate-200 outline-none focus:border-amber-400/60"
+          />
+          {!runtimeDepId && (
+            <span className="mt-1 block text-[11px] text-amber-400/80">
+              未设置：订阅玩家不会自动安装 SpireForge Runtime，卡包将无法加载。
+              建议先发布 Runtime mod，再把它的工坊 id 填入。
+            </span>
+          )}
+        </label>
+
         <div className="mb-4 rounded-lg border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-slate-500">
           游戏目录：<span className="font-mono text-slate-400">{settings.game_dir || '未配置'}</span>
           <br />
@@ -144,7 +190,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
             换用外部 ModUploader.exe
           </button>
           <br />
-          <span className="text-slate-600">上传时需 Steam 客户端在线；更新已发布条目会复用 workspace 内 mod_id.txt</span>
+          <span className="text-slate-600">上传时需 Steam 客户端在线；工坊 id 已持久化到项目，换导出目录复用同一条目</span>
         </div>
 
         <div className="space-y-2">

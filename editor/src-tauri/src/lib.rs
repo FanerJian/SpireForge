@@ -61,10 +61,25 @@ fn require_root(state: &State<AppState>) -> Result<String, String> {
         .ok_or_else(|| "尚未打开项目".into())
 }
 
+/// 当前项目 meta（前端发布后刷新元数据用）
+#[tauri::command]
+fn get_project_meta(state: State<AppState>) -> Result<ProjectMeta, String> {
+    let root = require_root(&state)?;
+    project::read_meta(&root)
+}
+
 #[tauri::command]
 fn save_card(state: State<AppState>, card: CardDef) -> Result<(), String> {
     let root = require_root(&state)?;
     project::add_card(&root, &card)
+}
+
+/// 重命名卡牌（事务：新文件 → meta 原位替换 → 删旧文件；默认命名立绘跟随）。
+/// 注意：改名会改变 Entry，已发布/安装过的卡会破坏存档引用，前端需先警告。
+#[tauri::command]
+fn rename_card(state: State<AppState>, old_id: String, new_id: String) -> Result<(), String> {
+    let root = require_root(&state)?;
+    project::rename_card(&root, &old_id, &new_id)
 }
 
 #[tauri::command]
@@ -80,9 +95,9 @@ fn update_project_meta(state: State<AppState>, meta: ProjectMeta) -> Result<(), 
 }
 
 #[tauri::command]
-fn save_portrait(state: State<AppState>, id: String, bytes: Vec<u8>) -> Result<String, String> {
+fn save_portrait(state: State<AppState>, id: String, ext: String, bytes: Vec<u8>) -> Result<String, String> {
     let root = require_root(&state)?;
-    project::save_portrait(&root, &id, &bytes)
+    project::save_portrait(&root, &id, &ext, &bytes)
 }
 
 #[tauri::command]
@@ -115,67 +130,32 @@ fn write_text_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
-/// 构建卡包到指定目录（不安装）
-#[tauri::command]
-fn build_pack(
-    state: State<AppState>,
-    out_dir: String,
-    version: String,
-) -> Result<String, String> {
-    let root = require_root(&state)?;
-    let (meta, cards) = project::load_project(&root)?;
-    let dir = publish::build_pack(
-        &root,
-        &out_dir,
-        &meta.pack_id,
-        &meta.name,
-        &meta.author,
-        &meta.description,
-        &version,
-        &cards,
-    )?;
-    Ok(dir.to_string_lossy().into_owned())
-}
-
-/// 一键安装到游戏 mods 目录
-#[tauri::command]
-fn install_to_game(state: State<AppState>, version: String) -> Result<String, String> {
-    let root = require_root(&state)?;
-    let game_dir = state.settings.lock().unwrap().game_dir.clone();
-    if game_dir.is_empty() {
-        return Err("尚未配置游戏目录".into());
+/// 卡牌 id 去重：与现有及本批已用 id 冲突时追加 _2/_3…
+fn dedup_id(used: &mut HashSet<String>, base: &str) -> String {
+    if !used.contains(base) {
+        used.insert(base.to_string());
+        return base.to_string();
     }
-    let (meta, cards) = project::load_project(&root)?;
-    if cards.is_empty() {
-        return Err("卡包中没有卡牌".into());
+    let mut n = 2;
+    loop {
+        let cand = format!("{base}_{n}");
+        if !used.contains(&cand) {
+            used.insert(cand.clone());
+            return cand;
+        }
+        n += 1;
     }
-    publish::install_to_game(
-        &game_dir,
-        &root,
-        &meta.pack_id,
-        &meta.name,
-        &meta.author,
-        &meta.description,
-        &version,
-        &cards,
-    )
 }
 
 /// 导入他人制作的卡牌（原生格式完整保真；外来格式启发式映射并返回说明）
 #[tauri::command]
 fn import_card_any(state: State<AppState>, raw: String) -> Result<import::ImportReport, String> {
     let report = import::import_any(&raw)?;
-    // 若与现有卡重名，追加后缀避免覆盖
     let root = require_root(&state)?;
-    let (meta, _) = project::load_project(&root)?;
-    let mut card = report.card.clone();
-    if meta.cards.contains(&card.id) {
-        let mut n = 2;
-        while meta.cards.contains(&format!("{}_{n}", report.card.id)) {
-            n += 1;
-        }
-        card.id = format!("{}_{n}", report.card.id);
-    }
+    let meta = project::read_meta(&root)?;
+    let mut used: HashSet<String> = meta.cards.iter().cloned().collect();
+    let mut card = report.card;
+    card.id = dedup_id(&mut used, &card.id);
     project::add_card(&root, &card)?;
     Ok(import::ImportReport { card, ..report })
 }
@@ -185,49 +165,55 @@ fn import_card_any(state: State<AppState>, raw: String) -> Result<import::Import
 fn import_cards_any(state: State<AppState>, raw: String) -> Result<Vec<import::ImportReport>, String> {
     let reports = import::import_many(&raw)?;
     let root = require_root(&state)?;
-    let (meta, _) = project::load_project(&root)?;
+    let meta = project::read_meta(&root)?;
     let mut used: HashSet<String> = meta.cards.iter().cloned().collect();
     let mut out = Vec::new();
     for r in reports {
         let mut card = r.card;
-        if used.contains(&card.id) {
-            let base = card.id.clone();
-            let mut n = 2;
-            while used.contains(&format!("{base}_{n}")) {
-                n += 1;
-            }
-            card.id = format!("{base}_{n}");
-        }
-        used.insert(card.id.clone());
+        card.id = dedup_id(&mut used, &card.id);
         project::add_card(&root, &card)?;
         out.push(import::ImportReport { card, ..r });
     }
     Ok(out)
 }
 
-/// 从 .pck 卡包导入（解包 cards/*.json；原生 SpireForge 卡包完整保真）
+/// 从 .pck 卡包导入：解出 cards/*.json 与 images/ 立绘；立绘按卡牌最终 id
+/// 落盘到 assets/cards/（导入→再打包不再丢图），找不到图的卡清空 portrait 并说明
 #[tauri::command]
 fn import_pack_pck(state: State<AppState>, path: String) -> Result<import::PckImportResult, String> {
     let result = import::import_pck(&path)?;
     let root = require_root(&state)?;
-    let (meta, _) = project::load_project(&root)?;
+    let meta = project::read_meta(&root)?;
     let mut used: HashSet<String> = meta.cards.iter().cloned().collect();
     let mut imported = Vec::new();
     for r in result.imported {
+        let mut r = r;
         let mut card = r.card;
-        if used.contains(&card.id) {
-            let base = card.id.clone();
-            let mut n = 2;
-            while used.contains(&format!("{base}_{n}")) {
-                n += 1;
-            }
-            card.id = format!("{base}_{n}");
+        card.id = dedup_id(&mut used, &card.id);
+        if !card.portrait.is_empty() {
+            // 包内 portrait 是 PCK 内路径（images/cards/x.png），按最后一段文件名匹配解出的图
+            let fname = card.portrait.rsplit('/').next().unwrap_or_default().to_string();
+            card.portrait = match result.images.iter().find(|i| i.file_name == fname) {
+                Some(img) => {
+                    let ext = fname.rsplit('.').next().unwrap_or("png").to_string();
+                    match project::save_portrait(&root, &card.id, &ext, &img.data) {
+                        Ok(rel) => rel,
+                        Err(e) => {
+                            r.notes.push(format!("立绘 {fname} 落盘失败（{e}），已移除引用"));
+                            String::new()
+                        }
+                    }
+                }
+                None => {
+                    r.notes.push(format!("包内未找到立绘 {fname}，已移除引用"));
+                    String::new()
+                }
+            };
         }
-        used.insert(card.id.clone());
         project::add_card(&root, &card)?;
         imported.push(import::ImportReport { card, ..r });
     }
-    Ok(import::PckImportResult { imported, errors: result.errors })
+    Ok(import::PckImportResult { imported, errors: result.errors, images: vec![] })
 }
 
 /// 原版卡牌目录（导入原版卡用）
@@ -264,7 +250,75 @@ fn set_uploader_path(state: State<AppState>, path: String) -> Result<(), String>
     game::save_settings(&s)
 }
 
-/// 生成工坊上传工作区
+/// 把本次构建版本记入 project.json（发布面板的版本号默认值，避免更新时忘改）
+fn touch_last_version(root: &str, meta: &ProjectMeta, version: &str) -> Result<(), String> {
+    if meta.last_version.as_deref() == Some(version) {
+        return Ok(());
+    }
+    let mut m = meta.clone();
+    m.last_version = Some(version.to_string());
+    project::write_meta(root, &m)
+}
+
+/// 构建卡包到指定目录（不安装）
+#[tauri::command]
+fn build_pack(
+    state: State<AppState>,
+    out_dir: String,
+    version: String,
+) -> Result<String, String> {
+    let root = require_root(&state)?;
+    let (meta, cards) = project::load_project(&root)?;
+    let dir = publish::build_pack(
+        &root,
+        &out_dir,
+        &meta.pack_id,
+        &meta.name,
+        &meta.author,
+        &meta.description,
+        &version,
+        &cards,
+    )?;
+    touch_last_version(&root, &meta, &version)?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// 一键安装到游戏 mods 目录
+#[tauri::command]
+fn install_to_game(state: State<AppState>, version: String) -> Result<String, String> {
+    let root = require_root(&state)?;
+    let game_dir = state.settings.lock().unwrap().game_dir.clone();
+    if game_dir.is_empty() {
+        return Err("尚未配置游戏目录".into());
+    }
+    let (meta, cards) = project::load_project(&root)?;
+    if cards.is_empty() {
+        return Err("卡包中没有卡牌".into());
+    }
+    let dir = publish::install_to_game(
+        &game_dir,
+        &root,
+        &meta.pack_id,
+        &meta.name,
+        &meta.author,
+        &meta.description,
+        &version,
+        &cards,
+    )?;
+    touch_last_version(&root, &meta, &version)?;
+    Ok(dir)
+}
+
+/// 发布前预检：Entry 冲突 / vanilla_id 重复 / 空 custom handler / 缺失文案等
+#[tauri::command]
+fn validate_project(state: State<AppState>) -> Result<Vec<String>, String> {
+    let root = require_root(&state)?;
+    let (meta, cards) = project::load_project(&root)?;
+    Ok(publish::preflight(&meta.pack_id, &cards))
+}
+
+/// 生成工坊上传工作区（dependencies 按 meta.runtime_workshop_id 写入；
+/// meta.workshop_id 恢复 mod_id.txt，防换目录误发新条目）
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 fn prepare_workshop(
@@ -279,21 +333,20 @@ fn prepare_workshop(
     if cards.is_empty() {
         return Err("卡包中没有卡牌".into());
     }
-    workshop::prepare_workspace(
+    let ws = workshop::prepare_workspace(
         &out_dir,
         &root,
-        &meta.pack_id,
-        &meta.name,
-        &meta.author,
-        &meta.description,
+        &meta,
         &version,
         &visibility,
         &change_note,
         &cards,
-    )
+    )?;
+    touch_last_version(&root, &meta, &version)?;
+    Ok(ws)
 }
 
-/// 调用官方 ModUploader 上传
+/// 调用官方 ModUploader 上传；成功后把 mod_id.txt 回写进项目 meta
 #[tauri::command]
 fn publish_workshop(state: State<AppState>, workspace: String) -> Result<String, String> {
     let uploader = state
@@ -303,7 +356,18 @@ fn publish_workshop(state: State<AppState>, workspace: String) -> Result<String,
         .uploader_path
         .clone()
         .ok_or("尚未设置 ModUploader.exe 路径（设置 → 工坊上传器）")?;
-    workshop::run_uploader(&uploader, &workspace)
+    let log = workshop::run_uploader(&uploader, &workspace)?;
+    if let Some(root) = state.project_root.lock().unwrap().clone() {
+        if let Some(id) = workshop::read_workshop_id(&workspace) {
+            if let Ok(mut meta) = project::read_meta(&root) {
+                if meta.workshop_id != Some(id) {
+                    meta.workshop_id = Some(id);
+                    let _ = project::write_meta(&root, &meta);
+                }
+            }
+        }
+    }
+    Ok(log)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -321,7 +385,9 @@ pub fn run() {
             set_game_dir,
             new_project,
             open_project,
+            get_project_meta,
             save_card,
+            rename_card,
             delete_card,
             update_project_meta,
             save_portrait,
@@ -335,6 +401,7 @@ pub fn run() {
             import_card_any,
             import_cards_any,
             import_pack_pck,
+            validate_project,
             vanilla_catalog,
             ensure_bundled_uploader,
             set_uploader_path,

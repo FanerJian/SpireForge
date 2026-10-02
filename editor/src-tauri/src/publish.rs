@@ -7,9 +7,10 @@
 //!
 //! 注：每文件 16 字节 MD5 是 Godot PCK 格式规范的一部分（加载校验标记），非安全用途。
 
-use crate::model::CardDef;
+use crate::model::{CardDef, EffectDef};
+use crate::project::{atomic_write, validate_pack_id};
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -57,7 +58,7 @@ pub fn write_pck(out: &Path, files: &BTreeMap<String, Vec<u8>>) -> Result<(), St
     if let Some(parent) = out.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    fs::write(out, buf).map_err(|e| e.to_string())
+    atomic_write(out, &buf)
 }
 
 /// 卡牌 id → Entry（必须与游戏 StringHelper.Slugify 完全一致）。
@@ -233,16 +234,88 @@ pub fn build_pack(
     version: &str,
     cards: &[CardDef],
 ) -> Result<PathBuf, String> {
+    validate_pack_id(pack_id)?;
     let files = build_pack_files(root, pack_id, cards)?;
     let pack_dir = PathBuf::from(out_dir).join(pack_id);
     fs::create_dir_all(&pack_dir).map_err(|e| e.to_string())?;
     write_pck(&pack_dir.join(format!("{pack_id}.pck")), &files)?;
-    fs::write(
-        pack_dir.join(format!("{pack_id}.json")),
-        build_manifest(pack_id, name, author, description, version),
-    )
-    .map_err(|e| e.to_string())?;
+    atomic_write(
+        &pack_dir.join(format!("{pack_id}.json")),
+        build_manifest(pack_id, name, author, description, version).as_bytes(),
+    )?;
     Ok(pack_dir)
+}
+
+/// 发布前预检：返回问题清单（空 = 通过）。只提示不阻断——
+/// 重复 Entry / 重复 vanilla_id 这类问题 Runtime 端是"先到先得"，
+/// 不该等进游戏后才从日志里发现。
+pub fn preflight(pack_id: &str, cards: &[CardDef]) -> Vec<String> {
+    let mut issues = Vec::new();
+
+    let mut ids: HashSet<&str> = HashSet::new();
+    for c in cards {
+        if !ids.insert(c.id.as_str()) {
+            issues.push(format!("卡牌 id 重复: {}", c.id));
+        }
+    }
+
+    // Entry 冲突（非原版覆盖卡）：不同 id 派生出相同 Entry 时游戏只会保留一个
+    let mut entries: HashMap<String, &str> = HashMap::new();
+    for c in cards {
+        let vanilla = c.vanilla_id.as_deref().map_or(false, |v| !v.trim().is_empty());
+        if vanilla {
+            continue;
+        }
+        let e = card_entry(pack_id, &c.id);
+        if let Some(prev) = entries.insert(e.clone(), c.id.as_str()) {
+            issues.push(format!(
+                "Entry 冲突 {e}：「{prev}」与「{}」派生相同 Entry，游戏内只会保留一个",
+                c.id
+            ));
+        }
+    }
+
+    // 原版覆盖重复（大小写规范化后）：Runtime 端先到先得，后到的报错被丢弃
+    let mut vanilla: HashMap<String, &str> = HashMap::new();
+    for c in cards {
+        if let Some(v) = c.vanilla_id.as_deref() {
+            let v = v.trim().to_uppercase();
+            if v.is_empty() {
+                continue;
+            }
+            if let Some(prev) = vanilla.insert(v.clone(), c.id.as_str()) {
+                issues.push(format!(
+                    "原版覆盖重复 {v}：「{prev}」与「{}」都覆盖同一张原版卡，只有第一个生效",
+                    c.id
+                ));
+            }
+        }
+    }
+
+    for c in cards {
+        for fx in &c.effects {
+            if let EffectDef::Custom { handler, .. } = fx {
+                if handler.trim().is_empty() {
+                    issues.push(format!("卡 {} 的自定义效果未填处理器名（运行时会被跳过）", c.id));
+                }
+            }
+        }
+        if c.on_enter_combat
+            .iter()
+            .any(|fx| matches!(fx, EffectDef::Damage { .. } | EffectDef::Draw { .. }))
+        {
+            issues.push(format!(
+                "卡 {} 的「战斗开始时」钩子含伤害/抽牌（该上下文无目标选择，Runtime 会跳过这两类）",
+                c.id
+            ));
+        }
+        if c.name.zhs.is_empty() && c.name.eng.is_empty() {
+            issues.push(format!("卡 {} 没有任何名称文本", c.id));
+        } else if c.name.zhs.is_empty() {
+            issues.push(format!("卡 {} 缺少中文名称（中文玩家会看到空标题）", c.id));
+        }
+    }
+    issues
 }
 
 /// 安装到游戏 mods 目录

@@ -75,7 +75,7 @@ fn collect_recursive(
 /// 打包为 format v2（内存构建后一次性落盘）。返回写入的文件数。
 pub fn write_v2(out_path: &Path, entries: &[PackEntry], engine: (u32, u32, u32)) -> io::Result<usize> {
     let mut buf: Vec<u8> = Vec::with_capacity(1 << 20);
-    let mut w = |buf: &mut Vec<u8>, bytes: &[u8]| buf.extend_from_slice(bytes);
+    let w = |buf: &mut Vec<u8>, bytes: &[u8]| buf.extend_from_slice(bytes);
 
     // 头部（固定 96 字节：4 magic + 5×u32 + u64 + 64 保留 + u32 count）
     w(&mut buf, MAGIC);

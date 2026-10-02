@@ -101,7 +101,7 @@ pub fn save_settings(settings: &EditorSettings) -> Result<(), String> {
     let p = settings_path().ok_or("无法定位设置目录")?;
     fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
     let raw = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    fs::write(p, raw).map_err(|e| e.to_string())
+    crate::project::atomic_write(&p, raw.as_bytes())
 }
 
 /// 校验游戏目录（sts2.dll 存在）

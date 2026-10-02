@@ -436,6 +436,52 @@ function EffectsTab({ card }: { card: CardDef }) {
   );
 }
 
+/** 卡牌 id 编辑：失去焦点/回车才提交改名（走后端事务：meta 原位替换 + 立绘跟随）。
+ *  改名会改变游戏内 Entry——已发布/安装过的卡会破坏玩家存档引用，必须确认。 */
+function IdField({ card }: { card: CardDef }) {
+  const { renameCard, showToast } = useStore();
+  const [draft, setDraft] = useState(card.id);
+  useEffect(() => setDraft(card.id), [card.id]);
+
+  const commit = async () => {
+    const v = draft.trim();
+    if (v === card.id) return;
+    if (!v) {
+      setDraft(card.id);
+      return;
+    }
+    const ok = confirm(
+      `把卡牌 id 从「${card.id}」改为「${v}」？\n\n` +
+        `卡牌的游戏内标识（Entry）会随之改变：\n` +
+        `· 尚未安装/发布过：无影响\n` +
+        `· 已安装或发布过：玩家存档里的这张卡会失效，需要重新发布`,
+    );
+    if (!ok) {
+      setDraft(card.id);
+      return;
+    }
+    try {
+      await renameCard(card.id, v);
+      showToast('已改名');
+    } catch (e) {
+      setDraft(card.id);
+      showToast('改名失败：' + String(e));
+    }
+  };
+
+  return (
+    <input
+      className={inputCls}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value.replace(/[^a-z0-9_]/g, ''))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+}
+
 function LookTab({ card }: { card: CardDef }) {
   const { projectRoot } = useStore();
   const { updateCard, showToast } = useStore();
@@ -444,24 +490,32 @@ function LookTab({ card }: { card: CardDef }) {
 
   useEffect(() => {
     if (!card.portrait) { setDim(''); return; }
+    let cancelled = false;
+    let url: string | null = null;
     api.readPortrait(card.portrait).then((bytes) => {
-      const blob = new Blob([new Uint8Array(bytes)]);
-      const url = URL.createObjectURL(blob);
+      if (cancelled) return;
+      url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
       const img = new Image();
-      img.onload = () => setDim(`${img.naturalWidth}×${img.naturalHeight}`);
+      img.onload = () => { if (!cancelled) setDim(`${img.naturalWidth}×${img.naturalHeight}`); };
+      img.onerror = () => { if (!cancelled) setDim(''); };
       img.src = url;
-      return () => URL.revokeObjectURL(url);
-    }).catch(() => setDim(''));
+    }).catch(() => { if (!cancelled) setDim(''); });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
   }, [card.portrait]);
 
   const onFile = async (f: File) => {
     const buf = new Uint8Array(await f.arrayBuffer());
-    const rel = await api.savePortrait(card.id, buf);
+    const ext = f.name.includes('.') ? f.name.split('.').pop()! : 'png';
+    const rel = await api.savePortrait(card.id, ext, buf);
     updateCard({ portrait: rel });
     showToast('立绘已保存');
   };
 
-  const good = dim === '250×190' || dim === '1000×760' || /×/.test(dim);
+  // 只有官方基准尺寸（含远古卡 250×351）才算 good；其余提示建议尺寸
+  const good = dim === '250×190' || dim === '1000×760' || dim === '250×351';
 
   return (
     <div className="space-y-4">
@@ -545,9 +599,10 @@ function LocTab({ card }: { card: CardDef }) {
 }
 
 export default function PropertyPanel() {
-  const { cards, selectedId, updateCard, removeCard, persistCard, dirty, showToast } = useStore();
+  const { cards, selectedId, updateCard, removeCard, persistAll, dirtyIds, showToast } = useStore();
   const [tab, setTab] = useState<Tab>('basic');
   const card = cards.find((c) => c.id === selectedId);
+  const dirty = dirtyIds.length > 0;
 
   if (!card) {
     return (
@@ -575,16 +630,21 @@ export default function PropertyPanel() {
         ))}
         <div className="flex-1" />
         <button
-          onClick={async () => { await persistCard(); showToast('已保存'); }}
+          onClick={async () => { await persistAll(); showToast('已保存'); }}
           disabled={!dirty}
           className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
             dirty ? 'bg-amber-500/90 text-black hover:bg-amber-400' : 'bg-white/5 text-slate-600'
           }`}
         >
-          保存
+          {dirty ? `保存 ●（${dirtyIds.length}）` : '已保存'}
         </button>
         <button
-          onClick={async () => { await removeCard(card.id); showToast('已删除'); }}
+          onClick={async () => {
+            const label = card.name.zhs || card.name.eng || card.id;
+            if (!confirm(`删除「${label}」？此操作不可恢复。`)) return;
+            await removeCard(card.id);
+            showToast('已删除');
+          }}
           className="rounded-md px-2.5 py-1.5 text-xs text-rose-400/70 transition hover:bg-rose-500/15 hover:text-rose-300"
         >
           删除
@@ -597,9 +657,8 @@ export default function PropertyPanel() {
             <VanillaSection card={card} />
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="卡牌 id" hint="小写字母/数字/下划线">
-                <input className={inputCls} value={card.id}
-                  onChange={(e) => updateCard({ id: e.target.value.replace(/[^a-z0-9_]/g, '') })} />
+              <Field label="卡牌 id" hint="小写字母/数字/下划线；改名需确认（影响游戏内标识）">
+                <IdField card={card} />
               </Field>
               <Field label="卡池" hint="决定卡框颜色">
                 <select className={selectCls} value={card.pool}

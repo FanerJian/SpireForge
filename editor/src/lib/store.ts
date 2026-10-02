@@ -2,13 +2,17 @@ import { create } from 'zustand';
 import { api } from './tauri';
 import { newCard, type CardDef, type EditorSettings, type ProjectMeta } from './types';
 
+// 自动保存去抖：停止编辑 800ms 后落盘；切卡/关窗/发布另有兜底
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 interface EditorStore {
   projectRoot: string | null;
   meta: ProjectMeta | null;
   cards: CardDef[];
   selectedId: string | null;
   settings: EditorSettings;
-  dirty: boolean;
+  /** 未落盘的卡牌 id（多卡可同时处于未保存状态） */
+  dirtyIds: string[];
   toast: string | null;
 
   showToast: (msg: string) => void;
@@ -17,10 +21,16 @@ interface EditorStore {
   openProject: (path: string) => Promise<void>;
   select: (id: string | null) => void;
   updateCard: (patch: Partial<CardDef>) => void;
-  persistCard: () => Promise<void>;
+  /** 保存全部未落盘的修改（切卡前/发布前/手动保存统一入口） */
+  persistAll: () => Promise<void>;
   createCard: () => Promise<void>;
   removeCard: (id: string) => Promise<void>;
+  renameCard: (oldId: string, newId: string) => Promise<void>;
   updateMeta: (patch: Partial<ProjectMeta>) => Promise<void>;
+  /** 从磁盘刷新 meta（发布流程回写 workshop_id 后同步 UI） */
+  reloadMeta: () => Promise<void>;
+  /** 关闭当前项目回到欢迎页（有未保存修改时先落盘） */
+  closeProject: () => Promise<void>;
 }
 
 export const useStore = create<EditorStore>((set, get) => ({
@@ -29,7 +39,7 @@ export const useStore = create<EditorStore>((set, get) => ({
   cards: [],
   selectedId: null,
   settings: { game_dir: '', runtime_version: null, uploader_path: null },
-  dirty: false,
+  dirtyIds: [],
   toast: null,
 
   showToast: (msg) => {
@@ -47,33 +57,55 @@ export const useStore = create<EditorStore>((set, get) => ({
   newProject: async (path, packId, name, author) => {
     await api.newProject(path, packId, name, author);
     const [meta, cards] = await api.openProject(path);
-    set({ projectRoot: path, meta, cards, selectedId: null });
+    set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [] });
     await get().refreshSettings();
   },
 
   openProject: async (path) => {
     const [meta, cards] = await api.openProject(path);
-    set({ projectRoot: path, meta, cards, selectedId: null });
+    set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [] });
     await get().refreshSettings();
   },
 
-  select: (id) => set({ selectedId: id }),
+  select: (id) => {
+    // 切卡前把未保存修改落盘（异步兜底，不阻塞选中）
+    if (get().dirtyIds.length > 0) void get().persistAll();
+    set({ selectedId: id });
+  },
 
   updateCard: (patch) => {
-    const { cards, selectedId } = get();
+    const { cards, selectedId, dirtyIds } = get();
     if (!selectedId) return;
     set({
       cards: cards.map((c) => (c.id === selectedId ? { ...c, ...patch } : c)),
-      dirty: true,
+      dirtyIds: dirtyIds.includes(selectedId) ? dirtyIds : [...dirtyIds, selectedId],
     });
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      void get().persistAll();
+    }, 800);
   },
 
-  persistCard: async () => {
-    const { cards, selectedId } = get();
-    const card = cards.find((c) => c.id === selectedId);
-    if (!card) return;
-    await api.saveCard(card);
-    set({ dirty: false });
+  persistAll: async () => {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    const { cards, dirtyIds } = get();
+    if (dirtyIds.length === 0) return;
+    const failed: string[] = [];
+    for (const id of dirtyIds) {
+      const card = cards.find((c) => c.id === id);
+      if (!card) continue; // 卡已被删除，放弃该条
+      try {
+        await api.saveCard(card);
+      } catch {
+        failed.push(id);
+      }
+    }
+    set({ dirtyIds: failed });
+    if (failed.length > 0) get().showToast('部分修改保存失败，请重试');
   },
 
   createCard: async () => {
@@ -89,11 +121,11 @@ export const useStore = create<EditorStore>((set, get) => ({
     await api.saveCard(card);
     const updatedMeta = { ...meta, cards: [...meta.cards, id] };
     await api.updateProjectMeta(updatedMeta);
-    set({ meta: updatedMeta, cards: [...cards, card], selectedId: id });
+    set({ meta: updatedMeta, cards: [...cards, card], selectedId: id, dirtyIds: [] });
   },
 
   removeCard: async (id) => {
-    const { meta, cards } = get();
+    const { meta, cards, dirtyIds } = get();
     if (!meta) return;
     await api.deleteCard(id);
     const updatedMeta = { ...meta, cards: meta.cards.filter((c) => c !== id) };
@@ -102,6 +134,20 @@ export const useStore = create<EditorStore>((set, get) => ({
       meta: updatedMeta,
       cards: cards.filter((c) => c.id !== id),
       selectedId: get().selectedId === id ? null : get().selectedId,
+      dirtyIds: dirtyIds.filter((d) => d !== id),
+    });
+  },
+
+  renameCard: async (oldId, newId) => {
+    const { meta, cards, selectedId, dirtyIds } = get();
+    if (!meta || oldId === newId) return;
+    await api.renameCard(oldId, newId);
+    const updatedMeta = { ...meta, cards: meta.cards.map((c) => (c === oldId ? newId : c)) };
+    set({
+      meta: updatedMeta,
+      cards: cards.map((c) => (c.id === oldId ? { ...c, id: newId } : c)),
+      selectedId: selectedId === oldId ? newId : selectedId,
+      dirtyIds: dirtyIds.map((d) => (d === oldId ? newId : d)),
     });
   },
 
@@ -111,5 +157,17 @@ export const useStore = create<EditorStore>((set, get) => ({
     const updated = { ...meta, ...patch };
     await api.updateProjectMeta(updated);
     set({ meta: updated });
+  },
+
+  reloadMeta: async () => {
+    if (!get().projectRoot) return;
+    const meta = await api.getProjectMeta();
+    set({ meta });
+  },
+
+  closeProject: async () => {
+    await get().persistAll();
+    localStorage.removeItem('spireforge.lastProject');
+    set({ projectRoot: null, meta: null, cards: [], selectedId: null, dirtyIds: [] });
   },
 }));

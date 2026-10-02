@@ -240,7 +240,13 @@ pub struct ProjectMeta {
     pub description: String,
     /// 卡牌 id 列表（磁盘顺序）
     pub cards: Vec<String>,
+    /// 本卡包自己的工坊 id（首次上传后由 mod_id.txt 回写；生成工作区时恢复）
     pub workshop_id: Option<u64>,
+    /// 上次安装/发布使用的版本号（发布面板默认值，避免更新时忘改版本）
+    pub last_version: Option<String>,
+    /// SpireForge Runtime 的工坊 id：写入 workshop.json 的 dependencies，
+    /// 玩家订阅卡包时 Steam 自动带上 Runtime 前置
+    pub runtime_workshop_id: Option<u64>,
 }
 
 impl Default for ProjectMeta {
@@ -253,6 +259,8 @@ impl Default for ProjectMeta {
             description: String::new(),
             cards: vec![],
             workshop_id: None,
+            last_version: None,
+            runtime_workshop_id: None,
         }
     }
 }

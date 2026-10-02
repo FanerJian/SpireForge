@@ -85,7 +85,12 @@ export interface ProjectMeta {
   author: string;
   description: string;
   cards: string[];
+  /** 本卡包自己的工坊 id（首次上传后由 mod_id.txt 回写） */
   workshop_id: number | null;
+  /** 上次安装/发布使用的版本号（发布面板默认值） */
+  last_version?: string | null;
+  /** SpireForge Runtime 的工坊 id：写入 workshop.json dependencies，订阅时自动带前置 */
+  runtime_workshop_id?: number | null;
 }
 
 export interface EditorSettings {
