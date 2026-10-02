@@ -38,6 +38,12 @@ fn set_game_dir(state: State<AppState>, dir: String) -> Result<(), String> {
     game::save_settings(&s)
 }
 
+/// 登记到 Runtime 的拿卡清单（下一场战斗开始时发放）
+#[tauri::command]
+fn queue_card_grant(entries: Vec<String>) -> Result<String, String> {
+    game::queue_card_grant(entries)
+}
+
 #[tauri::command]
 fn new_project(path: String, pack_id: String, name: String, author: String, state: State<AppState>) -> Result<(), String> {
     project::create_project(&path, &pack_id, &name, &author)?;
@@ -383,6 +389,7 @@ pub fn run() {
             detect_game_dir,
             get_settings,
             set_game_dir,
+            queue_card_grant,
             new_project,
             open_project,
             get_project_meta,

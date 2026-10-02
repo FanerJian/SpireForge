@@ -63,13 +63,18 @@ public static class RuntimeEntry
         harmony.Patch(
             typeof(AssemblyInfo).GetMethod(nameof(AssemblyInfo.Init), BindingFlags.Public | BindingFlags.Static),
             postfix: new HarmonyMethod(typeof(RuntimeEntry), nameof(AfterAssemblyInfoInit)));
+        // 「一键在游戏中获得卡」：每场战斗开始（首次抽牌前）消费编辑器写的 sf_grant.json
+        harmony.Patch(
+            typeof(MegaCrit.Sts2.Core.Hooks.Hook).GetMethod(
+                nameof(MegaCrit.Sts2.Core.Hooks.Hook.BeforeCombatStart),
+                BindingFlags.Public | BindingFlags.Static),
+            postfix: new HarmonyMethod(typeof(RuntimeEntry), nameof(AfterBeforeCombatStart)));
 
         Log.Info($"{LogTag}: hooks installed");
     }
 
     /// <summary>AssemblyInfo.Init 后置：把动态程序集的运行时对象补进 ModMap。</summary>
-    private static void AfterAssemblyInfoInit()
-    {
+    private static void AfterAssemblyInfoInit()    {
         try
         {
             var map = AssemblyInfo.ModMap;
@@ -92,6 +97,13 @@ public static class RuntimeEntry
         {
             Log.Error($"{LogTag}: AfterAssemblyInfoInit failed: {e}");
         }
+    }
+
+    /// <summary>每场战斗开始（首次抽牌前）：消费编辑器登记的「在游戏中获得卡」清单。</summary>
+    private static void AfterBeforeCombatStart(MegaCrit.Sts2.Core.Runs.IRunState runState,
+        MegaCrit.Sts2.Core.Combat.ICombatState? combatState)
+    {
+        SfGrant.ConsumeAtCombatStart(runState, combatState);
     }
 
     /// <summary>ModelDb.Init 前缀：扫描卡包 + 生成类型。不注册（注册统一在后缀，幂等）。</summary>

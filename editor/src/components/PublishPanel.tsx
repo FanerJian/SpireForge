@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, pickDirectory, pickUploaderExe } from '../lib/tauri';
 import { useStore } from '../lib/store';
+import { cardEntry } from '../lib/types';
 
 function SectionTitle({ text }: { text: string }) {
   return (
@@ -128,6 +129,19 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     showToast('上传器路径已保存');
   };
 
+  /** 「在游戏中获得卡」：整包登记进 Runtime 拿卡清单，下一场战斗开始时发放 */
+  const doGrantAll = async () => {
+    if (!meta) return;
+    try {
+      await persistAll();
+      const entries = cards.map((c) => cardEntry(meta.pack_id, c.id));
+      const msg = await api.queueCardGrant(entries);
+      showToast(`${msg}；下一场战斗开始时加入抽牌堆（游戏未启动则启动后生效）`);
+    } catch (e) {
+      showToast('登记失败：' + String(e));
+    }
+  };
+
   const inputCls =
     'w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-sm text-slate-200 outline-none focus:border-amber-400/60';
 
@@ -179,13 +193,23 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
           >
             一键安装到游戏
           </button>
-          <button
-            onClick={doExport}
-            disabled={busy || cards.length === 0}
-            className="mt-2 w-full rounded-lg border border-white/15 bg-white/[0.04] py-2.5 text-sm font-semibold text-slate-200 transition hover:border-white/30 disabled:opacity-40"
-          >
-            导出卡包（.pck + 清单，发给朋友手动装）
-          </button>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              onClick={doGrantAll}
+              disabled={busy || cards.length === 0}
+              title="把本卡包全部卡登记进 Runtime 拿卡清单：下一场战斗开始时自动加入抽牌堆（游戏未启动则启动后生效）"
+              className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 py-2.5 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-40"
+            >
+              在游戏中获得全部卡（测试）
+            </button>
+            <button
+              onClick={doExport}
+              disabled={busy || cards.length === 0}
+              className="rounded-lg border border-white/15 bg-white/[0.04] py-2.5 text-sm font-semibold text-slate-200 transition hover:border-white/30 disabled:opacity-40"
+            >
+              导出卡包（.pck + 清单）
+            </button>
+          </div>
         </div>
 
         {/* ---- Steam 工坊：折叠，避免干扰只想本地试玩的用户 ---- */}

@@ -560,7 +560,7 @@ SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
                     </>
                   )}
                   {('props' in e) && (
-                    <label className="ml-2 flex items-center gap-1.5 text-xs text-slate-400">
+                    <label className="ml-2 flex items-center gap-1.5 text-xs text-slate-400" title="勾选后不吃属性 buff 加成（伤害的力量 / 格挡的敏捷）">
                       <input
                         type="checkbox"
                         checked={(e as { props: string[] }).props.includes('Unpowered')}
@@ -570,7 +570,7 @@ SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
                           patch(i, { props } as Partial<EffectDef>);
                         }}
                       />
-                      不受力量影响
+                      不受 buff 影响
                     </label>
                   )}
                 </div>
@@ -924,7 +924,7 @@ export default function PropertyPanel() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {tab === 'basic' && (
           <div className="space-y-3">
             <VanillaSection card={card} />

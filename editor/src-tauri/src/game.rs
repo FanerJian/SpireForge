@@ -110,3 +110,58 @@ pub fn validate_game_dir(dir: &str) -> bool {
         .join("data_sts2_windows_x86_64/sts2.dll")
         .exists()
 }
+
+/// 「一键在游戏中获得卡」：把 Entry 清单合并写入 Runtime mod 目录的 sf_grant.json，
+/// Runtime 在下一场战斗开始（首次抽牌前）消费一次——战斗中加入抽牌堆，
+/// 非战斗加入牌组，然后删除文件。返回 (登记总数, 本次新增数) 文案。
+pub fn queue_card_grant(entries: Vec<String>) -> Result<String, String> {
+    let settings = load_settings();
+    if settings.game_dir.is_empty() {
+        return Err("未配置游戏目录".into());
+    }
+    let runtime_dir = PathBuf::from(&settings.game_dir)
+        .join("mods")
+        .join("SpireForgeRuntime");
+    if !runtime_dir.is_dir() {
+        return Err("游戏 mods 里还没有 SpireForgeRuntime，请先在发布面板「一键安装到游戏」".into());
+    }
+    let path = runtime_dir.join("sf_grant.json");
+
+    // 合并已有清单（保留顺序、去重）
+    let mut merged: Vec<String> = Vec::new();
+    if let Ok(raw) = fs::read_to_string(&path) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(arr) = v.get("entries").and_then(|e| e.as_array()) {
+                for e in arr {
+                    if let Some(s) = e.as_str() {
+                        if !s.is_empty() {
+                            merged.push(s.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut added = 0usize;
+    for e in entries {
+        let e = e.trim().to_uppercase();
+        if !e.is_empty() && !merged.contains(&e) {
+            merged.push(e);
+            added += 1;
+        }
+    }
+    let payload = serde_json::json!({ "entries": merged });
+    let tmp = runtime_dir.join("sf_grant.json.tmp");
+    fs::write(&tmp, serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    // Windows rename 覆盖已有文件会失败，先删旧文件
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "已登记 {} 张卡（本次新增 {}）",
+        merged.len(),
+        added
+    ))
+}

@@ -34,6 +34,8 @@ export const api = {
   writeFile: (path: string, content: string) => invoke<void>('write_text_file', { path, content }),
   buildPack: (outDir: string, version: string) => invoke<string>('build_pack', { outDir, version }),
   installToGame: (version: string) => invoke<string>('install_to_game', { version }),
+  /** 登记到 Runtime 拿卡清单：下一场战斗开始时把卡加进抽牌堆/牌组 */
+  queueCardGrant: (entries: string[]) => invoke<string>('queue_card_grant', { entries }),
   /** 发布预检：Entry 冲突 / vanilla_id 重复 / 空 handler / 缺失文案等问题清单 */
   validateProject: () => invoke<string[]>('validate_project'),
   setUploaderPath: (path: string) => invoke<void>('set_uploader_path', { path }),

@@ -102,8 +102,18 @@ function PreviewPane() {
     }
   };
 
+  const doGrant = async () => {
+    if (!card || !meta) return;
+    try {
+      const msg = await api.queueCardGrant([cardEntry(meta.pack_id, card.id)]);
+      showToast(`${msg}；下一场战斗开始时加入抽牌堆（游戏未启动则启动后生效）`);
+    } catch (e) {
+      showToast('登记失败：' + String(e));
+    }
+  };
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-5 overflow-auto bg-[radial-gradient(ellipse_at_center,#1a1a26_0%,#0c0c12_70%)] p-6">
+    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-5 overflow-auto bg-[radial-gradient(ellipse_at_center,#1a1a26_0%,#0c0c12_70%)] p-6">
       {card && meta ? (
         <>
           <CardPreview card={card} packId={meta.pack_id} portraitUrl={portraitUrl} upgraded={upgraded} />
@@ -113,6 +123,10 @@ function PreviewPane() {
               预览升级数值
             </label>
             <span className="font-mono">{cardEntry(meta.pack_id, card.id)}</span>
+            <button onClick={doGrant} title="把这张卡登记进 Runtime 拿卡清单，下一场战斗开始时自动加入抽牌堆（调试/测试用）"
+              className="rounded border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:border-emerald-400/60">
+              在游戏中获得
+            </button>
             <button onClick={doExport} className="rounded border border-white/10 px-2 py-0.5 hover:border-amber-400/50 hover:text-amber-300">
               导出 JSON
             </button>
@@ -166,12 +180,14 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col bg-[#0c0c12] text-slate-200">
       <Toolbar onPublish={() => setPublishing(true)} onSettings={() => setSettingsOpen(true)} />
-      <div className="grid flex-1 grid-cols-[280px_1fr_400px] overflow-hidden">
-        <div className="border-r border-white/10 bg-black/20">
+      <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr_400px] overflow-hidden">
+        <div className="min-h-0 border-r border-white/10 bg-black/20">
           <CardLibrary />
         </div>
-        <PreviewPane />
-        <div className="border-l border-white/10 bg-black/20">
+        <div className="min-h-0">
+          <PreviewPane />
+        </div>
+        <div className="min-h-0 border-l border-white/10 bg-black/20">
           <PropertyPanel />
         </div>
       </div>

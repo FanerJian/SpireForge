@@ -102,7 +102,7 @@ Runtime 应用时机：`OneTimeInitialization.ExecuteEssential` 后缀（模板�
 ### effects（效果清单，按顺序执行）
 | kind | 参数 | 游戏 API | 说明 |
 |---|---|---|---|
-| `damage` | `amount: number`, `props: string[]`, `target?` | `CreatureCmd.Damage` | props：`Move`(受力量修正，默认) / `Unpowered`(不受力量) / `Unblockable`(不可格挡)，可组合 |
+| `damage` | `amount: number`, `props: string[]`, `target?` | `CreatureCmd.Damage` | props：`Move`(受 buff 修正——伤害吃力量、格挡吃敏捷，默认) / `Unpowered`(不受 buff 加成) / `Unblockable`(不可格挡)，可组合 |
 | `block` | `amount`, `props` | `CreatureCmd.GainBlock` | props 同上 |
 | `draw` | `amount: number` | `CardPileCmd.Draw` | |
 | `energy` | `amount: number` | `PlayerCmd.GainEnergy` | |

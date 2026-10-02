@@ -50,6 +50,11 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
 - **中英双语**：zhs/eng 双语文案 + 游戏内本地化合并实测通过
 - **卡牌实时预览**：按官方规格渲染，含升级数值对照与钩子角标
 - **一键安装到游戏** + 导出卡包
+- **一键在游戏中获得卡**（2026-10-02）：编辑器（预览区单卡按钮 / 发布面板整包按钮）把 Entry
+  写进 `mods/SpireForgeRuntime/sf_grant.json`，Runtime 在每场战斗开始（BeforeCombatStart
+  后缀、首次抽牌前，抽牌堆已填充）消费一次——战斗中加入抽牌堆、否则加入牌组，然后删文件；
+  游戏内另有 `sf_grant [ENTRY...]` 控制台命令（自动发现机制注册，DebugOnly，无参数列出
+  全部 Entry）；效果验证闭环 = 编辑卡 → 点一下 → 进战斗拿卡试打
 - **零错误集成**：与 BaseLib/RitsuLib/工坊 mod 共存时，游戏启动无任何 SpireForge 错误
 - **数据安全加固**（2026-10-02）：项目已入 git；编辑/切卡/关窗/发布全程自动保存（多卡
   dirtyIds + 去抖 + beforeunload）；project.json/卡牌/PCK/设置原子写（.tmp+.bak）；卡牌 id

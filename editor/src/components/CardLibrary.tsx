@@ -214,7 +214,7 @@ export default function CardLibrary() {
         </div>
       </div>
 
-      <div className="flex-1 space-y-1.5 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
         {cards.length === 0 && (
           <div className="mt-4 rounded-lg border border-dashed border-white/10 p-4 text-center">
             <div className="mb-3 text-xs text-slate-500">
