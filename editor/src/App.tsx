@@ -3,6 +3,7 @@ import CardLibrary from './components/CardLibrary';
 import CardPreview from './components/CardPreview';
 import PropertyPanel from './components/PropertyPanel';
 import PublishPanel from './components/PublishPanel';
+import ProjectSettingsModal from './components/ProjectSettingsModal';
 import Welcome from './components/Welcome';
 import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
@@ -16,7 +17,7 @@ function Toast({ msg }: { msg: string }) {
   );
 }
 
-function Toolbar({ onPublish }: { onPublish: () => void }) {
+function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings: () => void }) {
   const { meta, dirtyIds, persistAll, closeProject, showToast } = useStore();
   const dirty = dirtyIds.length > 0;
   return (
@@ -40,6 +41,13 @@ function Toolbar({ onPublish }: { onPublish: () => void }) {
         className="rounded-md bg-amber-500/90 px-3 py-1.5 text-xs font-bold text-black transition hover:bg-amber-400"
       >
         发布 / 安装
+      </button>
+      <button
+        onClick={onSettings}
+        title="项目名称 / 作者 / 简介（简介会发布到工坊）"
+        className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
+      >
+        项目设置
       </button>
       <button
         onClick={() => { void closeProject(); }}
@@ -120,6 +128,7 @@ function PreviewPane() {
 export default function App() {
   const { projectRoot, meta, toast, openProject } = useStore();
   const [publishing, setPublishing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('spireforge.lastProject');
@@ -156,7 +165,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-[#0c0c12] text-slate-200">
-      <Toolbar onPublish={() => setPublishing(true)} />
+      <Toolbar onPublish={() => setPublishing(true)} onSettings={() => setSettingsOpen(true)} />
       <div className="grid flex-1 grid-cols-[280px_1fr_400px] overflow-hidden">
         <div className="border-r border-white/10 bg-black/20">
           <CardLibrary />
@@ -167,6 +176,7 @@ export default function App() {
         </div>
       </div>
       {publishing && <PublishPanel onClose={() => setPublishing(false)} />}
+      {settingsOpen && <ProjectSettingsModal onClose={() => setSettingsOpen(false)} />}
       {toast && <Toast msg={toast} />}
     </div>
   );

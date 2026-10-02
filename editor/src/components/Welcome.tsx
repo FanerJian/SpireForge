@@ -84,7 +84,11 @@ export default function Welcome() {
     <div className="flex h-full items-center justify-center bg-gradient-to-b from-[#12121c] to-[#0a0a10]">
       <div className="w-[440px] rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl">
         <div className="mb-1 text-2xl font-black tracking-wide text-amber-300">SpireForge 尖塔锻炉</div>
-        <div className="mb-6 text-sm text-slate-500">杀戮尖塔 2 · 现代化卡牌编辑器</div>
+        <div className="mb-3 text-sm text-slate-500">杀戮尖塔 2 · 现代化卡牌编辑器</div>
+        <div className="mb-5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+          三步上手：① 新建卡包项目 → ② 「+ 新卡牌」挑个模板改数值 →
+          ③ 顶栏「发布 / 安装」一键装进游戏。想改原版卡就点「原版卡」。
+        </div>
 
         <button
           onClick={detectGame}

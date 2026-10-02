@@ -229,3 +229,157 @@ export const pascalToSnake = slugify;
 export const LANG_LABEL: Record<string, string> = {
   zhs: '简体中文', eng: 'English',
 };
+
+/** 常用关键词点选（与游戏 CardKeyword 枚举一致；其余值仍可自由输入） */
+export const KEYWORD_CHIPS: { k: string; label: string }[] = [
+  { k: 'Innate', label: '开局就在手牌' },
+  { k: 'Retain', label: '回合结束保留手牌' },
+  { k: 'Ethereal', label: '虚无：回合结束自动消耗' },
+  { k: 'Exhaust', label: '消耗：打出后移除' },
+  { k: 'Unplayable', label: '不可打出' },
+  { k: 'Sly', label: '狡诈' },
+  { k: 'Eternal', label: '永恒' },
+];
+
+/** 常用力量中文名（描述生成用；未收录的显示原名） */
+export const POWER_ZH: Record<string, string> = {
+  Vulnerable: '易伤', Weak: '虚弱', Frail: '脆弱', Poison: '中毒', Doom: '末日',
+  Strength: '力量', Dexterity: '敏捷', Focus: '集中', Artifact: '人工制品',
+  Intangible: '无形', Thorns: '荆棘', Barricade: '壁垒', Regenerate: '再生',
+};
+
+const PILE_ZH: Record<string, string> = { draw: '抽牌堆', hand: '手牌', discard: '弃牌堆' };
+
+/** 按打出效果生成中/英描述（钩子与 custom 走字面文本）；无打出效果时返回 null */
+export function composeDescription(card: CardDef): { zhs: string; eng: string } | null {
+  const z: string[] = [];
+  const e: string[] = [];
+  for (const fx of card.effects) {
+    switch (fx.kind) {
+      case 'damage': z.push('造成 {Damage} 点伤害。'); e.push('Deal {Damage} damage.'); break;
+      case 'block': z.push('获得 {Block} 点格挡。'); e.push('Gain {Block} Block.'); break;
+      case 'draw': z.push('抽 {Cards} 张牌。'); e.push('Draw {Cards} card(s).'); break;
+      case 'energy': z.push('获得 {Energy} 点能量。'); e.push('Gain {Energy} Energy.'); break;
+      case 'heal': z.push('回复 {Heal} 点生命。'); e.push('Heal {Heal} HP.'); break;
+      case 'gold':
+        z.push(fx.amount >= 0 ? `获得 ${fx.amount} 金币。` : `失去 ${-fx.amount} 金币。`);
+        e.push(`Gain ${fx.amount} gold.`);
+        break;
+      case 'discard': z.push(`随机弃置 ${fx.amount} 张手牌。`); e.push(`Discard ${fx.amount} random card(s).`); break;
+      case 'exhaust': z.push(`随机消耗 ${fx.amount} 张手牌。`); e.push(`Exhaust ${fx.amount} random card(s).`); break;
+      case 'lose_hp': z.push(`失去 ${fx.amount} 点生命。`); e.push(`Lose ${fx.amount} HP.`); break;
+      case 'max_hp': z.push(`生命上限 +${fx.amount}。`); e.push(`Gain ${fx.amount} Max HP.`); break;
+      case 'power': {
+        const zh = POWER_ZH[fx.power] ?? fx.power;
+        z.push(`施加 ${fx.amount} 层${zh}。`);
+        e.push(`Apply ${fx.amount} ${fx.power}.`);
+        break;
+      }
+      case 'spawn': {
+        const pile = PILE_ZH[fx.pile ?? 'draw'] ?? '抽牌堆';
+        z.push(`将 ${Math.max(1, fx.amount)} 张「${fx.card_entry || '?'}」置入${pile}。`);
+        e.push(`Put ${Math.max(1, fx.amount)} ${fx.card_entry || '?'} into your ${fx.pile ?? 'draw'} pile.`);
+        break;
+      }
+      case 'custom': z.push(`【${fx.handler || '自定义效果'}】`); e.push(`[custom:${fx.handler || '?'}]`); break;
+    }
+  }
+  if (z.length === 0) return null;
+  return { zhs: z.join('\n'), eng: e.join('\n') };
+}
+
+/** 新建卡牌模板：两三下点击得到一张能进游戏的卡，再改数值即可 */
+export interface CardTemplate {
+  id: string;
+  label: string;
+  desc: string;
+  make: (id: string, seq: number) => CardDef;
+}
+
+export const CARD_TEMPLATES: CardTemplate[] = [
+  {
+    id: 'blank', label: '空白卡', desc: '全部自己填',
+    make: (id) => newCard(id),
+  },
+  {
+    id: 'strike', label: '打击式攻击', desc: '1 费 · 造成伤害 · 升级 +3',
+    make: (id, seq) => ({
+      ...newCard(id),
+      name: { zhs: `打击 ${seq}`, eng: `Strike ${seq}` },
+      card_type: 'Attack',
+      effects: [{ kind: 'damage', amount: 6, props: ['Move'] }],
+      upgrades: { damage: 3, block: 0, draw: 0, energy: 0, heal: 0, keywords: [] },
+      description: { zhs: '造成 {Damage} 点伤害。', eng: 'Deal {Damage} damage.' },
+    }),
+  },
+  {
+    id: 'defend', label: '防御式技能', desc: '1 费 · 获得格挡 · 升级 +3',
+    make: (id, seq) => ({
+      ...newCard(id),
+      name: { zhs: `防御 ${seq}`, eng: `Defend ${seq}` },
+      card_type: 'Skill',
+      target: 'Self',
+      effects: [{ kind: 'block', amount: 5, props: ['Move'] }],
+      upgrades: { damage: 0, block: 3, draw: 0, energy: 0, heal: 0, keywords: [] },
+      description: { zhs: '获得 {Block} 点格挡。', eng: 'Gain {Block} Block.' },
+    }),
+  },
+  {
+    id: 'draw', label: '过牌技能', desc: '0 费 · 抽牌 · 升级多抽 1',
+    make: (id, seq) => ({
+      ...newCard(id),
+      name: { zhs: `洞察 ${seq}`, eng: `Insight ${seq}` },
+      card_type: 'Skill',
+      target: 'None',
+      cost: 0,
+      effects: [{ kind: 'draw', amount: 1 }],
+      upgrades: { damage: 0, block: 0, draw: 1, energy: 0, heal: 0, keywords: [] },
+      description: { zhs: '抽 {Cards} 张牌。', eng: 'Draw {Cards} card(s).' },
+    }),
+  },
+  {
+    id: 'hybrid', label: '攻防一体', desc: '1 费 · 伤害 + 格挡',
+    make: (id, seq) => ({
+      ...newCard(id),
+      name: { zhs: `攻防 ${seq}`, eng: `Parry ${seq}` },
+      card_type: 'Skill',
+      effects: [
+        { kind: 'damage', amount: 4, props: ['Move'] },
+        { kind: 'block', amount: 4, props: ['Move'] },
+      ],
+      upgrades: { damage: 2, block: 3, draw: 0, energy: 0, heal: 0, keywords: [] },
+      description: { zhs: '造成 {Damage} 点伤害。\n获得 {Block} 点格挡。', eng: 'Deal {Damage} damage.\nGain {Block} Block.' },
+    }),
+  },
+  {
+    id: 'power', label: '增益能力', desc: '1 费 · 战斗内获得增益',
+    make: (id, seq) => ({
+      ...newCard(id),
+      name: { zhs: `强化 ${seq}`, eng: `Blessing ${seq}` },
+      card_type: 'Power',
+      target: 'Self',
+      effects: [{ kind: 'power', amount: 2, power: 'Strength', target: 'self' }],
+      description: { zhs: '获得 2 层力量。', eng: 'Gain 2 Strength.' },
+    }),
+  },
+  {
+    id: 'curse', label: '诅咒牌', desc: '不可打出 · 不进升级',
+    make: (id, seq) => ({
+      ...newCard(id),
+      name: { zhs: `诅咒 ${seq}`, eng: `Curse ${seq}` },
+      card_type: 'Curse',
+      rarity: 'Curse',
+      target: 'None',
+      cost: -1,
+      pool: 'curse',
+      keywords: ['Unplayable'],
+      max_upgrade_level: 0,
+      description: { zhs: '不可打出。', eng: 'Unplayable.' },
+    }),
+  },
+];
+
+export function makeCardFromTemplate(tplId: string, id: string, seq: number): CardDef | null {
+  const tpl = CARD_TEMPLATES.find((t) => t.id === tplId);
+  return tpl ? tpl.make(id, seq) : null;
+}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api } from './tauri';
-import { newCard, type CardDef, type EditorSettings, type ProjectMeta } from './types';
+import { makeCardFromTemplate, newCard, type CardDef, type EditorSettings, type ProjectMeta } from './types';
 
 // 自动保存去抖：停止编辑 800ms 后落盘；切卡/关窗/发布另有兜底
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -23,7 +23,9 @@ interface EditorStore {
   updateCard: (patch: Partial<CardDef>) => void;
   /** 保存全部未落盘的修改（切卡前/发布前/手动保存统一入口） */
   persistAll: () => Promise<void>;
-  createCard: () => Promise<void>;
+  createCard: (tplId?: string) => Promise<void>;
+  /** 以现有卡为底复制一张（新 id，名称加「副本」） */
+  duplicateCard: (sourceId: string) => Promise<void>;
   removeCard: (id: string) => Promise<void>;
   renameCard: (oldId: string, newId: string) => Promise<void>;
   updateMeta: (patch: Partial<ProjectMeta>) => Promise<void>;
@@ -108,7 +110,7 @@ export const useStore = create<EditorStore>((set, get) => ({
     if (failed.length > 0) get().showToast('部分修改保存失败，请重试');
   },
 
-  createCard: async () => {
+  createCard: async (tplId) => {
     const { meta, cards } = get();
     if (!meta) return;
     let n = cards.length + 1;
@@ -117,7 +119,33 @@ export const useStore = create<EditorStore>((set, get) => ({
       n += 1;
       id = `card_${n}`;
     }
-    const card = { ...newCard(id), name: { zhs: `新卡牌 ${n}`, eng: `New Card ${n}` } };
+    const card = tplId
+      ? makeCardFromTemplate(tplId, id, n)
+      : { ...newCard(id), name: { zhs: `新卡牌 ${n}`, eng: `New Card ${n}` } };
+    if (!card) return;
+    await api.saveCard(card);
+    const updatedMeta = { ...meta, cards: [...meta.cards, id] };
+    await api.updateProjectMeta(updatedMeta);
+    set({ meta: updatedMeta, cards: [...cards, card], selectedId: id, dirtyIds: [] });
+  },
+
+  duplicateCard: async (sourceId) => {
+    const { meta, cards } = get();
+    if (!meta) return;
+    const src = cards.find((c) => c.id === sourceId);
+    if (!src) return;
+    let n = cards.length + 1;
+    let id = `${sourceId}_copy`;
+    while (cards.some((c) => c.id === id)) {
+      id = `${sourceId}_copy_${n}`;
+      n += 1;
+    }
+    // CardDef 是纯 JSON 数据，深拷贝用 JSON 往返最稳妥
+    const card: CardDef = {
+      ...JSON.parse(JSON.stringify(src)) as CardDef,
+      id,
+      name: { zhs: (src.name.zhs || src.id) + ' 副本', eng: (src.name.eng || src.id) + ' Copy' },
+    };
     await api.saveCard(card);
     const updatedMeta = { ...meta, cards: [...meta.cards, id] };
     await api.updateProjectMeta(updatedMeta);

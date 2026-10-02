@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import {
-  CARD_TYPE_LABEL, HOOK_LABEL, POOL_LABEL, RARITY_LABEL, TARGET_LABEL,
-  cardEntry, effectsFromVanillaVars,
+  CARD_TYPE_LABEL, HOOK_LABEL, KEYWORD_CHIPS, POOL_LABEL, POWER_ZH, RARITY_LABEL, TARGET_LABEL,
+  cardEntry, composeDescription, effectsFromVanillaVars,
   type CardDef, type CardType, type EffectDef, type HookField, type Pool, type TargetType,
   type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
@@ -49,6 +49,27 @@ const UPGRADEABLE = ['damage', 'block', 'draw', 'energy', 'heal'];
 
 /** 需要玩家选择上下文的效果种类（on_enter_combat 不可用） */
 const NEEDS_CHOICE = ['damage', 'draw', 'lose_hp', 'power', 'discard', 'exhaust'];
+
+/** 效果目录分组：常用 / 进阶与扩展 */
+const CORE_KINDS = ['damage', 'block', 'draw', 'energy', 'heal'];
+const EXTRA_KINDS = ['power', 'discard', 'exhaust', 'gold', 'lose_hp', 'max_hp', 'spawn', 'custom'];
+
+/** 「按效果生成描述」：composeDescription 的 UI 包装（有内容先确认） */
+function useGenDescription() {
+  const { updateCard, showToast } = useStore();
+  return (card: CardDef) => {
+    const composed = composeDescription(card);
+    if (!composed) {
+      showToast('当前卡牌没有可生成描述的打出效果');
+      return;
+    }
+    if (card.description.zhs.trim() || card.description.eng.trim()) {
+      if (!confirm('描述已有内容，用按效果生成的文本覆盖（中/英都会覆盖）？')) return;
+    }
+    updateCard({ description: composed });
+    showToast('已按效果生成描述');
+  };
+}
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -331,6 +352,7 @@ function ParamsEditor({ value, onChange }: {
 
 function EffectsTab({ card }: { card: CardDef }) {
   const { updateCard } = useStore();
+  const genDesc = useGenDescription();
   const [trigger, setTrigger] = useState<Trigger>('play');
   const u = card.upgrades;
 
@@ -384,7 +406,18 @@ function EffectsTab({ card }: { card: CardDef }) {
           options={TRIGGER_OPTIONS.map((t) => ({ v: t.v, label: t.label }))}
           onChange={setTrigger}
         />
-        <div className="mt-1 text-[11px] text-slate-600">{triggerMeta.hint}</div>
+        <div className="mt-1 flex items-baseline justify-between gap-2">
+          <span className="text-[11px] text-slate-600">{triggerMeta.hint}</span>
+          {isPlay && (
+            <button
+              onClick={() => genDesc(card)}
+              title="按当前打出效果生成中/英描述文本"
+              className="shrink-0 text-[11px] text-sky-300/80 underline hover:text-sky-200"
+            >
+              ✨ 按效果生成描述
+            </button>
+          )}
+        </div>
       </Field>
 
       {enterCombatUnsupported && (
@@ -499,6 +532,11 @@ SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
                       <datalist id="sf-common-powers">
                         {COMMON_POWERS.map((p) => <option key={p} value={p} />)}
                       </datalist>
+                      {POWER_ZH[(e as { power: string }).power] && (
+                        <span className="shrink-0 text-[10px] text-slate-600">
+                          {POWER_ZH[(e as { power: string }).power]}
+                        </span>
+                      )}
                     </>
                   )}
                   {e.kind === 'spawn' && (
@@ -594,16 +632,36 @@ SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
           </div>
         );
       })}
-      <div className="flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
-        {Object.entries(EFFECT_META).map(([k, m]) => (
-          <button
-            key={k}
-            onClick={() => add(k)}
-            className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/50 hover:text-amber-300"
-          >
-            + {m.label}
-          </button>
-        ))}
+      <div className="space-y-2 border-t border-white/10 pt-3">
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">常用</div>
+          <div className="flex flex-wrap gap-1.5">
+            {CORE_KINDS.map((k) => (
+              <button
+                key={k}
+                onClick={() => add(k)}
+                className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/50 hover:text-amber-300"
+              >
+                + {EFFECT_META[k].label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">进阶与扩展</div>
+          <div className="flex flex-wrap gap-1.5">
+            {EXTRA_KINDS.map((k) => (
+              <button
+                key={k}
+                onClick={() => add(k)}
+                title={EFFECT_META[k].desc}
+                className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/50 hover:text-amber-300"
+              >
+                + {EFFECT_META[k].label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       {isPlay && (
         <Field label="最高升级等级" hint="诅咒/状态通常为 0">
@@ -740,6 +798,7 @@ function LookTab({ card }: { card: CardDef }) {
 
 function LocTab({ card }: { card: CardDef }) {
   const { meta, updateCard } = useStore();
+  const genDesc = useGenDescription();
   const [lang, setLang] = useState<'zhs' | 'eng'>('zhs');
   const insert = (s: string) => {
     const cur = card.description[lang] ?? '';
@@ -756,7 +815,16 @@ function LocTab({ card }: { card: CardDef }) {
         <input className={inputCls} value={card.name[lang]}
           onChange={(e) => updateCard({ name: { ...card.name, [lang]: e.target.value } })} />
       </Field>
-      <Field label="描述" hint={`键 …${'.description'}`}>
+      <Field label="描述" hint={`键 ${cardEntry(meta?.pack_id ?? '', card.id)}.description`}>
+        <div className="mb-1.5 flex justify-end">
+          <button
+            onClick={() => genDesc(card)}
+            title="按打出效果生成中/英描述，占位符自动对应数值变量"
+            className="text-[11px] text-sky-300/80 underline hover:text-sky-200"
+          >
+            ✨ 从效果生成
+          </button>
+        </div>
         <textarea
           className={inputCls + ' h-28 resize-none font-mono'}
           value={card.description[lang]}
@@ -783,7 +851,7 @@ function LocTab({ card }: { card: CardDef }) {
 }
 
 export default function PropertyPanel() {
-  const { cards, selectedId, updateCard, removeCard, persistAll, dirtyIds, showToast } = useStore();
+  const { cards, selectedId, updateCard, removeCard, duplicateCard, persistAll, dirtyIds, showToast } = useStore();
   const [tab, setTab] = useState<Tab>('basic');
   const card = cards.find((c) => c.id === selectedId);
   const dirty = dirtyIds.length > 0;
@@ -832,6 +900,16 @@ export default function PropertyPanel() {
           }`}
         >
           {dirty ? `保存 ●（${dirtyIds.length}）` : '已保存'}
+        </button>
+        <button
+          onClick={async () => {
+            await duplicateCard(card.id);
+            showToast('已复制，新卡在副本上改');
+          }}
+          title="以这张卡为底复制一张新卡（id 自动加 _copy）"
+          className="rounded-md px-2.5 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200"
+        >
+          复制
         </button>
         <button
           onClick={async () => {
@@ -928,7 +1006,32 @@ export default function PropertyPanel() {
               </div>
             </div>
 
-            <Field label="关键词（逗号分隔，如 Innate, Exhaust）">
+            <Field label="关键词" hint="点选常用项；其余关键词直接在输入框里加">
+              <div className="mb-1.5 flex flex-wrap gap-1">
+                {KEYWORD_CHIPS.map(({ k, label }) => {
+                  const on = card.keywords.includes(k);
+                  return (
+                    <button
+                      key={k}
+                      title={label}
+                      onClick={() =>
+                        updateCard({
+                          keywords: on
+                            ? card.keywords.filter((x) => x !== k)
+                            : [...card.keywords, k],
+                        })
+                      }
+                      className={`rounded-md px-2 py-0.5 font-mono text-[11px] transition ${
+                        on
+                          ? 'bg-amber-500/90 text-black'
+                          : 'border border-white/10 bg-black/30 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                      }`}
+                    >
+                      {k}
+                    </button>
+                  );
+                })}
+              </div>
               <input className={inputCls} value={card.keywords.join(', ')}
                 onChange={(e) => updateCard({ keywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
             </Field>
