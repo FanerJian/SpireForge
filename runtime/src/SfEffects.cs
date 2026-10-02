@@ -70,7 +70,15 @@ public static class SfEffects
     /// <summary>执行自定义效果。返回 false 表示该名字未注册（调用方负责报错）。</summary>
     public static async Task<bool> TryInvoke(SfEffectContext ctx)
     {
-        if (!Handlers.TryGetValue(ctx.Effect.KindName, out var handler))
+        // 编辑器保存的自定义效果是 {"kind":"custom","handler":"名字"}；
+        // 文档风格则是 {"kind":"名字"} 直接把 kind 当处理器名。两种都接受。
+        var key = ctx.Effect.KindName;
+        if (string.Equals(key, "custom", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(ctx.Effect.Handler))
+        {
+            key = ctx.Effect.Handler;
+        }
+        if (!Handlers.TryGetValue(key, out var handler))
         {
             return false;
         }
@@ -81,7 +89,7 @@ public static class SfEffects
         }
         catch (Exception e)
         {
-            Log.Error($"SPIREFORGE: custom effect '{ctx.Effect.KindName}' failed on {ctx.Card.Id}: {e}");
+            Log.Error($"SPIREFORGE: custom effect '{key}' failed on {ctx.Card.Id}: {e}");
             return true;
         }
     }

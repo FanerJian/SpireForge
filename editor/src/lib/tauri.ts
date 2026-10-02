@@ -9,6 +9,8 @@ export const api = {
 
   newProject: (path: string, packId: string, name: string, author: string) =>
     invoke<void>('new_project', { path, packId, name, author }),
+  /** 创建内置示例卡包（5 张演示卡：基础模板/力量/自定义效果咔咔/钩子 + 占位立绘） */
+  createDemoProject: (path: string) => invoke<void>('create_demo_project', { path }),
   openProject: (path: string) =>
     invoke<[ProjectMeta, CardDef[]]>('open_project', { path }),
 

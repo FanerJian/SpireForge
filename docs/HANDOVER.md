@@ -70,6 +70,17 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
   枚举 7 项 chips + 自由输入）；卡牌库搜索/类型筛选/立绘缩略图（downscale 缓存）；发布
   面板分区（本地使用置顶，Steam 工坊折叠）；项目设置弹窗（名称/作者/简介，此前建包后
   无编辑入口）；欢迎页三步引导；弹窗 Esc 关闭
+- **撤销/重做**（2026-10-02）：自动保存 ≠ 不能反悔——属性修改进会话级快照栈
+  （同卡 800ms 内连续编辑合并为一步，上限 100），工具栏 ↶/↷ 按钮 + Ctrl+Z/Ctrl+Y
+  （Ctrl+Shift+Z 同义；输入框内 Ctrl+Z 仍是原生文字撤销）；撤销后的状态照常落盘，
+  重做分支保留；改 id/删卡时栈同步改写
+- **内置示例卡包**（2026-10-02）：欢迎页「创建示例卡包」一键生成 5 张演示卡项目
+  （pack_id=Demo，Entry 前缀 SF_）：示例·打击/防御（模板基础卡）、示例·力量（power
+  效果 target=self 5 层）、示例·咔咔（**自定义效果** kind=custom+handler=demo_kaka，
+  Runtime 常驻注册该处理器 = 易伤 2 + 虚弱 2）、示例·回响（on_exhaust 钩子 + Exhaust）；
+  占位立绘由 `tools/make-demo-portraits.mjs` 生成（纯 Node PNG 编码）内嵌二进制。
+  编辑器自定义效果曾有跨端 bug：TryInvoke 按 kind 名查注册表，编辑器保存的
+  {"kind":"custom","handler":"X"} 永远查不到——已修（handler 优先）
 
 ### 部分完成 / 待办 ⏳
 

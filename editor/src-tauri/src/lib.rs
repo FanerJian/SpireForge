@@ -1,3 +1,4 @@
+mod demo;
 mod game;
 mod import;
 mod model;
@@ -42,6 +43,14 @@ fn set_game_dir(state: State<AppState>, dir: String) -> Result<(), String> {
 #[tauri::command]
 fn queue_card_grant(entries: Vec<String>) -> Result<String, String> {
     game::queue_card_grant(entries)
+}
+
+/// 在选定目录创建内置示例卡包（5 张演示卡 + 占位立绘）
+#[tauri::command]
+fn create_demo_project(path: String, state: State<AppState>) -> Result<(), String> {
+    demo::create_demo_project(&path)?;
+    *state.project_root.lock().unwrap() = Some(path);
+    Ok(())
 }
 
 #[tauri::command]
@@ -390,6 +399,7 @@ pub fn run() {
             get_settings,
             set_game_dir,
             queue_card_grant,
+            create_demo_project,
             new_project,
             open_project,
             get_project_meta,

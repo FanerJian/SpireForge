@@ -18,7 +18,7 @@ function Toast({ msg }: { msg: string }) {
 }
 
 function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings: () => void }) {
-  const { meta, dirtyIds, persistAll, closeProject, showToast } = useStore();
+  const { meta, dirtyIds, persistAll, closeProject, showToast, undoStack, redoStack, undo, redo } = useStore();
   const dirty = dirtyIds.length > 0;
   return (
     <div className="flex h-12 items-center gap-3 border-b border-white/10 bg-black/30 px-4">
@@ -27,6 +27,22 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
         <span className="text-xs text-slate-600">{meta?.name}</span>
       </div>
       <div className="flex-1" />
+      <button
+        onClick={undo}
+        disabled={undoStack.length === 0}
+        title="撤销最近一次卡牌修改（Ctrl+Z；输入框内 Ctrl+Z 仍是文字撤销）"
+        className="rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+      >
+        ↶ 撤销
+      </button>
+      <button
+        onClick={redo}
+        disabled={redoStack.length === 0}
+        title="重做被撤销的修改（Ctrl+Y）"
+        className="rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+      >
+        ↷ 重做
+      </button>
       <button
         onClick={async () => { await persistAll(); showToast('已保存'); }}
         disabled={!dirty}
@@ -166,6 +182,24 @@ export default function App() {
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
+  // 撤销/重做快捷键：输入框/文本域内让位给原生文字撤销
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const el = e.target as HTMLElement | null;
+      const inText = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+      if (inText) return;
+      e.preventDefault();
+      const s = useStore.getState();
+      if (key === 'z' && !e.shiftKey) s.undo();
+      else s.redo(); // Ctrl+Y 或 Ctrl+Shift+Z
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   if (!projectRoot || !meta) {

@@ -12,6 +12,7 @@ export default function Welcome() {
   const [name, setName] = useState('我的卡包');
   const [author, setAuthor] = useState('');
   const [busy, setBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
   const [gameDirHint, setGameDirHint] = useState(settings.game_dir ? '' : '未配置游戏目录');
   const packIdOk = PACK_ID_RE.test(packId.trim());
 
@@ -80,6 +81,21 @@ export default function Welcome() {
     }
   };
 
+  /** 创建内置示例卡包并直接打开（新人推荐路径） */
+  const doDemo = async () => {
+    const dir = await pickDirectory();
+    if (!dir) return;
+    setDemoBusy(true);
+    try {
+      await api.createDemoProject(dir);
+      await openProject(dir);
+    } catch (e) {
+      alert('创建示例卡包失败：' + String(e));
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
   return (
     <div className="flex h-full items-center justify-center bg-gradient-to-b from-[#12121c] to-[#0a0a10]">
       <div className="w-[440px] rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl">
@@ -112,6 +128,14 @@ export default function Welcome() {
               className="w-full rounded-lg bg-amber-500/90 py-3 text-sm font-bold text-black transition hover:bg-amber-400"
             >
               新建卡包项目
+            </button>
+            <button
+              onClick={doDemo}
+              disabled={demoBusy}
+              title="创建一个内置示例项目：打击/防御/力量/咔咔(自定义效果)/回响(钩子) 5 张演示卡 + 占位立绘"
+              className="w-full rounded-lg border border-emerald-400/30 bg-emerald-500/10 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-40"
+            >
+              创建示例卡包（先看看能做什么）
             </button>
             <button
               onClick={doOpen}

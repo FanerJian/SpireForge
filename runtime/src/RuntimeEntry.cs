@@ -47,6 +47,7 @@ public static class RuntimeEntry
         // 原始 PNG 加载器（卡面立绘不经 Godot 导入管线）
         SfPngLoader.Instance = new SfPngLoader();
         Godot.ResourceLoader.AddResourceFormatLoader(SfPngLoader.Instance, true);
+        RegisterDemoEffects();
 
         var harmony = new Harmony(HarmonyId);
         harmony.Patch(
@@ -314,6 +315,24 @@ public static class RuntimeEntry
             {
                 await CreatureCmd.Damage(ctx.Choice, ctx.Target, ctx.Effect.Amount, ValueProp.Move, ctx.Card, ctx.Play);
             }
+        });
+    }
+
+    /// <summary>示例卡包的自定义效果处理器（随 Runtime 常驻注册，不要求调试模式）。
+    /// demo_kaka = 「咔咔」：给目标糊一脸易伤 2 + 虚弱 2 —— 演示 SfEffects 注册表全链路，
+    /// 真实第三方扩展写法见 docs/RUNTIME-MOD.md。</summary>
+    private static void RegisterDemoEffects()
+    {
+        SpireForge.Api.SfEffects.Register("demo_kaka", async ctx =>
+        {
+            if (ctx.Choice == null || ctx.Target == null)
+            {
+                return; // 无玩家选择上下文的时机（战斗开始钩子等）不执行
+            }
+            await PowerCmd.Apply<MegaCrit.Sts2.Core.Models.Powers.VulnerablePower>(
+                ctx.Choice, ctx.Target, 2m, null, ctx.Card, false);
+            await PowerCmd.Apply<MegaCrit.Sts2.Core.Models.Powers.WeakPower>(
+                ctx.Choice, ctx.Target, 2m, null, ctx.Card, false);
         });
     }
 

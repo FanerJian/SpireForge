@@ -5,6 +5,15 @@ import { makeCardFromTemplate, newCard, type CardDef, type EditorSettings, type 
 // 自动保存去抖：停止编辑 800ms 后落盘；切卡/关窗/发布另有兜底
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** 撤销栈条目：修改前的整卡快照。同一张卡 800ms 内的连续编辑合并为一步。 */
+interface UndoEntry {
+  cardId: string;
+  before: CardDef;
+  at: number;
+}
+
+const UNDO_LIMIT = 100;
+
 interface EditorStore {
   projectRoot: string | null;
   meta: ProjectMeta | null;
@@ -13,6 +22,9 @@ interface EditorStore {
   settings: EditorSettings;
   /** 未落盘的卡牌 id（多卡可同时处于未保存状态） */
   dirtyIds: string[];
+  /** 撤销/重做栈（会话级；按卡记录修改前快照） */
+  undoStack: UndoEntry[];
+  redoStack: UndoEntry[];
   toast: string | null;
 
   showToast: (msg: string) => void;
@@ -21,6 +33,10 @@ interface EditorStore {
   openProject: (path: string) => Promise<void>;
   select: (id: string | null) => void;
   updateCard: (patch: Partial<CardDef>) => void;
+  /** 撤销最近一次卡牌修改（Ctrl+Z）；输入框内由原生文字撤销接管 */
+  undo: () => void;
+  /** 重做被撤销的修改（Ctrl+Y / Ctrl+Shift+Z） */
+  redo: () => void;
   /** 保存全部未落盘的修改（切卡前/发布前/手动保存统一入口） */
   persistAll: () => Promise<void>;
   createCard: (tplId?: string) => Promise<void>;
@@ -42,6 +58,8 @@ export const useStore = create<EditorStore>((set, get) => ({
   selectedId: null,
   settings: { game_dir: '', runtime_version: null, uploader_path: null },
   dirtyIds: [],
+  undoStack: [],
+  redoStack: [],
   toast: null,
 
   showToast: (msg) => {
@@ -59,13 +77,13 @@ export const useStore = create<EditorStore>((set, get) => ({
   newProject: async (path, packId, name, author) => {
     await api.newProject(path, packId, name, author);
     const [meta, cards] = await api.openProject(path);
-    set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [] });
+    set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [], undoStack: [], redoStack: [] });
     await get().refreshSettings();
   },
 
   openProject: async (path) => {
     const [meta, cards] = await api.openProject(path);
-    set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [] });
+    set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [], undoStack: [], redoStack: [] });
     await get().refreshSettings();
   },
 
@@ -76,17 +94,70 @@ export const useStore = create<EditorStore>((set, get) => ({
   },
 
   updateCard: (patch) => {
-    const { cards, selectedId, dirtyIds } = get();
+    const { cards, selectedId, dirtyIds, undoStack } = get();
     if (!selectedId) return;
+    const cur = cards.find((c) => c.id === selectedId);
+    if (!cur) return;
+    // 撤销快照：同一张卡 800ms 内的连续编辑合并为一步（滑动窗口）
+    const now = Date.now();
+    const top = undoStack[undoStack.length - 1];
+    const merged = undoStack.slice(0, -1);
+    const nextStack =
+      top && top.cardId === selectedId && now - top.at < 800
+        ? [...merged, { ...top, at: now }]
+        : [...undoStack, { cardId: selectedId, before: JSON.parse(JSON.stringify(cur)) as CardDef, at: now }];
     set({
       cards: cards.map((c) => (c.id === selectedId ? { ...c, ...patch } : c)),
       dirtyIds: dirtyIds.includes(selectedId) ? dirtyIds : [...dirtyIds, selectedId],
+      undoStack: nextStack.slice(-UNDO_LIMIT),
+      redoStack: [], // 有新修改后重做分支作废
     });
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       saveTimer = null;
       void get().persistAll();
     }, 800);
+  },
+
+  undo: () => {
+    const { undoStack, redoStack, cards, dirtyIds } = get();
+    const top = undoStack[undoStack.length - 1];
+    if (!top) return;
+    const cur = cards.find((c) => c.id === top.cardId);
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    set({
+      cards: cur ? cards.map((c) => (c.id === top.cardId ? top.before : c)) : cards,
+      undoStack: undoStack.slice(0, -1),
+      redoStack: cur
+        ? [...redoStack, { cardId: top.cardId, before: JSON.parse(JSON.stringify(cur)) as CardDef, at: Date.now() }].slice(-UNDO_LIMIT)
+        : redoStack,
+      dirtyIds: dirtyIds.includes(top.cardId) ? dirtyIds : [...dirtyIds, top.cardId],
+    });
+    // 撤销后的状态也按自动保存设计落盘（重做仍在）
+    void get().persistAll();
+  },
+
+  redo: () => {
+    const { undoStack, redoStack, cards, dirtyIds } = get();
+    const top = redoStack[redoStack.length - 1];
+    if (!top) return;
+    const cur = cards.find((c) => c.id === top.cardId);
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    set({
+      cards: cur ? cards.map((c) => (c.id === top.cardId ? top.before : c)) : cards,
+      redoStack: redoStack.slice(0, -1),
+      undoStack: cur
+        ? [...undoStack, { cardId: top.cardId, before: JSON.parse(JSON.stringify(cur)) as CardDef, at: Date.now() }].slice(-UNDO_LIMIT)
+        : undoStack,
+      dirtyIds: dirtyIds.includes(top.cardId) ? dirtyIds : [...dirtyIds, top.cardId],
+    });
+    void get().persistAll();
   },
 
   persistAll: async () => {
@@ -126,7 +197,7 @@ export const useStore = create<EditorStore>((set, get) => ({
     await api.saveCard(card);
     const updatedMeta = { ...meta, cards: [...meta.cards, id] };
     await api.updateProjectMeta(updatedMeta);
-    set({ meta: updatedMeta, cards: [...cards, card], selectedId: id, dirtyIds: [] });
+    set({ meta: updatedMeta, cards: [...cards, card], selectedId: id, dirtyIds: [], redoStack: [] });
   },
 
   duplicateCard: async (sourceId) => {
@@ -149,11 +220,11 @@ export const useStore = create<EditorStore>((set, get) => ({
     await api.saveCard(card);
     const updatedMeta = { ...meta, cards: [...meta.cards, id] };
     await api.updateProjectMeta(updatedMeta);
-    set({ meta: updatedMeta, cards: [...cards, card], selectedId: id, dirtyIds: [] });
+    set({ meta: updatedMeta, cards: [...cards, card], selectedId: id, dirtyIds: [], redoStack: [] });
   },
 
   removeCard: async (id) => {
-    const { meta, cards, dirtyIds } = get();
+    const { meta, cards, dirtyIds, undoStack, redoStack } = get();
     if (!meta) return;
     await api.deleteCard(id);
     const updatedMeta = { ...meta, cards: meta.cards.filter((c) => c !== id) };
@@ -163,19 +234,25 @@ export const useStore = create<EditorStore>((set, get) => ({
       cards: cards.filter((c) => c.id !== id),
       selectedId: get().selectedId === id ? null : get().selectedId,
       dirtyIds: dirtyIds.filter((d) => d !== id),
+      undoStack: undoStack.filter((u) => u.cardId !== id),
+      redoStack: redoStack.filter((u) => u.cardId !== id),
     });
   },
 
   renameCard: async (oldId, newId) => {
-    const { meta, cards, selectedId, dirtyIds } = get();
+    const { meta, cards, selectedId, dirtyIds, undoStack, redoStack } = get();
     if (!meta || oldId === newId) return;
     await api.renameCard(oldId, newId);
     const updatedMeta = { ...meta, cards: meta.cards.map((c) => (c === oldId ? newId : c)) };
+    const remap = (stack: UndoEntry[]) =>
+      stack.map((u) => (u.cardId === oldId ? { ...u, cardId: newId } : u));
     set({
       meta: updatedMeta,
       cards: cards.map((c) => (c.id === oldId ? { ...c, id: newId } : c)),
       selectedId: selectedId === oldId ? newId : selectedId,
       dirtyIds: dirtyIds.map((d) => (d === oldId ? newId : d)),
+      undoStack: remap(undoStack),
+      redoStack: remap(redoStack),
     });
   },
 
@@ -196,6 +273,9 @@ export const useStore = create<EditorStore>((set, get) => ({
   closeProject: async () => {
     await get().persistAll();
     localStorage.removeItem('spireforge.lastProject');
-    set({ projectRoot: null, meta: null, cards: [], selectedId: null, dirtyIds: [] });
+    set({
+      projectRoot: null, meta: null, cards: [], selectedId: null, dirtyIds: [],
+      undoStack: [], redoStack: [],
+    });
   },
 }));

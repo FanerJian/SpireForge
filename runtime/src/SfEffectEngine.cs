@@ -228,7 +228,8 @@ public static class SfEffectEngine
                 });
                 if (!invoked)
                 {
-                    SfLog.Error("card " + card.Id + ": unregistered custom effect " + e.KindName +
+                    var name = !string.IsNullOrWhiteSpace(e.Handler) ? e.Handler : e.KindName;
+                    SfLog.Error("card " + card.Id + ": unregistered custom effect " + name +
                                 " (handler mod missing)");
                 }
                 break;
