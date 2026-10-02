@@ -410,7 +410,7 @@ export const EFFECT_META: Record<string, { label: L; varName: string; desc: L }>
   gold: { label: { zh: '获得金币', en: 'Gold' }, varName: '', desc: { zh: '获得金币；负数 = 失去金币', en: 'Gain gold; negative = lose gold' } },
   lose_hp: { label: { zh: '失去生命', en: 'Lose HP' }, varName: '', desc: { zh: '自身失去 N 点生命（无来源、不可格挡）', en: 'Lose N HP for self (sourceless, unblockable)' } },
   max_hp: { label: { zh: '生命上限', en: 'Max HP' }, varName: '', desc: { zh: '为自身增加 N 点生命上限', en: 'Gain N Max HP for self' } },
-  power: { label: { zh: '施加增益/减益', en: 'Apply power' }, varName: '', desc: { zh: '对目标施加力量（易伤/中毒/力量等，可输入任意 PowerModel 名）', en: 'Apply a power to the target (Vulnerable/Poison/Strength… — any PowerModel name)' } },
+  power: { label: { zh: '施加增益/减益', en: 'Apply power' }, varName: '', desc: { zh: '对目标施加力量（下拉含全部游戏力量官方中文译名，也可输入任意 PowerModel 名）', en: 'Apply a power to the target (the dropdown lists every game power with its official Chinese name — or type any PowerModel name)' } },
   spawn: { label: { zh: '生成卡牌', en: 'Spawn card' }, varName: '', desc: { zh: '把一张卡（自定义或原版 Entry）加入抽牌堆/手牌/弃牌堆', en: 'Put a card (custom or vanilla Entry) into draw/hand/discard pile' } },
   custom: { label: { zh: '自定义', en: 'Custom' }, varName: '', desc: { zh: '行为由处理器 mod 定义（SfEffects 注册表）', en: 'Behavior defined by a handler mod (SfEffects registry)' } },
 };

@@ -11,6 +11,7 @@ import {
   type CardDef, type CardType, type EffectDef, type Pool, type TargetType,
   type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
+import { POWERS } from '../lib/powers';
 
 // ---- 原版目录缓存（模块级：整个会话只拉一次）----
 let vanillaCache: VanillaCatalog | null = null;
@@ -39,12 +40,6 @@ function useVanillaEntry(vanillaId: string | null | undefined): VanillaEntry | n
   }, [vanillaId]);
   return entry;
 }
-
-/** 施加增益/减益的常用力量（可自由输入其他 PowerModel 名） */
-const COMMON_POWERS = [
-  'Vulnerable', 'Weak', 'Frail', 'Poison', 'Doom',
-  'Strength', 'Dexterity', 'Focus', 'Artifact', 'Intangible', 'Thorns', 'Barricade',
-];
 
 /** 参与升级变量的效果种类（其余种类用字面数值） */
 const UPGRADEABLE = ['damage', 'block', 'draw', 'energy', 'heal'];
@@ -527,10 +522,15 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                         onChange={(ev) => patch(i, { power: ev.target.value.replace(/[^a-zA-Z0-9_]/g, '') } as Partial<EffectDef>)}
                       />
                       <datalist id="sf-common-powers">
-                        {COMMON_POWERS.map((p) => <option key={p} value={p} />)}
+                        {POWERS.map((p) => (
+                          <option key={p.name} value={p.name}>{p.zh}</option>
+                        ))}
                       </datalist>
                       {POWER_ZH[(e as { power: string }).power] && (
-                        <span className="shrink-0 text-[10px] text-slate-600">
+                        <span
+                          className="shrink-0 text-[10px] text-slate-600"
+                          title={POWERS.find((p) => p.name === (e as { power: string }).power)?.desc.replace(/\[\/?\w+\]/g, '') || ''}
+                        >
                           {POWER_ZH[(e as { power: string }).power]}
                         </span>
                       )}

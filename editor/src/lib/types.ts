@@ -1,5 +1,6 @@
 // 与 src-tauri/src/model.rs 保持镜像；字段改动需双侧同步
 import type { L } from './i18n';
+import { POWER_DEBUFFS } from './powers';
 
 export type CardType = 'Attack' | 'Skill' | 'Power' | 'Status' | 'Curse' | 'Quest';
 export type CardRarity =
@@ -101,9 +102,6 @@ export interface EditorSettings {
   uploader_path: string | null;
 }
 
-/** 对原版行为有减益效果的力量（默认施加给敌人；其余力量默认给自己） */
-const ENEMY_POWERS = ['Vulnerable', 'Weak', 'Frail', 'Poison', 'Doom'];
-
 /** 从原版目录 vars 推导效果清单（「预填原版效果」用）：
  *  Damage/Block/Cards/Energy → 内建效果；XxxPower → 施加增益/减益。
  *  计算型变量（CalculationBase 等）无法静态映射，跳过。 */
@@ -116,7 +114,7 @@ export function effectsFromVanillaVars(vars: Record<string, number>): EffectDef[
   for (const [k, v] of Object.entries(vars)) {
     if (typeof v !== 'number' || !k.endsWith('Power') || k === 'Power') continue;
     const name = k.slice(0, -5); // 去掉 Power 后缀 → SfPowerResolver 可解析名
-    out.push({ kind: 'power', amount: v, power: name, target: ENEMY_POWERS.includes(name) ? undefined : 'self' });
+    out.push({ kind: 'power', amount: v, power: name, target: POWER_DEBUFFS.includes(name) ? undefined : 'self' });
   }
   return out;
 }
@@ -200,12 +198,9 @@ export function cardEntry(packId: string, cardId: string): string {
 /** 兼容旧名 */
 export const pascalToSnake = slugify;
 
-/** 常用力量中文名（描述生成用；未收录的显示原名） */
-export const POWER_ZH: Record<string, string> = {
-  Vulnerable: '易伤', Weak: '虚弱', Frail: '脆弱', Poison: '中毒', Doom: '末日',
-  Strength: '力量', Dexterity: '敏捷', Focus: '集中', Artifact: '人工制品',
-  Intangible: '无形', Thorns: '荆棘', Barricade: '壁垒', Regenerate: '再生',
-};
+/** 常用力量中文名 → 完整官方译名表移至 powers.ts（工具脚本生成，265 项全量） */
+import { POWER_ZH } from './powers';
+export { POWER_ZH };
 
 const PILE_ZH: Record<string, string> = { draw: '抽牌堆', hand: '手牌', discard: '弃牌堆' };
 
