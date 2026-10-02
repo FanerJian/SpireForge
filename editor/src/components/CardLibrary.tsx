@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, pickJsonRaw, pickPckFile } from '../lib/tauri';
-import { CARD_TEMPLATES, CARD_TYPE_LABEL, type CardDef, type CardType } from '../lib/types';
+import { CARD_TEMPLATES, type CardDef, type CardType } from '../lib/types';
+import { pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
 import VanillaImportModal from './VanillaImportModal';
 
 const TYPE_DOT: Record<string, string> = {
@@ -51,6 +52,8 @@ function CardThumb({ portrait }: { portrait: string }) {
 }
 
 function CardTile({ card, active, onClick }: { card: CardDef; active: boolean; onClick: () => void }) {
+  const t = useT();
+  const lang = useLang();
   return (
     <button
       onClick={onClick}
@@ -68,12 +71,16 @@ function CardTile({ card, active, onClick }: { card: CardDef; active: boolean; o
             {card.name.zhs || card.name.eng || card.id}
           </span>
           {card.vanilla_id && (
-            <span className="shrink-0 rounded bg-sky-500/15 px-1 text-[10px] font-medium text-sky-300">原版</span>
+            <span className="shrink-0 rounded bg-sky-500/15 px-1 text-[10px] font-medium text-sky-300">{t('lib.vanillaTag')}</span>
           )}
         </div>
-        <div className="mt-0.5 flex items-center justify-between text-[11px] text-slate-500">
-          <span className="truncate">{CARD_TYPE_LABEL[card.card_type]} · {card.rarity}</span>
-          <span className="shrink-0 font-mono">{card.costs_x ? 'X' : card.cost < 0 ? '—' : card.cost}费</span>
+        <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span className="truncate">
+            {pick(TYPE_LABEL[card.card_type] ?? TYPE_LABEL.Skill, lang)} · {pick(RARITY_LABEL[card.rarity] ?? RARITY_LABEL.Common, lang)}
+          </span>
+          <span className="shrink-0 whitespace-nowrap font-mono">
+            {card.costs_x ? 'X' : card.cost < 0 ? '—' : card.cost}{lang === 'zh' ? '费' : '⚡'}
+          </span>
         </div>
       </div>
     </button>
@@ -84,6 +91,8 @@ const TYPE_FILTERS: (CardType | 'all')[] = ['all', 'Attack', 'Skill', 'Power', '
 
 export default function CardLibrary() {
   const { cards, selectedId, select, createCard, openProject, projectRoot, showToast } = useStore();
+  const t = useT();
+  const lang = useLang();
   const [showVanilla, setShowVanilla] = useState(false);
   const [showTpl, setShowTpl] = useState(false);
   const [query, setQuery] = useState('');
@@ -117,14 +126,14 @@ export default function CardLibrary() {
       await reload(reports[0]?.card.id);
       const names = reports.map((r) => r.card.name.zhs || r.card.id).join('、');
       const foreign = reports.filter((r) => !r.native);
-      let msg = `已导入 ${reports.length} 张：${names}`;
+      let msg = t('lib.imported', { n: reports.length, names });
       if (foreign.length > 0) {
-        msg += `\n\n外来格式 ${foreign.length} 张，请核对字段：\n` + foreign.flatMap((r) => r.notes).join('\n');
-        setTimeout(() => alert(`导入说明：\n\n${foreign.flatMap((r) => r.notes).join('\n')}`), 100);
+        msg += t('lib.importForeign', { n: foreign.length }) + foreign.flatMap((r) => r.notes).join('\n');
+        setTimeout(() => alert(`${t('lib.importNote')}\n\n${foreign.flatMap((r) => r.notes).join('\n')}`), 100);
       }
       showToast(msg);
     } catch (e) {
-      alert('导入失败：' + String(e));
+      alert(t('lib.importFailed', { e: String(e) }));
     }
   };
 
@@ -134,14 +143,14 @@ export default function CardLibrary() {
     try {
       const result = await api.importPackPck(path);
       await reload(result.imported[0]?.card.id);
-      let msg = `已从卡包导入 ${result.imported.length} 张卡牌`;
+      let msg = t('lib.pckImported', { n: result.imported.length });
       if (result.errors.length > 0) {
-        msg += `，${result.errors.length} 个文件失败`;
-        setTimeout(() => alert(`部分文件导入失败：\n\n${result.errors.join('\n')}`), 100);
+        msg += t('lib.pckErrors', { n: result.errors.length });
+        setTimeout(() => alert(`${t('lib.pckErrorTitle')}\n\n${result.errors.join('\n')}`), 100);
       }
       showToast(msg);
     } catch (e) {
-      alert('导入失败：' + String(e));
+      alert(t('lib.importFailed', { e: String(e) }));
     }
   };
 
@@ -154,31 +163,31 @@ export default function CardLibrary() {
     <div className="relative flex h-full flex-col">
       <div className="border-b border-white/10 px-3 py-2.5">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-200">
-            卡牌库
-            <span className="ml-1.5 text-[11px] font-normal text-slate-500">{cards.length} 张</span>
+          <div className="shrink-0 text-sm font-semibold text-slate-200">
+            {t('lib.title')}
+            <span className="ml-1.5 text-[11px] font-normal text-slate-500">{t('lib.count', { n: cards.length })}</span>
           </div>
           <div className="flex gap-1.5">
             <button
               onClick={() => setShowVanilla(true)}
-              title="从游戏原版 577 张卡中选一张，作为覆盖卡载入编辑"
-              className="rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-200 transition hover:bg-sky-500/20"
+              title={t('lib.vanillaTitle')}
+              className="whitespace-nowrap rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-200 transition hover:bg-sky-500/20"
             >
-              原版卡
+              {t('lib.vanilla')}
             </button>
             <button
               onClick={doImportPck}
-              title="导入 .pck 卡包（其他 SpireForge 用户分享的卡包）"
-              className="rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
+              title={t('lib.packTitle')}
+              className="whitespace-nowrap rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
             >
-              卡包
+              {t('lib.pack')}
             </button>
             <button
               onClick={doImport}
-              title="导入卡牌 JSON（支持 SpireForge 及常见第三方格式，多卡文件整批导入）"
-              className="rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
+              title={t('lib.importTitle')}
+              className="whitespace-nowrap rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
             >
-              导入
+              {t('lib.import')}
             </button>
           </div>
         </div>
@@ -186,29 +195,29 @@ export default function CardLibrary() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索名称 / id…"
+            placeholder={t('lib.search')}
             className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-amber-400/60"
           />
           <button
             onClick={() => setShowTpl((v) => !v)}
-            title="从模板新建：两三下点击得到一张能进游戏的卡"
-            className="shrink-0 rounded-md bg-amber-500/90 px-2.5 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-400"
+            title={t('lib.newCardTitle')}
+            className="shrink-0 whitespace-nowrap rounded-md bg-amber-500/90 px-2.5 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-400"
           >
-            + 新卡牌
+            {t('lib.newCard')}
           </button>
         </div>
         <div className="mt-1.5 flex flex-wrap gap-1">
-          {TYPE_FILTERS.map((t) => (
+          {TYPE_FILTERS.map((tp) => (
             <button
-              key={t}
-              onClick={() => setTypeFilter(t)}
-              className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
-                typeFilter === t
+              key={tp}
+              onClick={() => setTypeFilter(tp)}
+              className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
+                typeFilter === tp
                   ? 'bg-white/15 text-amber-300'
                   : 'text-slate-500 hover:bg-white/5 hover:text-slate-300'
               }`}
             >
-              {t === 'all' ? '全部' : CARD_TYPE_LABEL[t]}
+              {tp === 'all' ? t('lib.all') : pick(TYPE_LABEL[tp], lang)}
             </button>
           ))}
         </div>
@@ -218,33 +227,33 @@ export default function CardLibrary() {
         {cards.length === 0 && (
           <div className="mt-4 rounded-lg border border-dashed border-white/10 p-4 text-center">
             <div className="mb-3 text-xs text-slate-500">
-              还没有卡牌。挑一个模板开始，
+              {t('lib.emptyLine1')}
               <br />
-              数值和描述都能再改。
+              {t('lib.emptyLine2')}
             </div>
             <div className="space-y-1.5">
-              {CARD_TEMPLATES.filter((t) => t.id !== 'blank').map((t) => (
+              {CARD_TEMPLATES.filter((tpl) => tpl.id !== 'blank').map((tpl) => (
                 <button
-                  key={t.id}
-                  onClick={() => newFromTpl(t.id)}
+                  key={tpl.id}
+                  onClick={() => newFromTpl(tpl.id)}
                   className="block w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-left transition hover:border-amber-400/50"
                 >
-                  <div className="text-xs font-semibold text-slate-200">{t.label}</div>
-                  <div className="text-[10px] text-slate-500">{t.desc}</div>
+                  <div className="text-xs font-semibold text-slate-200">{pick(tpl.label, lang)}</div>
+                  <div className="text-[10px] text-slate-500">{pick(tpl.desc, lang)}</div>
                 </button>
               ))}
               <button
                 onClick={() => setShowVanilla(true)}
                 className="block w-full rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-left transition hover:bg-sky-500/20"
               >
-                <div className="text-xs font-semibold text-sky-200">改一张原版卡</div>
-                <div className="text-[10px] text-slate-500">从游戏 577 张卡里选</div>
+                <div className="text-xs font-semibold text-sky-200">{t('lib.vanillaCta')}</div>
+                <div className="text-[10px] text-slate-500">{t('lib.vanillaCtaSub')}</div>
               </button>
             </div>
           </div>
         )}
         {cards.length > 0 && filtered.length === 0 && (
-          <div className="mt-8 text-center text-xs text-slate-600">没有符合筛选的卡牌</div>
+          <div className="mt-8 text-center text-xs text-slate-600">{t('lib.noMatch')}</div>
         )}
         {filtered.map((c) => (
           <CardTile key={c.id} card={c} active={c.id === selectedId} onClick={() => select(c.id)} />
@@ -256,16 +265,16 @@ export default function CardLibrary() {
           <div className="fixed inset-0 z-30" onClick={() => setShowTpl(false)} />
           <div className="absolute right-3 top-[104px] z-40 w-64 rounded-xl border border-white/10 bg-[#17171f] p-1.5 shadow-2xl">
             <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-              新建卡牌
+              {t('lib.tplTitle')}
             </div>
-            {CARD_TEMPLATES.map((t) => (
+            {CARD_TEMPLATES.map((tpl) => (
               <button
-                key={t.id}
-                onClick={() => newFromTpl(t.id)}
+                key={tpl.id}
+                onClick={() => newFromTpl(tpl.id)}
                 className="block w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-white/[0.06]"
               >
-                <div className="text-xs font-semibold text-slate-200">{t.label}</div>
-                <div className="text-[10px] text-slate-500">{t.desc}</div>
+                <div className="text-xs font-semibold text-slate-200">{pick(tpl.label, lang)}</div>
+                <div className="text-[10px] text-slate-500">{pick(tpl.desc, lang)}</div>
               </button>
             ))}
           </div>

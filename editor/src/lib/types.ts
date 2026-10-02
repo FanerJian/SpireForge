@@ -1,4 +1,5 @@
 // 与 src-tauri/src/model.rs 保持镜像；字段改动需双侧同步
+import type { L } from './i18n';
 
 export type CardType = 'Attack' | 'Skill' | 'Power' | 'Status' | 'Curse' | 'Quest';
 export type CardRarity =
@@ -34,14 +35,6 @@ export type EffectDef =
 export type HookField = 'on_draw' | 'on_discard' | 'on_exhaust' | 'on_enter_combat' | 'on_turn_end_in_hand';
 
 export const HOOK_FIELDS: HookField[] = ['on_draw', 'on_discard', 'on_exhaust', 'on_enter_combat', 'on_turn_end_in_hand'];
-
-export const HOOK_LABEL: Record<HookField, string> = {
-  on_draw: '抽到时',
-  on_discard: '被弃时',
-  on_exhaust: '被消耗时',
-  on_enter_combat: '战斗开始时',
-  on_turn_end_in_hand: '回合末在手',
-};
 
 export interface UpgradeDef {
   damage: number;
@@ -173,25 +166,7 @@ export function newCard(id: string): CardDef {
     effects: [],
     upgrades: { damage: 0, block: 0, draw: 0, energy: 0, heal: 0, keywords: [] },
   };
-}export const CARD_TYPE_LABEL: Record<CardType, string> = {
-  Attack: '攻击', Skill: '技能', Power: '能力', Status: '状态', Curse: '诅咒', Quest: '任务',
-};
-
-export const RARITY_LABEL: Record<CardRarity, string> = {
-  Basic: '基础', Common: '普通', Uncommon: '罕见', Rare: '稀有', Ancient: '远古',
-  Event: '事件', Token: '代币', Status: '状态', Curse: '诅咒', Quest: '任务',
-};
-
-export const TARGET_LABEL: Record<TargetType, string> = {
-  None: '无', Self: '自身', AnyEnemy: '单一敌人', AllEnemies: '全体敌人', RandomEnemy: '随机敌人',
-  AnyPlayer: '任一玩家', AnyAlly: '单一友方', AllAllies: '全体友方',
-  TargetedNoCreature: '无目标指向', Osty: '奥丝缇',
-};
-
-export const POOL_LABEL: Record<Pool, string> = {
-  colorless: '无色', curse: '诅咒池', status: '状态池',
-  ironclad: '铁甲战士', silent: '沉默猎手', regent: '摄政王', necrobinder: '缚灵师', defect: '机器人',
-};
+}
 
 /** id 派生规则（与游戏 StringHelper.Slugify 一致）。
  *  游戏实现：CamelCase 正则 `([A-Za-z0-9]|\G(?!^))([A-Z])` → "$1_$2"，
@@ -224,22 +199,6 @@ export function cardEntry(packId: string, cardId: string): string {
 
 /** 兼容旧名 */
 export const pascalToSnake = slugify;
-
-/** 语言代码 → 展示名 */
-export const LANG_LABEL: Record<string, string> = {
-  zhs: '简体中文', eng: 'English',
-};
-
-/** 常用关键词点选（与游戏 CardKeyword 枚举一致；其余值仍可自由输入） */
-export const KEYWORD_CHIPS: { k: string; label: string }[] = [
-  { k: 'Innate', label: '开局就在手牌' },
-  { k: 'Retain', label: '回合结束保留手牌' },
-  { k: 'Ethereal', label: '虚无：回合结束自动消耗' },
-  { k: 'Exhaust', label: '消耗：打出后移除' },
-  { k: 'Unplayable', label: '不可打出' },
-  { k: 'Sly', label: '狡诈' },
-  { k: 'Eternal', label: '永恒' },
-];
 
 /** 常用力量中文名（描述生成用；未收录的显示原名） */
 export const POWER_ZH: Record<string, string> = {
@@ -291,18 +250,18 @@ export function composeDescription(card: CardDef): { zhs: string; eng: string } 
 /** 新建卡牌模板：两三下点击得到一张能进游戏的卡，再改数值即可 */
 export interface CardTemplate {
   id: string;
-  label: string;
-  desc: string;
+  label: L;
+  desc: L;
   make: (id: string, seq: number) => CardDef;
 }
 
 export const CARD_TEMPLATES: CardTemplate[] = [
   {
-    id: 'blank', label: '空白卡', desc: '全部自己填',
+    id: 'blank', label: { zh: '空白卡', en: 'Blank card' }, desc: { zh: '全部自己填', en: 'Fill in everything yourself' },
     make: (id) => newCard(id),
   },
   {
-    id: 'strike', label: '打击式攻击', desc: '1 费 · 造成伤害 · 升级 +3',
+    id: 'strike', label: { zh: '打击式攻击', en: 'Strike-style attack' }, desc: { zh: '1 费 · 造成伤害 · 升级 +3', en: '1 cost · damage · upgrade +3' },
     make: (id, seq) => ({
       ...newCard(id),
       name: { zhs: `打击 ${seq}`, eng: `Strike ${seq}` },
@@ -313,7 +272,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     }),
   },
   {
-    id: 'defend', label: '防御式技能', desc: '1 费 · 获得格挡 · 升级 +3',
+    id: 'defend', label: { zh: '防御式技能', en: 'Defend-style skill' }, desc: { zh: '1 费 · 获得格挡 · 升级 +3', en: '1 cost · block · upgrade +3' },
     make: (id, seq) => ({
       ...newCard(id),
       name: { zhs: `防御 ${seq}`, eng: `Defend ${seq}` },
@@ -325,7 +284,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     }),
   },
   {
-    id: 'draw', label: '过牌技能', desc: '0 费 · 抽牌 · 升级多抽 1',
+    id: 'draw', label: { zh: '过牌技能', en: 'Draw skill' }, desc: { zh: '0 费 · 抽牌 · 升级多抽 1', en: '0 cost · draw · upgrade draws 1 more' },
     make: (id, seq) => ({
       ...newCard(id),
       name: { zhs: `洞察 ${seq}`, eng: `Insight ${seq}` },
@@ -338,7 +297,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     }),
   },
   {
-    id: 'hybrid', label: '攻防一体', desc: '1 费 · 伤害 + 格挡',
+    id: 'hybrid', label: { zh: '攻防一体', en: 'Attack + block' }, desc: { zh: '1 费 · 伤害 + 格挡', en: '1 cost · damage + block' },
     make: (id, seq) => ({
       ...newCard(id),
       name: { zhs: `攻防 ${seq}`, eng: `Parry ${seq}` },
@@ -352,7 +311,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     }),
   },
   {
-    id: 'power', label: '增益能力', desc: '1 费 · 战斗内获得增益',
+    id: 'power', label: { zh: '增益能力', en: 'Buff power' }, desc: { zh: '1 费 · 战斗内获得增益', en: '1 cost · in-combat buff' },
     make: (id, seq) => ({
       ...newCard(id),
       name: { zhs: `强化 ${seq}`, eng: `Blessing ${seq}` },
@@ -363,7 +322,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     }),
   },
   {
-    id: 'curse', label: '诅咒牌', desc: '不可打出 · 不进升级',
+    id: 'curse', label: { zh: '诅咒牌', en: 'Curse card' }, desc: { zh: '不可打出 · 不进升级', en: 'unplayable · not upgradeable' },
     make: (id, seq) => ({
       ...newCard(id),
       name: { zhs: `诅咒 ${seq}`, eng: `Curse ${seq}` },

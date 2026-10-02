@@ -70,6 +70,8 @@ public static class RuntimeEntry
                 nameof(MegaCrit.Sts2.Core.Hooks.Hook.BeforeCombatStart),
                 BindingFlags.Public | BindingFlags.Static),
             postfix: new HarmonyMethod(typeof(RuntimeEntry), nameof(AfterBeforeCombatStart)));
+        // 示例卡包「咔咔」：生成邪教徒时把显示名改成咔咔（Title getter 后缀 + loc 词条注入）
+        SfKaka.Install(harmony);
 
         Log.Info($"{LogTag}: hooks installed");
     }
@@ -319,20 +321,20 @@ public static class RuntimeEntry
     }
 
     /// <summary>示例卡包的自定义效果处理器（随 Runtime 常驻注册，不要求调试模式）。
-    /// demo_kaka = 「咔咔」：给目标糊一脸易伤 2 + 虚弱 2 —— 演示 SfEffects 注册表全链路，
-    /// 真实第三方扩展写法见 docs/RUNTIME-MOD.md。</summary>
+    /// demo_kaka = 「咔咔」：在对面召唤一只改名咔咔的邪教徒（见 SfKaka），自身获得 1 层仪式
+    /// （每回合结束 +1 力量）—— 演示 SfEffects 注册表全链路，真实第三方扩展写法见 docs/RUNTIME-MOD.md。</summary>
     private static void RegisterDemoEffects()
     {
         SpireForge.Api.SfEffects.Register("demo_kaka", async ctx =>
         {
-            if (ctx.Choice == null || ctx.Target == null)
-            {
-                return; // 无玩家选择上下文的时机（战斗开始钩子等）不执行
-            }
-            await PowerCmd.Apply<MegaCrit.Sts2.Core.Models.Powers.VulnerablePower>(
-                ctx.Choice, ctx.Target, 2m, null, ctx.Card, false);
-            await PowerCmd.Apply<MegaCrit.Sts2.Core.Models.Powers.WeakPower>(
-                ctx.Choice, ctx.Target, 2m, null, ctx.Card, false);
+            var player = ctx.Card.Owner;
+            var combatState = player.Creature.CombatState
+                ?? MegaCrit.Sts2.Core.Combat.CombatManager.Instance.DebugOnlyGetState()
+                ?? throw new InvalidOperationException("combat state unavailable");
+            await SfKaka.SpawnKaka(combatState);
+            await PowerCmd.Apply<MegaCrit.Sts2.Core.Models.Powers.RitualPower>(
+                ctx.Choice ?? new MegaCrit.Sts2.Core.GameActions.Multiplayer.ThrowingPlayerChoiceContext(),
+                player.Creature, 1m, null, ctx.Card, false);
         });
     }
 

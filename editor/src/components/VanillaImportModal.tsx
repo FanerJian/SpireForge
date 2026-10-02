@@ -2,12 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { newCard, type CardDef, type CardType, type VanillaCatalog, type VanillaEntry } from '../lib/types';
-
-const COLOR_LABEL: Record<string, string> = {
-  colorless: '无色', ironclad: '铁甲战士', silent: '沉默猎手', defect: '故障机器人',
-  regent: '摄政者', necrobinder: '缚灵师', curse: '诅咒', status: '状态',
-  event: '事件', quest: '任务', token: '衍生',
-};
+import { pick, VI_COLOR_LABEL, useLang, useT } from '../lib/i18n';
 
 const KNOWN_POOLS = ['colorless', 'curse', 'status', 'ironclad', 'silent', 'regent', 'necrobinder', 'defect'];
 
@@ -46,6 +41,8 @@ export function cardFromVanilla(v: VanillaEntry, existingIds: Set<string>): Card
 /** 导入原版卡：从内嵌目录（577 张，v0.111.0 数据）选择并作为可编辑覆盖卡载入 */
 export default function VanillaImportModal({ onClose }: { onClose: () => void }) {
   const { cards, openProject, projectRoot, select, showToast } = useStore();
+  const t = useT();
+  const lang = useLang();
   const [catalog, setCatalog] = useState<VanillaCatalog | null>(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -72,10 +69,10 @@ export default function VanillaImportModal({ onClose }: { onClose: () => void })
         await openProject(projectRoot);
         select(card.id);
       }
-      showToast(`已导入原版卡「${v.name || v.name_en}」（覆盖 ${v.entry}）`);
+      showToast(t('vi.imported', { name: v.name || v.name_en, entry: v.entry }));
       onClose();
     } catch (e) {
-      alert('导入失败：' + String(e));
+      alert(t('vi.importFailed', { e: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -88,19 +85,18 @@ export default function VanillaImportModal({ onClose }: { onClose: () => void })
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3">
-          <div className="text-lg font-bold text-slate-100">导入原版卡</div>
+          <div className="text-lg font-bold text-slate-100">{t('vi.title')}</div>
           <div className="mt-0.5 text-xs text-slate-500">
-            {catalog ? `${catalog.count} 张 · 游戏 v${catalog.game_version} 数据` : '加载目录…'}
-            ，作为"覆盖卡"载入：改费用/数值/文案/行为，发布后游戏内原版卡被替换
+            {t('vi.metaLine', { n: catalog?.count ?? '…', v: catalog?.game_version ?? '' })}
           </div>
         </div>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索卡名（中/英）或 Entry，如 痛击 / bash"
+          placeholder={t('vi.search')}
           className="mb-3 w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-amber-400/60"
         />
-        <div className="flex-1 space-y-1 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
           {filtered.map((v) => (
             <button
               key={v.entry}
@@ -109,19 +105,19 @@ export default function VanillaImportModal({ onClose }: { onClose: () => void })
               className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left transition hover:border-amber-400/50 hover:bg-amber-400/5 disabled:opacity-40"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium text-slate-200">
+                <span className="min-w-0 truncate text-sm font-medium text-slate-200">
                   {v.name || v.name_en}
                   <span className="ml-2 text-xs text-slate-500">{v.name_en}</span>
                 </span>
-                <span className="shrink-0 font-mono text-[11px] text-slate-500">
-                  {v.x_cost ? 'X费' : `${v.cost ?? '?'}费`} · {COLOR_LABEL[v.color] ?? v.color}
+                <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                  {v.x_cost ? 'X⚡' : `${v.cost ?? '?'}${lang === 'en' ? '⚡' : '费'}`} · {pick(VI_COLOR_LABEL[v.color] ?? { zh: v.color, en: v.color }, lang)}
                 </span>
               </div>
               <div className="mt-0.5 truncate text-[11px] text-slate-600">{v.entry} · {v.desc}</div>
             </button>
           ))}
           {catalog && filtered.length === 0 && (
-            <div className="py-8 text-center text-xs text-slate-600">没有匹配的卡牌</div>
+            <div className="py-8 text-center text-xs text-slate-600">{t('vi.noMatch')}</div>
           )}
         </div>
       </div>

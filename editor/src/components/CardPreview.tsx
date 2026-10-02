@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CardDef } from '../lib/types';
-import { cardEntry, CARD_TYPE_LABEL, HOOK_FIELDS, HOOK_LABEL, pascalToSnake } from '../lib/types';
+import { cardEntry, HOOK_FIELDS, pascalToSnake } from '../lib/types';
+import { HOOK_LABEL, pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
 
 /** 卡牌类型 → 框体配色 */
 const TYPE_STYLE: Record<string, { frame: string; glow: string; typeColor: string; orb: string }> = {
@@ -109,7 +110,9 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
   portraitUrl?: string | null;
   upgraded?: boolean;
 }) {
-  const t = TYPE_STYLE[card.card_type] ?? TYPE_STYLE.Skill;
+  const t = useT();
+  const lang = useLang();
+  const style = TYPE_STYLE[card.card_type] ?? TYPE_STYLE.Skill;
   const vars: Record<string, string> = {};
   for (const e of card.effects) {
     const u = card.upgrades;
@@ -120,8 +123,9 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
     if (e.kind === 'heal') vars.Heal = upgraded && u.heal ? `${e.amount}+${u.heal}` : String(e.amount);
   }
   const entry = cardEntry(packId, card.id);
-  const name = card.name.zhs || card.name.eng || entry;
-  const desc = card.description.zhs || card.description.eng || '';
+  // 预览语言跟随界面语言（与游戏内所选语言一致时的显示效果）
+  const name = (lang === 'en' ? card.name.eng || card.name.zhs : card.name.zhs || card.name.eng) || entry;
+  const desc = (lang === 'en' ? card.description.eng || card.description.zhs : card.description.zhs || card.description.eng) || '';
   const cost = card.costs_x ? 'X' : card.cost < 0 ? '—' : String(card.cost);
   const costInvalid = !card.costs_x && card.cost < -1;
   const idBad = !card.id || pascalToSnake(card.id) === '';
@@ -137,9 +141,9 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
       <div
         className="absolute inset-0 rounded-2xl border-[3px]"
         style={{
-          background: `linear-gradient(160deg, ${t.frame} 0%, #14141c 55%, #101018 100%)`,
-          borderColor: t.glow,
-          boxShadow: `0 0 24px ${t.glow}55, inset 0 0 32px #00000088`,
+          background: `linear-gradient(160deg, ${style.frame} 0%, #14141c 55%, #101018 100%)`,
+          borderColor: style.glow,
+          boxShadow: `0 0 24px ${style.glow}55, inset 0 0 32px #00000088`,
         }}
       >
         {/* 立绘区 */}
@@ -148,7 +152,7 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
             <img src={portraitUrl} alt="" className="h-full w-full object-cover" draggable={false} />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-sm text-slate-600">
-              {card.portrait ? '立绘加载失败' : '暂无立绘（游戏内显示官方占位图）'}
+              {card.portrait ? t('pp.portraitLoadFail') : t('pp.portraitEmpty')}
             </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-[#14141c]/80 via-transparent to-transparent" />
@@ -158,7 +162,7 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
         <div
           className="absolute -left-2 -top-2 flex h-14 w-14 items-center justify-center rounded-full border-2 text-2xl font-black text-white"
           style={{
-            background: `radial-gradient(circle at 35% 30%, ${t.orb}cc, ${t.orb} 45%, #1a1a1a 100%)`,
+            background: `radial-gradient(circle at 35% 30%, ${style.orb}cc, ${style.orb} 45%, #1a1a1a 100%)`,
             borderColor: '#ffffff55',
             boxShadow: '0 2px 10px #000a',
           }}
@@ -179,7 +183,7 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
             <div className="mt-1 flex flex-wrap justify-center gap-1">
               {HOOK_FIELDS.filter((f) => (card[f]?.length ?? 0) > 0).map((f) => (
                 <span key={f} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300/90">
-                  {HOOK_LABEL[f]} ×{card[f]!.length}
+                  {pick(HOOK_LABEL[f], lang)} ×{card[f]!.length}
                 </span>
               ))}
             </div>
@@ -187,16 +191,18 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
         </div>
 
         {/* 类型条 */}
-        <div className="absolute bottom-2 left-0 right-0 text-center text-[13px] font-semibold tracking-widest"
-          style={{ color: t.typeColor }}>
-          {CARD_TYPE_LABEL[card.card_type]} · {card.rarity}
+        <div className="absolute bottom-2 left-0 right-0 whitespace-nowrap text-center text-[13px] font-semibold tracking-widest"
+          style={{ color: style.typeColor }}>
+          {pick(TYPE_LABEL[card.card_type] ?? TYPE_LABEL.Skill, lang)} · {pick(RARITY_LABEL[card.rarity] ?? RARITY_LABEL.Common, lang)}
         </div>
       </div>
 
       {/* id 角标 */}
-      <div className="absolute -bottom-7 left-0 right-0 text-center font-mono text-xs text-slate-500">
-        {idBad ? <span className="text-rose-500">id 无效</span> : `CARD.${entry}`}
-      </div>
+      {idBad && (
+        <div className="absolute -bottom-7 left-0 right-0 text-center font-mono text-xs text-rose-500">
+          {t('pv.idInvalid')}
+        </div>
+      )}
     </div>
   );
 }

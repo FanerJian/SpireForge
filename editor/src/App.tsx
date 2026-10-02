@@ -7,6 +7,7 @@ import ProjectSettingsModal from './components/ProjectSettingsModal';
 import Welcome from './components/Welcome';
 import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
+import { setLang, useLang, useT } from './lib/i18n';
 import { cardEntry } from './lib/types';
 
 function Toast({ msg }: { msg: string }) {
@@ -19,9 +20,11 @@ function Toast({ msg }: { msg: string }) {
 
 function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings: () => void }) {
   const { meta, dirtyIds, persistAll, closeProject, showToast, undoStack, redoStack, undo, redo } = useStore();
+  const t = useT();
+  const lang = useLang();
   const dirty = dirtyIds.length > 0;
   return (
-    <div className="flex h-12 items-center gap-3 border-b border-white/10 bg-black/30 px-4">
+    <div className="flex h-12 items-center gap-2 border-b border-white/10 bg-black/30 px-4">
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-black tracking-wide text-amber-300">SpireForge</span>
         <span className="text-xs text-slate-600">{meta?.name}</span>
@@ -30,47 +33,54 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
       <button
         onClick={undo}
         disabled={undoStack.length === 0}
-        title="撤销最近一次卡牌修改（Ctrl+Z；输入框内 Ctrl+Z 仍是文字撤销）"
-        className="rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+        title={t('app.undoTitle')}
+        className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
       >
-        ↶ 撤销
+        {t('app.undo')}
       </button>
       <button
         onClick={redo}
         disabled={redoStack.length === 0}
-        title="重做被撤销的修改（Ctrl+Y）"
-        className="rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+        title={t('app.redoTitle')}
+        className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
       >
-        ↷ 重做
+        {t('app.redo')}
       </button>
       <button
-        onClick={async () => { await persistAll(); showToast('已保存'); }}
+        onClick={async () => { await persistAll(); showToast(t('app.saved')); }}
         disabled={!dirty}
-        className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+        className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition ${
           dirty ? 'bg-white/10 text-amber-300 hover:bg-white/15' : 'bg-white/5 text-slate-600'
         }`}
       >
-        {dirty ? `保存 ●（${dirtyIds.length}）` : '已保存'}
+        {dirty ? t('app.saveDirty', { n: dirtyIds.length }) : t('app.saved')}
       </button>
       <button
         onClick={onPublish}
-        className="rounded-md bg-amber-500/90 px-3 py-1.5 text-xs font-bold text-black transition hover:bg-amber-400"
+        className="whitespace-nowrap rounded-md bg-amber-500/90 px-3 py-1.5 text-xs font-bold text-black transition hover:bg-amber-400"
       >
-        发布 / 安装
+        {t('app.publish')}
       </button>
       <button
         onClick={onSettings}
-        title="项目名称 / 作者 / 简介（简介会发布到工坊）"
-        className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
+        title={t('app.settingsTitle')}
+        className="whitespace-nowrap rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
       >
-        项目设置
+        {t('app.settings')}
       </button>
       <button
         onClick={() => { void closeProject(); }}
-        title="关闭当前项目，回到欢迎页（未保存修改会先落盘）"
-        className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
+        title={t('app.switchTitle')}
+        className="whitespace-nowrap rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
       >
-        切换项目
+        {t('app.switchProject')}
+      </button>
+      <button
+        onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+        title={t('app.langTitle')}
+        className="w-12 whitespace-nowrap rounded-md border border-white/10 px-1 py-1.5 text-center text-xs font-semibold text-sky-300/80 transition hover:border-sky-400/40 hover:text-sky-200"
+      >
+        {t('app.toEnglish')}
       </button>
     </div>
   );
@@ -79,6 +89,7 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
 function PreviewPane() {
   const { cards, meta, projectRoot, persistAll, showToast } = useStore();
   const selectedId = useStore((s) => s.selectedId);
+  const t = useT();
   const [upgraded, setUpgraded] = useState(false);
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
   const card = cards.find((c) => c.id === selectedId);
@@ -112,19 +123,19 @@ function PreviewPane() {
       await persistAll();
       const raw = await api.exportCardJson(card.id);
       await api.writeFile(path, raw);
-      showToast('已导出卡牌 JSON');
+      showToast(t('pv.exported'));
     } catch (e) {
-      showToast('导出失败：' + String(e));
+      showToast(t('pv.exportFailed', { e: String(e) }));
     }
   };
 
   const doGrant = async () => {
     if (!card || !meta) return;
     try {
-      const msg = await api.queueCardGrant([cardEntry(meta.pack_id, card.id)]);
-      showToast(`${msg}；下一场战斗开始时加入抽牌堆（游戏未启动则启动后生效）`);
+      const r = await api.queueCardGrant([cardEntry(meta.pack_id, card.id)]);
+      showToast(t('pv.grantQueued', { total: r.total, added: r.added }));
     } catch (e) {
-      showToast('登记失败：' + String(e));
+      showToast(t('pv.grantFailed', { e: String(e) }));
     }
   };
 
@@ -133,23 +144,25 @@ function PreviewPane() {
       {card && meta ? (
         <>
           <CardPreview card={card} packId={meta.pack_id} portraitUrl={portraitUrl} upgraded={upgraded} />
-          <div className="flex items-center gap-4 text-xs text-slate-500">
-            <label className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-500">
+            <label className="flex items-center gap-1.5 whitespace-nowrap">
               <input type="checkbox" checked={upgraded} onChange={(e) => setUpgraded(e.target.checked)} />
-              预览升级数值
+              {t('pv.upgraded')}
             </label>
-            <span className="font-mono">{cardEntry(meta.pack_id, card.id)}</span>
-            <button onClick={doGrant} title="把这张卡登记进 Runtime 拿卡清单，下一场战斗开始时自动加入抽牌堆（调试/测试用）"
-              className="rounded border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:border-emerald-400/60">
-              在游戏中获得
+            <button onClick={doGrant} title={t('pv.grantTitle')}
+              className="whitespace-nowrap rounded border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:border-emerald-400/60">
+              {t('pv.grant')}
             </button>
-            <button onClick={doExport} className="rounded border border-white/10 px-2 py-0.5 hover:border-amber-400/50 hover:text-amber-300">
-              导出 JSON
+            <button onClick={doExport} className="whitespace-nowrap rounded border border-white/10 px-2 py-0.5 hover:border-amber-400/50 hover:text-amber-300">
+              {t('pv.export')}
             </button>
+            <span className="whitespace-nowrap font-mono text-[11px] text-slate-600">
+              {t('pv.entry')}: {cardEntry(meta.pack_id, card.id)}
+            </span>
           </div>
         </>
       ) : (
-        <div className="text-sm text-slate-600">选择或创建一张卡牌开始编辑</div>
+        <div className="text-sm text-slate-600">{t('pv.empty')}</div>
       )}
     </div>
   );

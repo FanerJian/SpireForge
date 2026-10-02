@@ -114,7 +114,14 @@ pub fn validate_game_dir(dir: &str) -> bool {
 /// 「一键在游戏中获得卡」：把 Entry 清单合并写入 Runtime mod 目录的 sf_grant.json，
 /// Runtime 在下一场战斗开始（首次抽牌前）消费一次——战斗中加入抽牌堆，
 /// 非战斗加入牌组，然后删除文件。返回 (登记总数, 本次新增数) 文案。
-pub fn queue_card_grant(entries: Vec<String>) -> Result<String, String> {
+/// 拿卡清单登记结果（total = 清单总条数，added = 本次新增；消息由前端按界面语言拼装）
+#[derive(Serialize)]
+pub struct GrantQueueResult {
+    pub total: usize,
+    pub added: usize,
+}
+
+pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String> {
     let settings = load_settings();
     if settings.game_dir.is_empty() {
         return Err("未配置游戏目录".into());
@@ -159,9 +166,8 @@ pub fn queue_card_grant(entries: Vec<String>) -> Result<String, String> {
         fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
-    Ok(format!(
-        "已登记 {} 张卡（本次新增 {}）",
-        merged.len(),
-        added
-    ))
+    Ok(GrantQueueResult {
+        total: merged.len(),
+        added,
+    })
 }

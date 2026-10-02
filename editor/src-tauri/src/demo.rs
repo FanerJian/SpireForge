@@ -1,6 +1,6 @@
 //! 示例卡包：内置 5 张演示卡（编辑器模板基础卡 / 力量 / 自定义效果「咔咔」/ 生命周期钩子）
 //! + 占位立绘（tools/make-demo-portraits.mjs 生成，include_bytes! 编译期内嵌）。
-//! 「咔咔」由 Runtime 常驻注册的 demo_kaka 处理器执行（易伤 2 + 虚弱 2），
+//! 「咔咔」由 Runtime 常驻注册的 demo_kaka 处理器执行（召唤改名咔咔的邪教徒 + 自身仪式 1），
 //! 无需额外 handler mod —— 让新用户开箱即看到"数据卡 + 自定义效果"两种玩法。
 
 use serde_json::json;
@@ -67,14 +67,14 @@ fn demo_cards() -> Result<Vec<crate::model::CardDef>, String> {
             "effects": [{"kind": "power", "amount": 5, "power": "Strength", "target": "self"}],
             "upgrades": {"damage": 0, "block": 0, "draw": 0, "energy": 0, "heal": 0, "keywords": []}
         }),
-        // ---- 自定义效果「咔咔」（Runtime 内置 demo_kaka 处理器：易伤 2 + 虚弱 2）----
+        // ---- 自定义效果「咔咔」（Runtime 内置 demo_kaka 处理器：召唤改名咔咔的邪教徒 + 自身仪式 1）----
         json!({
             "format_version": 1, "id": "kaka", "card_type": "Skill", "rarity": "Rare",
-            "target": "AnyEnemy", "cost": 1, "costs_x": false, "keywords": [],
+            "target": "None", "cost": 1, "costs_x": false, "keywords": [],
             "pool": "colorless", "show_in_library": true, "multiplayer": "none",
             "max_upgrade_level": 1, "portrait": "assets/cards/kaka.png",
             "name": {"zhs": "示例·咔咔", "eng": "Demo Kaka"},
-            "description": {"zhs": "咔咔！给敌人加一个咔咔：易伤 2 与虚弱 2。\n（自定义效果演示）", "eng": "Kaka! Apply 2 Vulnerable and 2 Weak.\n(Demo of custom effects.)"},
+            "description": {"zhs": "咔咔！在对面召唤一只「咔咔」（邪教徒，13 点生命），并获得 1 层仪式（每回合结束 +1 力量）。\n（自定义效果演示）", "eng": "Caw caw! Summon a \"Kaka\" (a cultist with 13 HP) on the enemy side and gain 1 Ritual (+1 Strength at the end of each turn).\n(Demo of custom effects.)"},
             "flavor": {"zhs": "kind=custom + handler=demo_kaka，由 Runtime 注册表执行。", "eng": "Custom handler registered by the runtime."},
             "effects": [{"kind": "custom", "handler": "demo_kaka"}],
             "upgrades": {"damage": 0, "block": 0, "draw": 0, "energy": 0, "heal": 0, "keywords": []}

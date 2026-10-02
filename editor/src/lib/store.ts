@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from './tauri';
+import { tr } from './i18n';
 import { makeCardFromTemplate, newCard, type CardDef, type EditorSettings, type ProjectMeta } from './types';
 
 // 自动保存去抖：停止编辑 800ms 后落盘；切卡/关窗/发布另有兜底
@@ -178,7 +179,7 @@ export const useStore = create<EditorStore>((set, get) => ({
       }
     }
     set({ dirtyIds: failed });
-    if (failed.length > 0) get().showToast('部分修改保存失败，请重试');
+    if (failed.length > 0) get().showToast(tr('st.partialSaveFail'));
   },
 
   createCard: async (tplId) => {

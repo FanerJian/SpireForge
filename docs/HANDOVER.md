@@ -77,10 +77,27 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
 - **内置示例卡包**（2026-10-02）：欢迎页「创建示例卡包」一键生成 5 张演示卡项目
   （pack_id=Demo，Entry 前缀 SF_）：示例·打击/防御（模板基础卡）、示例·力量（power
   效果 target=self 5 层）、示例·咔咔（**自定义效果** kind=custom+handler=demo_kaka，
-  Runtime 常驻注册该处理器 = 易伤 2 + 虚弱 2）、示例·回响（on_exhaust 钩子 + Exhaust）；
+  Runtime 常驻注册该处理器 = 在对面召唤一只改名「咔咔」的邪教徒（13 HP）+ 自身获得
+  1 层仪式）、示例·回响（on_exhaust 钩子 + Exhaust）；
   占位立绘由 `tools/make-demo-portraits.mjs` 生成（纯 Node PNG 编码）内嵌二进制。
   编辑器自定义效果曾有跨端 bug：TryInvoke 按 kind 名查注册表，编辑器保存的
   {"kind":"custom","handler":"X"} 永远查不到——已修（handler 优先）
+- **界面中英切换 + 官方译名**（2026-10-02）：工具栏/欢迎页右上角 中/EN 一键切换
+  （`lib/i18n.ts` 双语字典 ~190 键，localStorage 持久化；卡面预览跟随界面语言）；
+  游戏术语全部换成官方 zhs 本地化（spire-codex 提取，v0.111.0）：储君（曾误"摄政王"）、
+  静默猎手（曾误"沉默猎手"）、亡灵契约师（曾误"缚灵师"）、故障机器人、先古、衍生、
+  奇巧、固有、不能被打出、奥斯提等；关键词 chips 直接显示官方中文（悬浮看说明）
+- **UI 文字换行/重叠修复**（2026-10-02）：属性面板标签不再竖排（label nowrap + hint
+  truncate+title），卡牌 id/卡池改上下排布；效果行 flex-wrap + 不受 buff 影响单行；
+  属性面板页签行去掉冗余保存按钮（工具栏已有）；卡面预览底部 Entry 与预览行合并去重
+  （统一为「游戏内 Entry: XXX」单行）；稀有度等残留英文全部中文化
+- **战斗中生成敌人 API**（2026-10-02，Runtime）：`CreatureCmd.Add(model, combatState)`
+  （内部 CreateCreature + AddCreature + NCombatRoom 挂视觉）+ `CreatureCmd.
+  SetMaxAndCurrentHp`；怪物改名 = `LocManager.GetTable("monsters").MergeWith` 注入词条
+  + `MonsterModel.get_Title` Harmony 后缀按实例替换（标记存 ConditionalWeakTable，
+  只影响生成的实例；语言切换后由 Title 读取路径兜底重注入）——见 `runtime/src/SfKaka.cs`；
+  玩家侧仪式 = `PowerCmd.Apply<RitualPower>`（原版邪教徒吟唱同款，对玩家同样生效：
+  每回合结束 +力量）
 
 ### 部分完成 / 待办 ⏳
 
@@ -90,6 +107,9 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
   确认痛击 1 费/伤害 10/文案替换，验完删除该目录
 - **钩子的战斗内人工实测**：`sf_hooktest` 自测命令已内置（debug 模式），
   待人工走一遍战斗确认（编辑器与注册链路已自动验证）
+- **咔咔战斗内人工实测**：打出示例·咔咔，确认对面出现改名「咔咔」的邪教徒
+  （13 HP、会吟唱+暗击）、自身获得仪式（回合结束 +1 力量）、
+  日志出现 `custom effect registered: demo_kaka`；真身邪教徒名字不受影响
 - **第三方格式导入**：`.sts2pack` / `created_cards.json` / Make Spire JSON 的
   字段级适配器（通用启发式映射器已有，拿到真实样本文件后按 `import.rs` 扩展点补齐）
 - **效果目录扩充**：当前 5 个核心效果 + 自定义扩展，扩展清单见 §五

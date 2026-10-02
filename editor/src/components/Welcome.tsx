@@ -1,20 +1,30 @@
 import { useEffect, useState } from 'react';
 import { api, pickDirectory } from '../lib/tauri';
 import { useStore } from '../lib/store';
+import { setLang, useLang, useT } from '../lib/i18n';
 
 // 与后端 project::validate_pack_id 一致：字母开头，字母/数字/下划线，2–64 位
 const PACK_ID_RE = /^[A-Za-z][A-Za-z0-9_]{1,63}$/;
 
 export default function Welcome() {
   const { newProject, openProject, settings, refreshSettings } = useStore();
+  const t = useT();
+  const lang = useLang();
   const [mode, setMode] = useState<'none' | 'create'>('none');
   const [packId, setPackId] = useState('MyPack');
   const [name, setName] = useState('我的卡包');
   const [author, setAuthor] = useState('');
   const [busy, setBusy] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
-  const [gameDirHint, setGameDirHint] = useState(settings.game_dir ? '' : '未配置游戏目录');
+  const [gameDirHint, setGameDirHint] = useState(settings.game_dir ? '' : t('w.gameMissing'));
   const packIdOk = PACK_ID_RE.test(packId.trim());
+
+  // 语言切换时同步默认提示
+  useEffect(() => {
+    setGameDirHint((h) => (h === '未配置游戏目录' || h === 'Game directory not set' ? t('w.gameMissing') : h === '' ? '' : h));
+    if (!name || name === '我的卡包' || name === 'My Pack') setName(lang === 'en' ? 'My Pack' : '我的卡包');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
 
   // 挂载时自动检测一次游戏目录（首次运行的关键体验）
   useEffect(() => {
@@ -31,6 +41,7 @@ export default function Welcome() {
         }
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const detectGame = async () => {
@@ -50,7 +61,7 @@ export default function Welcome() {
           setGameDirHint(String(e));
         }
       } else {
-        setGameDirHint('未找到，请手动选择游戏根目录');
+        setGameDirHint(t('w.gameNotFound'));
       }
     }
   };
@@ -75,7 +86,7 @@ export default function Welcome() {
     try {
       await openProject(dir);
     } catch (e) {
-      alert('打开项目失败：' + String(e));
+      alert(t('w.openFailed', { e: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -90,7 +101,7 @@ export default function Welcome() {
       await api.createDemoProject(dir);
       await openProject(dir);
     } catch (e) {
-      alert('创建示例卡包失败：' + String(e));
+      alert(t('w.demoFailed', { e: String(e) }));
     } finally {
       setDemoBusy(false);
     }
@@ -99,11 +110,20 @@ export default function Welcome() {
   return (
     <div className="flex h-full items-center justify-center bg-gradient-to-b from-[#12121c] to-[#0a0a10]">
       <div className="w-[440px] rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl">
-        <div className="mb-1 text-2xl font-black tracking-wide text-amber-300">SpireForge 尖塔锻炉</div>
-        <div className="mb-3 text-sm text-slate-500">杀戮尖塔 2 · 现代化卡牌编辑器</div>
-        <div className="mb-5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
-          三步上手：① 新建卡包项目 → ② 「+ 新卡牌」挑个模板改数值 →
-          ③ 顶栏「发布 / 安装」一键装进游戏。想改原版卡就点「原版卡」。
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-2xl font-black tracking-wide text-amber-300">SpireForge 尖塔锻炉</div>
+            <div className="mt-1 text-sm text-slate-500">{t('w.subtitle')}</div>
+          </div>
+          <button
+            onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+            className="shrink-0 rounded-md border border-white/10 px-2.5 py-1.5 text-xs font-semibold text-sky-300/80 transition hover:border-sky-400/40 hover:text-sky-200"
+          >
+            {t('app.toEnglish')}
+          </button>
+        </div>
+        <div className="mb-5 mt-3 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+          {t('w.guide')}
         </div>
 
         <button
@@ -115,10 +135,10 @@ export default function Welcome() {
           }`}
         >
           <span>
-            {gameDirHint || `游戏目录已就绪`}
+            {gameDirHint || t('w.gameOk')}
             {!gameDirHint && <div className="mt-0.5 font-mono text-[10px] text-emerald-500/70">{settings.game_dir}</div>}
           </span>
-          <span className="text-xs opacity-70">{gameDirHint ? '点击配置' : '点击重新检测'}</span>
+          <span className="shrink-0 pl-2 text-xs opacity-70">{gameDirHint ? t('w.clickConfig') : t('w.clickRedetect')}</span>
         </button>
 
         {mode === 'none' ? (
@@ -127,44 +147,44 @@ export default function Welcome() {
               onClick={() => setMode('create')}
               className="w-full rounded-lg bg-amber-500/90 py-3 text-sm font-bold text-black transition hover:bg-amber-400"
             >
-              新建卡包项目
+              {t('w.newProject')}
             </button>
             <button
               onClick={doDemo}
               disabled={demoBusy}
-              title="创建一个内置示例项目：打击/防御/力量/咔咔(自定义效果)/回响(钩子) 5 张演示卡 + 占位立绘"
+              title={t('w.demoTitle')}
               className="w-full rounded-lg border border-emerald-400/30 bg-emerald-500/10 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-40"
             >
-              创建示例卡包（先看看能做什么）
+              {t('w.demo')}
             </button>
             <button
               onClick={doOpen}
               disabled={busy}
               className="w-full rounded-lg border border-white/15 bg-white/[0.04] py-3 text-sm font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/[0.08]"
             >
-              打开已有项目
+              {t('w.openProject')}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-400">包 id（工坊标识，驼峰）</span>
+              <span className="mb-1 block text-xs font-medium text-slate-400">{t('w.packId')}</span>
               <input value={packId} onChange={(e) => setPackId(e.target.value)}
                 className="w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-amber-400/60" />
               {!packIdOk && (
                 <span className="mt-1 block text-[11px] text-rose-400/80">
-                  需以字母开头，仅字母/数字/下划线（2–64 位）；它会成为目录名与工坊 id
+                  {t('w.packIdErr')}
                 </span>
               )}
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-400">项目名称</span>
+              <span className="mb-1 block text-xs font-medium text-slate-400">{t('w.name')}</span>
               <input value={name} onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-amber-400/60" />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-400">作者</span>
-              <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Steam 昵称"
+              <span className="mb-1 block text-xs font-medium text-slate-400">{t('w.author')}</span>
+              <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder={t('w.authorPh')}
                 className="w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-amber-400/60" />
             </label>
             <button
@@ -172,10 +192,10 @@ export default function Welcome() {
               disabled={busy || !packIdOk}
               className="w-full rounded-lg bg-amber-500/90 py-3 text-sm font-bold text-black transition hover:bg-amber-400 disabled:opacity-40"
             >
-              选择目录并创建
+              {t('w.create')}
             </button>
             <button onClick={() => setMode('none')} className="w-full text-xs text-slate-500 hover:text-slate-300">
-              返回
+              {t('w.back')}
             </button>
           </div>
         )}
