@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-/** 从反编译源码 + spire-codex zhs 数据生成编辑器的怪物目录（召唤敌人效果用）。
+/** 从反编译源码 + spire-codex zhs/eng 数据生成编辑器的怪物目录（召唤敌人效果用）。
  *  用法：node tools/extract-monster-catalog.mjs
  *  输入：tools/sts2-decompiled/MegaCrit.Sts2.Core.Models.Monsters/*.cs（全部具体 MonsterModel 子类）
- *        tools/spire-codex/data/zhs/monsters.json（官方中文名/HP/分类）
- *  输出：editor/src/lib/monsters.ts（MONSTERS / MONSTER_ZH，拼音排序） */
+ *        tools/spire-codex/data/zhs/monsters.json + data/eng/monsters.json（官方名/HP/分类）
+ *  输出：editor/src/lib/monsters.ts（MONSTERS / MONSTER_ZH，拼音排序）
+ *  注：怪物立绘 45MB 不打包进编辑器，下拉用类型徽章（Normal/Elite/Boss）代替图标。 */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const monstersDir = join(root, 'tools', 'sts2-decompiled', 'MegaCrit.Sts2.Core.Models.Monsters');
 const zhsPath = join(root, 'tools', 'spire-codex', 'data', 'zhs', 'monsters.json');
+const engPath = join(root, 'tools', 'spire-codex', 'data', 'eng', 'monsters.json');
 const outPath = join(root, 'editor', 'src', 'lib', 'monsters.ts');
 
 // 1) 具体怪物类（跳过 abstract；收集文件内全部 class 声明）
@@ -29,8 +31,10 @@ function toPascal(snake) {
   return snake.toLowerCase().split('_').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('');
 }
 
-// 2) 以 zhs 官方图鉴为准（真实怪物；反编译目录里的测试 Dummy 等不进目录）
+// 2) 以 zhs 官方图鉴为准（真实怪物；反编译目录里的测试 Dummy 等不进目录），eng 提供英文名
 const zhs = JSON.parse(readFileSync(zhsPath, 'utf8'));
+const eng = JSON.parse(readFileSync(engPath, 'utf8'));
+const engById = new Map(eng.map((p) => [p.id, p]));
 
 const entries = [];
 const missed = [];
@@ -42,6 +46,7 @@ for (const p of zhs) {
   }
   entries.push({
     name: cls,
+    en: engById.get(p.id)?.name || cls,
     zh: p.name || cls,
     type: p.type || '',
     hp: [p.min_hp, p.max_hp].every((n) => typeof n === 'number')
@@ -57,11 +62,13 @@ entries.sort((a, b) => coll.compare(a.zh, b.zh) || a.name.localeCompare(b.name))
 const monsterZh = Object.fromEntries(entries.map((e) => [e.name, e.zh]));
 
 const ts = `/** 游戏怪物目录（${entries.length} 项）——由 tools/extract-monster-catalog.mjs 生成，勿手改。
- *  数据源：反编译 v0.111.0 全部具体 MonsterModel 子类 + spire-codex zhs 官方译名。
- *  name = 类名（Runtime SfMonsterResolver 同时匹配类名与 Id.Entry）；zh 官方中文名。 */
+ *  数据源：反编译 v0.111.0 全部具体 MonsterModel 子类 + spire-codex zhs/eng 官方图鉴。
+ *  name = 类名（Runtime SfMonsterResolver 同时匹配类名与 Id.Entry）。 */
 export interface MonsterEntry {
   /** 类名（如 DampCultist），召唤效果的 params.monster 值 */
   name: string;
+  /** 官方英文名 */
+  en: string;
   /** 官方中文名（如 潮湿邪教徒） */
   zh: string;
   /** 分类：Normal / Elite / Boss / …（可能为空） */

@@ -39,6 +39,14 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
   悬浮官方描述；选中值下方常显中文 chip。「预填原版效果」的敌人/自身判定改用完整
   Debuff 表（52 项，原 5 项硬编码）。生成器：`tools/extract-power-catalog.mjs` →
   `editor/src/lib/powers.ts`（游戏更新后重跑）
+- **可搜索下拉组件 Combobox**（2026-10-02）：力量/召唤怪物/生成卡牌三处弃用原生
+  datalist（会同时显示英文值+中文标签），改用自定义 Combobox——**中文界面只显示中文、
+  英文界面只显示英文**；顶部搜索框中英文名均可检索；力量项带官方图标（codex 图库
+  255 张复制到 `editor/public/catalog/powers/`，5.7MB 随包内嵌）与官方描述（去 BBCode）、
+  减益徽章；怪物项带 Normal/Elite/Boss 徽章与原生生命（怪物立绘 45MB 不打包，用徽章
+  代替）；生成卡牌项=项目卡+原版目录 577 张联合检索（Entry 作次要行区分同名变体）；
+  无匹配时可「使用原始值」保留自由输入。显示名≠保存值：字段显示本地化名，卡牌 JSON
+  仍存英文规范名（SfPowerResolver/SfMonsterResolver 靠它解析）
 - **生命周期钩子**：`on_draw`/`on_discard`/`on_exhaust`/`on_enter_combat`/`on_turn_end_in_hand`
   （自作用触发，编辑器「效果」页签按时机编辑；游戏内 15 卡注册 PASS、
   钩子分发经游戏源码比对 + `sf_hooktest` 自测命令验证路径）

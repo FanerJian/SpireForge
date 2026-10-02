@@ -1,18 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/tauri';
 import { useStore } from '../lib/store';
+import { Combobox, type ComboItem } from './Combobox';
 import {
   EFFECT_META, HOOK_TARGET_OPTIONS, KEYWORD_CHIPS, POOL_LABEL, RARITY_LABEL,
   TARGET_LABEL, TRIGGER_OPTIONS, TYPE_LABEL,
   pick, useLang, useT, type TriggerKey,
 } from '../lib/i18n';
 import {
-  POWER_ZH, cardEntry, composeDescription, effectsFromVanillaVars,
+  cardEntry, composeDescription, effectsFromVanillaVars,
   type CardDef, type CardType, type EffectDef, type Pool, type TargetType,
   type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
 import { POWERS } from '../lib/powers';
-import { MONSTERS, MONSTER_ZH } from '../lib/monsters';
+import { MONSTERS } from '../lib/monsters';
 
 // ---- 原版目录缓存（模块级：整个会话只拉一次）----
 let vanillaCache: VanillaCatalog | null = null;
@@ -312,13 +313,85 @@ function ParamsEditor({ value, onChange }: {
   );
 }
 
+/** 去掉官方描述里的 BBCode 着色标记（[gold]xx[/gold] → xx） */
+function stripBbcode(s: string): string {
+  return s ? s.replace(/\[\/?[a-z_]+\]/gi, '') : '';
+}
+
 function EffectsTab({ card }: { card: CardDef }) {
-  const { updateCard } = useStore();
+  const { updateCard, cards, meta } = useStore();
   const t = useT();
   const lang = useLang();
   const genDesc = useGenDescription();
   const [trigger, setTrigger] = useState<TriggerKey>('play');
+  const [vanilla, setVanilla] = useState<VanillaEntry[]>([]);
   const u = card.upgrades;
+
+  // 原版目录（生成卡牌效果的可选项；模块级缓存，整个会话只拉一次）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!vanillaCache) vanillaCache = await api.vanillaCatalog();
+        if (!cancelled) setVanilla(vanillaCache.cards);
+      } catch {
+        // 目录加载失败不阻断效果编辑
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 力量下拉：中文界面只显示中文（英文界面只显示英文），描述随语言，搜索词两种语言都匹配
+  const powerCombo: ComboItem[] = useMemo(() => POWERS.map((p) => ({
+    value: p.name,
+    primary: lang === 'en' ? p.en : p.zh,
+    secondary: stripBbcode(lang === 'en' ? p.desc_en : p.desc),
+    icon: p.icon || undefined,
+    badge: p.debuff ? (lang === 'en' ? 'Debuff' : '减益') : undefined,
+    badgeTone: p.debuff ? ('danger' as const) : undefined,
+    keywords: lang === 'en' ? p.zh : p.en,
+  })), [lang]);
+
+  // 怪物下拉：类型徽章 + 原生生命；图标太大不打包，用徽章代替
+  const monsterCombo: ComboItem[] = useMemo(() => MONSTERS.map((m) => ({
+    value: m.name,
+    primary: lang === 'en' ? m.en : m.zh,
+    secondary: m.hp ? (lang === 'en' ? `HP ${m.hp}` : `生命 ${m.hp}`) : undefined,
+    badge: m.type || undefined,
+    badgeTone: (m.type === 'Boss' || m.type === 'Elite') ? ('danger' as const) : ('neutral' as const),
+    keywords: lang === 'en' ? m.zh : m.en,
+  })), [lang]);
+
+  // 生成卡牌下拉：本项目卡优先，其后原版卡；次要行显示 Entry（同名卡/变体靠它区分）
+  const spawnCombo: ComboItem[] = useMemo(() => {
+    const items: ComboItem[] = cards
+      .filter((c) => c.id !== card.id)
+      .map((c) => {
+        const entry = cardEntry(meta?.pack_id ?? '', c.id);
+        return {
+          value: entry,
+          primary: lang === 'en' ? (c.name.eng || c.name.zhs) : (c.name.zhs || c.name.eng),
+          secondary: entry,
+          badge: TYPE_LABEL[c.card_type] ? pick(TYPE_LABEL[c.card_type], lang) : c.card_type,
+          badgeTone: 'neutral' as const,
+          keywords: c.id,
+        };
+      });
+    for (const v of vanilla) {
+      if (items.some((i) => i.value === v.entry)) continue;
+      items.push({
+        value: v.entry,
+        primary: lang === 'en' ? (v.name_en || v.name) : v.name,
+        secondary: v.entry,
+        badge: TYPE_LABEL[v.type] ? pick(TYPE_LABEL[v.type], lang) : v.type,
+        badgeTone: 'neutral' as const,
+        keywords: v.name_en,
+      });
+    }
+    return items;
+  }, [cards, vanilla, lang, meta?.pack_id, card.id]);
 
   const list: EffectDef[] = trigger === 'play' ? card.effects : (card[trigger] ?? []);
   const setList = (fx: EffectDef[]) => {
@@ -516,36 +589,28 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                   {e.kind === 'power' && (
                     <>
                       <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.powerLabel')}</span>
-                      <input
-                        list="sf-common-powers"
-                        className={inputCls + ' w-36 font-mono'}
-                        placeholder="Vulnerable"
+                      <Combobox
                         value={(e as { power: string }).power}
-                        onChange={(ev) => patch(i, { power: ev.target.value.replace(/[^a-zA-Z0-9_]/g, '') } as Partial<EffectDef>)}
+                        items={powerCombo}
+                        onChange={(v) => patch(i, { power: v } as Partial<EffectDef>)}
+                        fallbackDisplay={(e as { power: string }).power}
+                        searchPlaceholder={t('pp.powerSearch')}
+                        allowRaw
+                        rawLabel={(raw) => t('pp.useRaw', { v: raw })}
                       />
-                      <datalist id="sf-common-powers">
-                        {POWERS.map((p) => (
-                          <option key={p.name} value={p.name}>{p.zh}</option>
-                        ))}
-                      </datalist>
-                      {POWER_ZH[(e as { power: string }).power] && (
-                        <span
-                          className="shrink-0 text-[10px] text-slate-600"
-                          title={POWERS.find((p) => p.name === (e as { power: string }).power)?.desc.replace(/\[\/?\w+\]/g, '') || ''}
-                        >
-                          {POWER_ZH[(e as { power: string }).power]}
-                        </span>
-                      )}
                     </>
                   )}
                   {e.kind === 'spawn' && (
                     <>
                       <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.spawnEntry')}</span>
-                      <input
-                        className={inputCls + ' w-40 font-mono'}
-                        placeholder={t('pp.spawnEntryPh')}
+                      <Combobox
                         value={(e as { card_entry: string }).card_entry}
-                        onChange={(ev) => patch(i, { card_entry: ev.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') } as Partial<EffectDef>)}
+                        items={spawnCombo}
+                        onChange={(v) => patch(i, { card_entry: v } as Partial<EffectDef>)}
+                        fallbackDisplay={(e as { card_entry: string }).card_entry}
+                        searchPlaceholder={t('pp.cardSearch')}
+                        allowRaw
+                        rawLabel={(raw) => t('pp.useRaw', { v: raw })}
                       />
                       <select
                         className={selectCls + ' w-24'}
@@ -560,30 +625,18 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                   )}
                   {e.kind === 'summon' && (() => {
                     const me = e as { monster: string; hp?: number };
-                    const hit = MONSTERS.find((m) => m.name === me.monster);
                     return (
                       <>
                         <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.monster')}</span>
-                        <input
-                          list="sf-monsters"
-                          className={inputCls + ' w-40 font-mono'}
-                          placeholder={t('pp.monsterPh')}
+                        <Combobox
                           value={me.monster}
-                          onChange={(ev) => patch(i, { monster: ev.target.value.replace(/[^a-zA-Z0-9_]/g, '') } as Partial<EffectDef>)}
+                          items={monsterCombo}
+                          onChange={(v) => patch(i, { monster: v } as Partial<EffectDef>)}
+                          fallbackDisplay={me.monster}
+                          searchPlaceholder={t('pp.monsterSearch')}
+                          allowRaw
+                          rawLabel={(raw) => t('pp.useRaw', { v: raw })}
                         />
-                        <datalist id="sf-monsters">
-                          {MONSTERS.map((m) => (
-                            <option key={m.name} value={m.name}>{m.zh}</option>
-                          ))}
-                        </datalist>
-                        {MONSTER_ZH[me.monster] && (
-                          <span
-                            className="shrink-0 text-[10px] text-slate-600"
-                            title={[hit?.type, hit?.hp ? `HP ${hit.hp}` : ''].filter(Boolean).join(' · ')}
-                          >
-                            {MONSTER_ZH[me.monster]}
-                          </span>
-                        )}
                         <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.summonHp')}</span>
                         <input
                           type="number"
