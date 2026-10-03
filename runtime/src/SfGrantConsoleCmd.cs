@@ -12,7 +12,7 @@ namespace SpireForge.Runtime;
 /// <summary>
 /// 游戏内控制台命令 sf_grant [ENTRY ...]：
 /// 无参数 = 列出已安装 SpireForge 卡包的全部 Entry；带参数 = 永久拿卡
-/// （加入本局主牌组；战斗中发放的卡从下一场战斗起可用）。
+/// （加入本局主牌组；战斗中额外塞一张到手牌）。
 /// 原版 Entry 同样可用（如 sf_grant BASH）。
 /// DebugOnly 保持默认 true —— 拿卡属于测试/自查功能，仅在调试会话出现。
 /// 游戏通过 ReflectionHelper.GetSubtypesInMods 自动发现本类，无需手动注册。
@@ -61,11 +61,8 @@ public sealed class SfGrantConsoleCmd : AbstractConsoleCmd
                 var err = await SfGrant.GrantAsync(player, entry);
                 if (err != null)
                 {
+                    // 成功日志由 GrantAsync 统一记（含是否塞了手牌）
                     SpireForge.Api.SfLog.Error($"sf_grant {entry} FAILED: {err}");
-                }
-                else
-                {
-                    SpireForge.Api.SfLog.Info($"sf_grant: granted {entry} (deck)");
                 }
             }
             catch (Exception e)

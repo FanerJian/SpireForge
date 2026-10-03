@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -14,12 +15,14 @@ using MegaCrit.Sts2.Core.Runs;
 namespace SpireForge.Runtime;
 
 /// <summary>
-/// 「一键在游戏中获得卡」文件桥。
+/// 「添加至卡组」文件桥。
 /// 编辑器把 Entry 清单写入本 mod 目录的 sf_grant.json（{"entries":[...]}），
-/// Runtime 在每场战斗开始（Hook.BeforeCombatStart 后缀、首次抽牌前）消费一次。
-/// **发放是本局永久的**：卡加入玩家的主牌组（Player.Deck，跨战斗持久、随存档
-/// 保存）；战斗中发放的卡从下一场战斗起可用（开局 PopulateCombatState 会把
-/// Deck 克隆进抽牌堆）。消费即删除，不重复发放。
+/// Runtime 每帧轮询（SceneTree.ProcessFrame，250ms 节流）**即时消费**：
+///  - 战斗外：卡加入本局主牌组（Player.Deck，跨战斗持久、随存档保存）；
+///  - 战斗中：入组之外**额外塞一张到手牌**（本场立即可用；满手牌走官方分支）。
+/// Deck 牌堆战斗内外同指 player.Deck（CardPile.Get），所以战斗中发放的卡
+/// 本场从手牌拿、下一场起从抽牌堆抽。消费即删除，不重复发放；还没进局
+/// （主菜单）时清单保留，进局后轮询自动入组。
 /// 登记只在同一次游戏会话内有效：编辑器在游戏未运行时拒绝登记；启动时清掉
 /// 上个会话遗留的清单（ClearStaleQueue），绝不跨会话补发。
 /// 文件本身就是用户意图（编辑器按钮/控制台），因此不受 DEBUG 开关限制；
@@ -31,6 +34,36 @@ public static class SfGrant
     public static string QueuePath => Path.Combine(
         Path.GetDirectoryName(typeof(SfGrant).Assembly.Location) ?? "",
         "sf_grant.json");
+
+    private static readonly Stopwatch PollClock = Stopwatch.StartNew();
+    private static long _nextPollMs;
+
+    /// <summary>把轮询挂到 SceneTree 每帧信号（主线程执行）。</summary>
+    public static void InstallPolling(Godot.SceneTree tree)
+    {
+        tree.ProcessFrame += OnTick;
+    }
+
+    private static void OnTick()
+    {
+        long now = PollClock.ElapsedMilliseconds;
+        if (now < _nextPollMs)
+        {
+            return;
+        }
+        _nextPollMs = now + 250;
+        try
+        {
+            if (File.Exists(QueuePath))
+            {
+                ConsumePending();
+            }
+        }
+        catch (Exception)
+        {
+            // 吞掉一切：轮询失败下轮再试，绝不能拖垮游戏主循环
+        }
+    }
 
     /// <summary>游戏启动时清掉上个会话遗留的拿卡清单：登记不跨会话，
     /// 排队后未消费就退出游戏的清单到下次启动一律作废。</summary>
@@ -92,7 +125,8 @@ public static class SfGrant
         File.Move(tmp, QueuePath, overwrite: true);
     }
 
-    /// <summary>读取并清空清单（消费语义：无论后续发放成败，文件都移除并逐条记日志）。</summary>
+    /// <summary>读取并清空清单（消费语义：无论后续发放成败，文件都移除并逐条记日志）。
+    /// 编辑器写入是「删旧+改名」两步，存在极短的文件空窗——文件恰好消失时按没排队处理。</summary>
     private static List<string> TakeQueue()
     {
         var entries = new List<string>();
@@ -112,32 +146,53 @@ public static class SfGrant
                 }
             }
         }
+        catch (FileNotFoundException)
+        {
+            return entries;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return entries;
+        }
         catch (Exception e)
         {
             SpireForge.Api.SfLog.Error($"grant queue unreadable, discarding: {e.Message}");
         }
-        File.Delete(QueuePath);
+        try
+        {
+            File.Delete(QueuePath);
+        }
+        catch (Exception)
+        {
+            // 删不掉就留着，下轮重新消费（消费失败重读的风险远小于误删用户意图）
+        }
         return entries;
     }
 
-    /// <summary>Hook.BeforeCombatStart 后缀调用。吞掉一切异常——战斗绝不能被破坏。</summary>
-    public static void ConsumeAtCombatStart(IRunState? runState)
+    /// <summary>轮询消费入口：有局才消费（主菜单登记的清单进局后自动入组）。
+    /// Hook.BeforeCombatStart 后缀也调用本方法兜底（轮询失效时战斗开始仍会消费）。</summary>
+    public static void ConsumePending()
     {
         try
         {
-            if (runState == null || !File.Exists(QueuePath))
+            if (!File.Exists(QueuePath))
             {
+                return;
+            }
+            var run = RunManager.Instance?.DebugOnlyGetState();
+            if (run == null)
+            {
+                return;
+            }
+            var player = run.Players.FirstOrDefault();
+            if (player == null)
+            {
+                SpireForge.Api.SfLog.Error("grant queue skipped: run has no player");
                 return;
             }
             var entries = TakeQueue();
             if (entries.Count == 0)
             {
-                return;
-            }
-            var player = runState.Players.FirstOrDefault();
-            if (player == null)
-            {
-                SpireForge.Api.SfLog.Error("grant queue skipped: run has no player");
                 return;
             }
             SpireForge.Api.SfLog.Info(
@@ -161,10 +216,6 @@ public static class SfGrant
                 {
                     SpireForge.Api.SfLog.Error($"grant {entry} FAILED: {err}");
                 }
-                else
-                {
-                    SpireForge.Api.SfLog.Info($"granted {entry} (deck)");
-                }
             }
             catch (Exception e)
             {
@@ -174,8 +225,8 @@ public static class SfGrant
     }
 
     /// <summary>把一张卡**永久**发给玩家：加入本局主牌组（Player.Deck，跨战斗
-    /// 持久、随存档保存，与游戏 card &lt;X&gt; Deck 控制台命令同配方）。战斗中发放的卡
-    /// 从下一场战斗起可用（开局 PopulateCombatState 会把 Deck 克隆进抽牌堆）。
+    /// 持久、随存档保存，与游戏 card &lt;X&gt; Deck 控制台命令同配方）；
+    /// **战斗进行中额外塞一张到手牌**（本场立即可用）。发放结果在此统一记日志。
     /// 返回 null = 成功，否则为错误说明。</summary>
     public static async Task<string?> GrantAsync(Player player, string entry)
     {
@@ -196,6 +247,24 @@ public static class SfGrant
         // 与原版事件塞牌同款：入组结果交给官方预览动画（卡牌飞向牌组）
         MegaCrit.Sts2.Core.Commands.CardCmd.PreviewCardPileAdd(added);
         bool inCombat = CombatManager.Instance is { IsInProgress: true };
+        if (inCombat)
+        {
+            var handCard = run.CreateCard(model, player);
+            var handAdded = await CardPileCmd.Add(handCard, PileType.Hand);
+            if (handAdded.success)
+            {
+                MegaCrit.Sts2.Core.Commands.CardCmd.PreviewCardPileAdd(handAdded);
+                SpireForge.Api.SfLog.Info($"granted {entry} (deck +1 hand)");
+            }
+            else
+            {
+                SpireForge.Api.SfLog.Warn($"granted {entry} (deck); hand copy prevented");
+            }
+        }
+        else
+        {
+            SpireForge.Api.SfLog.Info($"granted {entry} (deck)");
+        }
         SpireForge.Api.SfEvents.RaiseCardGranted(entry, inCombat);
         return null;
     }

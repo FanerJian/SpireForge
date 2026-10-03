@@ -64,7 +64,16 @@ public static class RuntimeEntry
         harmony.Patch(
             typeof(AssemblyInfo).GetMethod(nameof(AssemblyInfo.Init), BindingFlags.Public | BindingFlags.Static),
             postfix: new HarmonyMethod(typeof(RuntimeEntry), nameof(AfterAssemblyInfoInit)));
-        // 「一键在游戏中获得卡」：每场战斗开始（首次抽牌前）消费编辑器写的 sf_grant.json
+        // 「添加至卡组」：主线程每帧轮询拿卡清单——战斗外立即入组、战斗中额外塞手牌；
+        // BeforeCombatStart 钩子保留作兜底（轮询失效时战斗开始仍会消费）
+        if (Godot.Engine.GetMainLoop() is Godot.SceneTree sceneTree)
+        {
+            SfGrant.InstallPolling(sceneTree);
+        }
+        else
+        {
+            Log.Error($"{LogTag}: main loop is not a SceneTree, grant polling disabled");
+        }
         harmony.Patch(
             typeof(MegaCrit.Sts2.Core.Hooks.Hook).GetMethod(
                 nameof(MegaCrit.Sts2.Core.Hooks.Hook.BeforeCombatStart),
@@ -104,11 +113,11 @@ public static class RuntimeEntry
         }
     }
 
-    /// <summary>每场战斗开始（首次抽牌前）：消费编辑器登记的「在游戏中获得卡」清单。</summary>
+    /// <summary>每场战斗开始（首次抽牌前）：兜底消费拿卡清单（正常由每帧轮询即时消费）。</summary>
     private static void AfterBeforeCombatStart(MegaCrit.Sts2.Core.Runs.IRunState runState,
         MegaCrit.Sts2.Core.Combat.ICombatState? combatState)
     {
-        SfGrant.ConsumeAtCombatStart(runState);
+        SfGrant.ConsumePending();
     }
 
     /// <summary>ModelDb.Init 前缀：扫描卡包 + 生成类型。不注册（注册统一在后缀，幂等）。</summary>

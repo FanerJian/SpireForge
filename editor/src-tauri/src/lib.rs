@@ -39,7 +39,7 @@ fn set_game_dir(state: State<AppState>, dir: String) -> Result<(), String> {
     game::save_settings(&s)
 }
 
-/// 登记到 Runtime 的拿卡清单（下一场战斗开始时发放）
+/// 登记到 Runtime 的拿卡清单（游戏内即时发放：入组 + 战斗中塞手牌）
 #[tauri::command]
 fn queue_card_grant(entries: Vec<String>) -> Result<game::GrantQueueResult, String> {
     game::queue_card_grant(entries)

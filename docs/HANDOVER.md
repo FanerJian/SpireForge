@@ -88,12 +88,15 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
 - **中英双语**：zhs/eng 双语文案 + 游戏内本地化合并实测通过
 - **卡牌实时预览**：按官方规格渲染，含升级数值对照与钩子角标
 - **一键安装到游戏** + 导出卡包
-- **一键在游戏中获得卡（本局永久）**（2026-10-02，同日收敛语义）：编辑器（预览区单卡按钮 /
-  发布面板整包按钮）把 Entry 写进 `mods/SpireForgeRuntime/sf_grant.json`，Runtime 在每场战斗
-  开始（BeforeCombatStart 后缀、首次抽牌前）消费一次。**发放是本局永久的**：卡
-  `RunState.CreateCard` + `CardPileCmd.Add(Deck)` 进主牌组（跨战斗持久、随存档保存，与游戏
-  `card <X> Deck` 命令同配方）；战斗中发放的卡从下一场战斗起可用（开局 PopulateCombatState
-  会把 Deck 克隆进抽牌堆），**没有**额外的当前抽牌堆副本。消费即删文件、不重复发放。
+- **一键添加至卡组（本局永久）**（2026-10-02；语义当日收敛，10-03 改即时轮询+塞手牌）：
+  编辑器（预览区单卡按钮「添加至卡组」/ 发布面板整包按钮）把 Entry 写进
+  `mods/SpireForgeRuntime/sf_grant.json`，Runtime **每帧轮询**（SceneTree.ProcessFrame
+  信号，250ms 节流）**即时消费**：**战斗外只入组**；**战斗中入组之外额外塞一张到手牌**
+  （本场立即可用；`CardPile.Get` 里 Deck 战斗内外同指 `Player.Deck`，Hand 战斗外为 null，
+  故手牌分支以 `CombatManager.IsInProgress` 为前提）。发放配方：`RunState.CreateCard` +
+  `CardPileCmd.Add(Deck)`（跨战斗持久、随存档保存，与游戏 `card <X> Deck` 命令同配方）
+  + `CardCmd.PreviewCardPileAdd` 官方飞行动画。消费即删文件、不重复发放；主菜单登记的
+  清单进局后自动入组；BeforeCombatStart 钩子保留作兜底（轮询失效时战斗开始仍会消费）。
   **登记只在游戏会话内有效**：编辑器经 tasklist（duct）检测游戏进程，未运行时拒绝登记
   （Rust 返回 `GAME_NOT_RUNNING` → 前端「游戏未运行…」提示）；Runtime 启动时
   `ClearStaleQueue` 清掉上个会话遗留的清单，绝不跨会话补发。游戏内另有

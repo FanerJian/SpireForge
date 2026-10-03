@@ -132,7 +132,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     showToast(t('pub.uploaderSaved'));
   };
 
-  /** 「在游戏中获得卡」：整包登记进 Runtime 拿卡清单，下一场战斗开始时发放 */
+  /** 「添加至卡组」：整包登记进 Runtime 拿卡清单，游戏内即时入组（战斗中额外塞手牌） */
   const doGrantAll = async () => {
     if (!meta) return;
     try {

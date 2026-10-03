@@ -32,7 +32,7 @@ Godot 源生成器缺失 → 引擎回调（`ResourceFormatLoader._Load` 等 GDV
 | `SfVanillaOverride.cs` | 原版卡覆盖：改模板费用/类型/稀有度/目标/数值 + Harmony 替换 OnPlay/OnUpgrade |
 | `SfEffects.cs` | 对外扩展 API（`SpireForge.Api`）：自定义效果注册表、卡包查询、日志 |
 | `SfEvents.cs` | 对外扩展 API：生命周期事件总线（BeforeEffect/AfterEffect/CardGranted，订阅者异常隔离） |
-| `SfGrant.cs` | 「一键在游戏中获得卡」文件桥：sf_grant.json 排队、**永久**发放（主牌组；启动时清上个会话的遗留清单，登记不跨会话） |
+| `SfGrant.cs` | 「添加至卡组」文件桥：sf_grant.json 排队、Runtime 每帧轮询即时消费（战斗外入组 / 战斗中额外塞手牌；启动时清上个会话的遗留清单，登记不跨会话） |
 | `SfGrantConsoleCmd.cs` | 控制台命令 `sf_grant`（列出/永久拿卡，调试模式） |
 | `SfKaka.cs` | 战斗中生成敌人 + 实例级改名（ConditionalWeakTable 标记 + Title getter 后缀 + loc 词条注入） |
 | `SfHookTestCmd.cs` | 调试自测控制台命令 `sf_hooktest`（自动验证钩子/自定义效果，debug 模式） |
@@ -115,7 +115,7 @@ SpireForgeRuntime 把 `SpireForge.Api` 命名空间作为公共 API 暴露（`Sf
 | `SfEffects` | 注册/注销自定义效果处理器（卡包 JSON 里 `{"kind":"名"}` 即可调用） |
 | `SfEvents` | 生命周期事件：`BeforeEffect` / `AfterEffect` / `CardGranted` |
 | `SfPacks` | 查询已加载卡包：`All` / `PackOf` / `TryGetDef` / `TryGetCardModel` |
-| `SfGrant` | 给玩家发卡：`Enqueue`（写清单，战斗开始时消费）/ `GrantAsync`（立即发放，**永久加入本局牌组**） |
+| `SfGrant` | 给玩家发卡：`Enqueue`（写清单，Runtime 轮询消费）/ `GrantAsync`（立即发放，**永久加入本局牌组**，战斗中额外塞一张到手牌） |
 | `SfLog` | 统一前缀日志（godot.log 过滤 `SPIREFORGE`） |
 
 完整示例 mod：
@@ -153,8 +153,8 @@ public static class MyMod
             // model 可 ToMutable() 后交给任意游戏 API
         }
 
-        // 4) 给玩家发卡（永久加入本局主牌组；战斗中发放的卡从下一场战斗起可用）
-        SfGrant.Enqueue(["MY_PACK_MY_CARD", "BASH"]);   // 排队：下一场战斗开始时消费
+        // 4) 给玩家发卡（永久加入本局主牌组；战斗中额外塞一张到手牌）
+        SfGrant.Enqueue(["MY_PACK_MY_CARD", "BASH"]);   // 排队：Runtime 每帧轮询即时消费
         // 或立即发放（需要 RunManager 进行中）：
         // await SfGrant.GrantAsync(player, "MY_PACK_MY_CARD");
 
@@ -169,8 +169,8 @@ public static class MyMod
 - `Trigger` 取值：`play` / `on_draw` / `on_discard` / `on_exhaust` / `on_enter_combat` / `on_turn_end_in_hand`
 - 处理器抛异常会被捕获并记 `[ERROR] SPIREFORGE`，不会炸战斗流程；事件订阅者同理
 - `SfGrant.GrantAsync` 的发放是**本局永久的**：`RunState.CreateCard` + `CardPileCmd.Add(Deck)`
-  （与游戏 `card <X> Deck` 命令同配方）；战斗中发放的卡从下一场战斗起可用
-  （开局 `PopulateCombatState` 会把 Deck 克隆进抽牌堆）。排队登记只在同一次游戏
+  （与游戏 `card <X> Deck` 命令同配方）；**战斗进行中额外塞一张到手牌**（本场立即可用；
+  `CardPile.Get` 里 Deck 战斗内外同指 `Player.Deck`）。排队登记只在同一次游戏
   会话内有效：编辑器在游戏未运行时拒绝登记，Runtime 启动时清掉上个会话的遗留清单
 - Runtime 侧错误路径全都有日志兜底（未注册 kind → `unregistered custom effect`）
 
