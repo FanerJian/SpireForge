@@ -144,7 +144,7 @@ pub enum EffectDef {
         #[serde(default = "default_amount")]
         amount: f64,
     },
-    /// 施加增益/减益：power = 力量名（Vulnerable/Poison/Strength/任意 PowerModel 子类名）；
+    /// 施加增益/减益：power = 效果名（Vulnerable/Poison/Strength/任意 PowerModel 子类名）；
     /// target: self = 给自己上（Strength/Focus 等增益），缺省 = 打出目标/钩子取敌
     Power {
         #[serde(default = "default_amount")]

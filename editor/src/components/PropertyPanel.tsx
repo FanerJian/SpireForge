@@ -343,7 +343,7 @@ function EffectsTab({ card }: { card: CardDef }) {
     };
   }, []);
 
-  // 力量下拉：中文界面只显示中文（英文界面只显示英文），描述随语言，搜索词两种语言都匹配
+  // 效果下拉：中文界面只显示中文（英文界面只显示英文），描述随语言，搜索词两种语言都匹配
   const powerCombo: ComboItem[] = useMemo(() => POWERS.map((p) => ({
     value: p.name,
     primary: lang === 'en' ? p.en : p.zh,

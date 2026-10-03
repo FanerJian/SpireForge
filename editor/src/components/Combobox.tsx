@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../lib/i18n';
 
 export interface ComboItem {
-  /** 保存到卡牌 JSON 的规范值（力量解析名/怪物类名/卡牌 Entry） */
+  /** 保存到卡牌 JSON 的规范值（效果 PowerModel 解析名/怪物类名/卡牌 Entry） */
   value: string;
   /** 主显示名（随界面语言给出：中文界面=中文名，英文界面=英文名） */
   primary: string;

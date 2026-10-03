@@ -227,7 +227,7 @@ export function composeDescription(card: CardDef): { zhs: string; eng: string } 
       case 'max_hp': z.push(`生命上限 +${fx.amount}。`); e.push(`Gain ${fx.amount} Max HP.`); break;
       case 'power': {
         const zh = POWER_ZH[fx.power] ?? fx.power;
-        z.push(`施加 ${fx.amount} 层${zh}。`);
+        z.push(`给予 ${fx.amount} 层${zh}。`);
         e.push(`Apply ${fx.amount} ${fx.power}.`);
         break;
       }
