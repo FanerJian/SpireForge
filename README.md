@@ -81,7 +81,10 @@ OnPlay 按效果清单 await 游戏 Cmd API 执行
 
 ## 许可与致谢
 
+本项目以 [MIT](LICENSE) 许可开源（免费，仅限非商业用途地使用其中的 Spire Codex 派生内容——
+详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)）。
 本项目为社区工具，与 Mega Crit 无关。游戏资产版权归 Mega Crit 所有。
 内嵌的 ModUploader 来自 [MegaCrit/sts2-mod-uploader](https://github.com/Megacrit/sts2-mod-uploader)（MIT）。
-调研受益于 BaseLib（Alchyr）、RitsuLib（BAKAOLC）、fresh-milkshake/Modding-Tutorial、
-spire-codex（ptrlrd，原版卡目录数据源）等社区项目。
+原版卡目录、力量/怪物目录与图标数据来自 [spire-codex](https://github.com/ptrlrd/spire-codex)
+（PolyForm Noncommercial，Required Notice 见第三方声明）。
+调研受益于 BaseLib（Alchyr）、RitsuLib（BAKAOLC）、fresh-milkshake/Modding-Tutorial 等社区项目。
