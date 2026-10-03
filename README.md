@@ -4,6 +4,33 @@
 
 ![状态](https://img.shields.io/badge/游戏版本-v0.111.0-blue) ![Runtime](https://img.shields.io/badge/Runtime-0.1.0-green)
 
+![编辑器主界面](docs/screenshot.png)
+
+## 下载使用（不想编译？）
+
+到 [Releases](../../releases) 下载最新 `SpireForge-*-win64.zip`，解压后：
+
+1. 双击 `editor.exe`（单文件，前端已内嵌；需要 WebView2 Runtime，Win10/11 一般自带）；
+2. 首次启动选择游戏根目录（欢迎页会自动检测）；
+3. **把包内 `SpireForgeRuntime` 文件夹整个复制到游戏的 `mods` 目录**（前置 mod，一次性）；
+4. 建卡包 → 建卡 / 导入原版卡改卡 → 「发布 / 安装」→ 一键安装到游戏 → 重启游戏。
+
+## 快速开始（从源码构建）
+
+```bash
+# 1. 构建并启动编辑器
+cd editor && pnpm install && pnpm tauri dev
+
+# 2. 首次使用
+#    - 欢迎页自动检测游戏目录（失败则手动选择游戏根目录）
+#    - 新建卡包项目 → 建卡 → 「发布 / 安装」→ 一键安装到游戏
+
+# 3. 安装 Runtime（卡包的前置依赖，一次性）
+cd runtime && dotnet build -c Release
+#    把 .godot/mono/temp/bin/Release/SpireForgeRuntime.dll + SpireForgeRuntime.json
+#    复制到 <游戏>/mods/SpireForgeRuntime/
+```
+
 ## 特性
 
 - 🎨 **现代化深色 UI**（Tauri 2 + React + Tailwind）——独立桌面应用，不依赖游戏运行
@@ -19,22 +46,6 @@
 - 📦 **一键安装**：编辑器内打包 PCK 并写入游戏 mods 目录
 - ♻️ **零编译卡包**：用户产出纯数据（JSON+PNG），游戏更新只需更新 Runtime
 - 🚀 **一键上工坊**：官方 ModUploader v0.2.0 内置（首次使用自动释放，无需单独下载）
-
-## 快速开始
-
-```bash
-# 1. 构建并启动编辑器
-cd editor && pnpm install && pnpm tauri dev
-
-# 2. 首次使用
-#    - 欢迎页自动检测游戏目录（失败则手动选择游戏根目录）
-#    - 新建卡包项目 → 建卡 → 「发布 / 安装」→ 一键安装到游戏
-
-# 3. 安装 Runtime（卡包的前置依赖，一次性）
-cd runtime && dotnet build -c Release
-#    把 .godot/mono/temp/bin/Release/SpireForgeRuntime.dll + SpireForgeRuntime.json
-#    复制到 <游戏>/mods/SpireForgeRuntime/
-```
 
 ## 目录
 

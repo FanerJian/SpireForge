@@ -27,3 +27,6 @@ tools/testproject-out/
 # ---- Godot / Tauri 自动生成 ----
 runtime/.godot/
 editor/src-tauri/gen/
+
+# ---- 发布产物（zip 走 GitHub Release，不进仓库）----
+/release/
