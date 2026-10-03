@@ -221,7 +221,7 @@ pub fn rename_card(root: &str, old_id: &str, new_id: &str) -> Result<(), String>
     }
     let mut card = read_card(root, old_id)?;
 
-    // 立绘同步改名（仅默认命名 assets/cards/<id>.<ext>）
+    // 立绘同步改名（仅默认命名 assets/cards/<id>.<ext>；未裁剪原图 <id>_original 同理）
     let prefix = format!("assets/cards/{old_id}.");
     if card.portrait.starts_with(&prefix) {
         let ext = card.portrait.trim_start_matches(&prefix).to_string();
@@ -232,6 +232,20 @@ pub fn rename_card(root: &str, old_id: &str, new_id: &str) -> Result<(), String>
             if from.exists() && !to.exists() {
                 fs::rename(&from, &to).map_err(|e| format!("立绘改名失败: {e}"))?;
                 card.portrait = new_rel;
+            }
+        }
+    }
+    let orig_prefix = format!("assets/cards/{old_id}_original.");
+    let orig_rel = card.portrait_original.clone().unwrap_or_default();
+    if orig_rel.starts_with(&orig_prefix) {
+        let ext = orig_rel.trim_start_matches(&orig_prefix).to_string();
+        if !ext.contains('/') && !ext.contains('\\') {
+            let new_rel = format!("assets/cards/{new_id}_original.{ext}");
+            let from = PathBuf::from(root).join(&orig_rel);
+            let to = PathBuf::from(root).join(&new_rel);
+            if from.exists() && !to.exists() {
+                fs::rename(&from, &to).map_err(|e| format!("立绘原图改名失败: {e}"))?;
+                card.portrait_original = Some(new_rel);
             }
         }
     }

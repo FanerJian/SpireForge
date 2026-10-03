@@ -19,9 +19,10 @@ const RARITY_GLOW: Record<string, string> = {
   Curse: '#9b59b6', Quest: '#f1c40f',
 };
 
-/** 官方规格：普通卡 250×190（本组件 2.2 倍渲染保清晰） */
+/** 官方规格：普通卡 250×190（本组件 2.2 倍渲染保清晰）；先古卡 = 满幅立绘 250×351 */
 const W = 550;
-const H = 418;
+const H_NORMAL = 418;
+const H_ANCIENT = Math.round((W * 852) / 606); // 先古原图 606×852 ≈ 250×351，等比 → 550×773
 
 type Node = React.ReactNode;
 
@@ -129,6 +130,9 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
   const cost = card.costs_x ? 'X' : card.cost < 0 ? '—' : String(card.cost);
   const costInvalid = !card.costs_x && card.cost < -1;
   const idBad = !card.id || pascalToSnake(card.id) === '';
+  // 先古卡：整卡满幅立绘（游戏在其上叠加名称/描述），框体更修长
+  const ancient = card.rarity === 'Ancient';
+  const H = ancient ? H_ANCIENT : H_NORMAL;
 
   return (
     <div className="relative select-none" style={{ width: W, height: H }}>
@@ -146,8 +150,14 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
           boxShadow: `0 0 24px ${style.glow}55, inset 0 0 32px #00000088`,
         }}
       >
-        {/* 立绘区 */}
-        <div className="absolute left-4 right-4 top-4 h-[58%] overflow-hidden rounded-lg border border-black/60 bg-[#0b0b12]">
+        {/* 立绘区：普通卡=上部横窗；先古卡=整卡满幅 */}
+        <div
+          className={
+            ancient
+              ? 'absolute inset-0 overflow-hidden rounded-t-2xl border-b border-black/60 bg-[#0b0b12]'
+              : 'absolute left-4 right-4 top-4 h-[58%] overflow-hidden rounded-lg border border-black/60 bg-[#0b0b12]'
+          }
+        >
           {portraitUrl ? (
             <img src={portraitUrl} alt="" className="h-full w-full object-cover" draggable={false} />
           ) : (
@@ -155,7 +165,11 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
               {card.portrait ? t('pp.portraitLoadFail') : t('pp.portraitEmpty')}
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#14141c]/80 via-transparent to-transparent" />
+          {ancient ? (
+            <div className="absolute inset-0 bg-gradient-to-b from-[#14141c]/70 via-transparent to-[#14141c]/85" />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-t from-[#14141c]/80 via-transparent to-transparent" />
+          )}
         </div>
 
         {/* 费用球 */}

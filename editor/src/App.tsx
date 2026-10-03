@@ -9,6 +9,7 @@ import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
 import { setLang, useLang, useT } from './lib/i18n';
 import { cardEntry } from './lib/types';
+import { bytesToDataUrl, extOf } from './lib/img';
 
 function Toast({ msg }: { msg: string }) {
   return (
@@ -98,20 +99,15 @@ function PreviewPane() {
     setUpgraded(false);
     setPortraitUrl(null);
     if (!card || !card.portrait || !projectRoot) return;
-    let url: string | null = null;
     let cancelled = false;
     api
       .readPortrait(card.portrait)
       .then((bytes) => {
         if (cancelled) return;
-        url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
-        setPortraitUrl(url);
+        setPortraitUrl(bytesToDataUrl(new Uint8Array(bytes), extOf(card.portrait)));
       })
       .catch(() => { if (!cancelled) setPortraitUrl(null); });
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-    };
+    return () => { cancelled = true; };
   }, [card, projectRoot]);
 
   const doExport = async () => {

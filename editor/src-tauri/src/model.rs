@@ -210,6 +210,9 @@ pub struct CardDef {
     /// 相对项目根的立绘路径，如 assets/cards/my_strike.png；空 = 无自定义立绘
     #[serde(default)]
     pub portrait: String,
+    /// 未裁剪原图路径（assets/cards/<id>_original.*）；「重新裁剪」用；打包进 PCK 时剔除
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub portrait_original: Option<String>,
     pub name: LocText,
     pub description: LocText,
     pub flavor: LocText,
@@ -260,6 +263,7 @@ impl Default for CardDef {
             multiplayer: MultiplayerConstraint::None,
             max_upgrade_level: 1,
             portrait: String::new(),
+            portrait_original: None,
             name: LocText::default(),
             description: LocText::default(),
             flavor: LocText::default(),

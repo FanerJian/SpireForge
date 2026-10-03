@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { Combobox, type ComboItem } from './Combobox';
+import PortraitCropper from './PortraitCropper';
+import { bytesToDataUrl, extOf } from '../lib/img';
 import {
   EFFECT_META, HOOK_TARGET_OPTIONS, KEYWORD_CHIPS, POOL_LABEL, RARITY_LABEL,
   TARGET_LABEL, TRIGGER_OPTIONS, TYPE_LABEL,
@@ -818,35 +820,66 @@ function LookTab({ card }: { card: CardDef }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const [dim, setDim] = useState<string>('');
+  // 裁剪弹窗数据源：url 给 <img>，bytes 用于另存原图；isRecrop 区分新上传/重裁剪
+  const [crop, setCrop] = useState<{ url: string; bytes: Uint8Array; ext: string; isRecrop: boolean } | null>(null);
+  // 卡型比例：先古卡 = 整卡满幅 250:351，其余 = 立绘窗 250:190
+  const aspect = card.rarity === 'Ancient' ? 250 / 351 : 250 / 190;
 
   useEffect(() => {
     if (!card.portrait) { setDim(''); return; }
     let cancelled = false;
-    let url: string | null = null;
     api.readPortrait(card.portrait).then((bytes) => {
       if (cancelled) return;
-      url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+      const url = bytesToDataUrl(new Uint8Array(bytes), extOf(card.portrait));
       const img = new Image();
       img.onload = () => { if (!cancelled) setDim(`${img.naturalWidth}×${img.naturalHeight}`); };
       img.onerror = () => { if (!cancelled) setDim(''); };
       img.src = url;
     }).catch(() => { if (!cancelled) setDim(''); });
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-    };
+    return () => { cancelled = true; };
   }, [card.portrait]);
 
   const onFile = async (f: File) => {
     const buf = new Uint8Array(await f.arrayBuffer());
-    const ext = f.name.includes('.') ? f.name.split('.').pop()! : 'png';
-    const rel = await api.savePortrait(card.id, ext, buf);
-    updateCard({ portrait: rel });
-    showToast(t('pp.portraitSaved'));
+    const ext = extOf(f.name);
+    setCrop({ url: bytesToDataUrl(buf, ext), bytes: buf, ext, isRecrop: false });
   };
 
-  // 只有官方基准尺寸（含远古卡 250×351）才算 good；其余提示建议尺寸
-  const good = dim === '250×190' || dim === '1000×760' || dim === '250×351';
+  const openRecrop = async () => {
+    const rel = card.portrait_original;
+    if (!rel) return;
+    try {
+      const bytes = new Uint8Array(await api.readPortrait(rel));
+      setCrop({ url: bytesToDataUrl(bytes, extOf(rel)), bytes, ext: extOf(rel), isRecrop: true });
+    } catch {
+      showToast(t('pp.portraitLoadFail'));
+    }
+  };
+
+  const closeCrop = () => setCrop(null);
+
+  const onCropConfirm = async (png: Uint8Array) => {
+    if (!crop) return;
+    const src = crop;
+    setCrop(null);
+    try {
+      // 裁剪结果统一存 PNG；原图另存一份供「重新裁剪」（重裁剪时原图不变）
+      const rel = await api.savePortrait(card.id, 'png', png);
+      if (src.isRecrop) {
+        updateCard({ portrait: rel });
+      } else {
+        const origRel = await api.savePortrait(`${card.id}_original`, src.ext, src.bytes);
+        updateCard({ portrait: rel, portrait_original: origRel });
+      }
+      showToast(t('pp.portraitSaved'));
+    } catch (e) {
+      showToast(t('pp.portraitSaveFailed', { e: String(e) }));
+    }
+  };
+
+  // 比例正确（含裁剪产物）即算合格；否则提示建议尺寸
+  const m = dim.match(/^(\d+)×(\d+)$/);
+  const good = !!m && Math.abs(Number(m[1]) / Number(m[2]) - aspect) / aspect < 0.015;
 
   return (
     <div className="space-y-4">
@@ -858,6 +891,14 @@ function LookTab({ card }: { card: CardDef }) {
           >
             {card.portrait ? t('pp.changeImage') : t('pp.uploadImage')}
           </button>
+          {card.portrait_original && (
+            <button
+              onClick={openRecrop}
+              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 transition hover:border-sky-400/50 hover:text-sky-300"
+            >
+              {t('pp.recrop')}
+            </button>
+          )}
           {card.portrait && (
             <button
               onClick={() => updateCard({ portrait: '' })}
@@ -871,7 +912,7 @@ function LookTab({ card }: { card: CardDef }) {
             type="file"
             accept="image/png,image/jpeg,image/webp"
             className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }}
           />
         </div>
       </Field>
@@ -881,6 +922,14 @@ function LookTab({ card }: { card: CardDef }) {
           <div className="mt-1 font-mono text-[10px] text-slate-600">{card.portrait}</div>
         )}
       </div>
+      {crop && (
+        <PortraitCropper
+          srcUrl={crop.url}
+          aspect={aspect}
+          onConfirm={onCropConfirm}
+          onCancel={closeCrop}
+        />
+      )}
     </div>
   );
 }

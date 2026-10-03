@@ -151,6 +151,8 @@ pub fn build_pack_files(
         // 立绘：项目相对路径 → PCK 内路径 images/cards/<文件名>
         // （卡包 JSON 里存的必须是 PCK 内路径，runtime 以 res://<packId>/<portrait> 解析）
         let mut packed_card = card.clone();
+        // 未裁剪原图只在编辑器项目里有意义，不进卡包
+        packed_card.portrait_original = None;
         if !card.portrait.is_empty() {
             let src = PathBuf::from(root).join(&card.portrait);
             if src.exists() {

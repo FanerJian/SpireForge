@@ -77,6 +77,8 @@ export interface CardDef {
   on_turn_end_in_hand?: EffectDef[];
   /** 原版卡覆盖：非空 = 本卡改写游戏原版 Entry=此值 的卡牌（不新建） */
   vanilla_id?: string | null;
+  /** 未裁剪原图路径（assets/cards/<id>_original.*）；「重新裁剪」用它重开裁剪框，打包时剔除 */
+  portrait_original?: string | null;
   /** 原版数值覆盖：键 = 原版变量名（Damage/Block/Vulnerable…），值 = 覆盖后数值 */
   stats?: Record<string, number> | null;
   /** 原版升级增量：键 = 变量名，值 = 升级增量 */
