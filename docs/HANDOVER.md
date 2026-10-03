@@ -95,8 +95,12 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
   （本场立即可用；`CardPile.Get` 里 Deck 战斗内外同指 `Player.Deck`，Hand 战斗外为 null，
   故手牌分支以 `CombatManager.IsInProgress` 为前提）。发放配方：`RunState.CreateCard` +
   `CardPileCmd.Add(Deck)`（跨战斗持久、随存档保存，与游戏 `card <X> Deck` 命令同配方）
-  + `CardCmd.PreviewCardPileAdd` 官方飞行动画。消费即删文件、不重复发放；主菜单登记的
-  清单进局后自动入组；BeforeCombatStart 钩子保留作兜底（轮询失效时战斗开始仍会消费）。
+  + `CardCmd.PreviewCardPileAdd` 官方飞行动画。**战斗中的手牌副本必须走官方战斗生成卡
+  配方**：`ICombatState.CreateCard`（注册进 CombatState——`RunState.CreateCard` 只注册
+  RunState，卡打出后牌堆流转校验 `must be added to a CombatState` 会炸死回合循环、战斗
+  永久卡死，2026-10-03 实测踩坑）+ `CardPileCmd.AddGeneratedCardToCombat(card, Hand,
+  player)`（ForgeCmd/DualWield/BundleOfJoy 同款入口）。消费即删文件、不重复发放；主菜单
+  登记的清单进局后自动入组；BeforeCombatStart 钩子保留作兜底（轮询失效时战斗开始仍会消费）。
   **登记只在游戏会话内有效**：编辑器经 tasklist（duct）检测游戏进程，未运行时拒绝登记
   （Rust 返回 `GAME_NOT_RUNNING` → 前端「游戏未运行…」提示）；Runtime 启动时
   `ClearStaleQueue` 清掉上个会话遗留的清单，绝不跨会话补发。游戏内另有

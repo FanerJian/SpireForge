@@ -115,7 +115,7 @@ SpireForgeRuntime 把 `SpireForge.Api` 命名空间作为公共 API 暴露（`Sf
 | `SfEffects` | 注册/注销自定义效果处理器（卡包 JSON 里 `{"kind":"名"}` 即可调用） |
 | `SfEvents` | 生命周期事件：`BeforeEffect` / `AfterEffect` / `CardGranted` |
 | `SfPacks` | 查询已加载卡包：`All` / `PackOf` / `TryGetDef` / `TryGetCardModel` |
-| `SfGrant` | 给玩家发卡：`Enqueue`（写清单，Runtime 轮询消费）/ `GrantAsync`（立即发放，**永久加入本局牌组**，战斗中额外塞一张到手牌） |
+| `SfGrant` | 给玩家发卡：`Enqueue`（写清单，Runtime 轮询消费）/ `GrantAsync`（立即发放，**永久加入本局牌组**，战斗中额外塞一张到手牌——手牌副本走 `ICombatState.CreateCard` + `AddGeneratedCardToCombat` 官方生成卡配方） |
 | `SfLog` | 统一前缀日志（godot.log 过滤 `SPIREFORGE`） |
 
 完整示例 mod：

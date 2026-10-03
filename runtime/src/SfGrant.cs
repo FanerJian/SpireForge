@@ -249,8 +249,15 @@ public static class SfGrant
         bool inCombat = CombatManager.Instance is { IsInProgress: true };
         if (inCombat)
         {
-            var handCard = run.CreateCard(model, player);
-            var handAdded = await CardPileCmd.Add(handCard, PileType.Hand);
+            // 战斗中额外塞一张到手牌。手牌副本必须走官方战斗生成卡配方：
+            //  ICombatState.CreateCard（把卡注册进 CombatState——RunState.CreateCard 只注册
+            //  RunState，牌堆流转校验 "must be added to a CombatState" 会炸死回合循环）
+            //  + AddGeneratedCardToCombat（ForgeCmd/DualWield/BundleOfJoy 同款入口）
+            var combatState = player.Creature.CombatState
+                ?? throw new InvalidOperationException("combat state unavailable");
+            var handCard = combatState.CreateCard(model, player);
+            var handAdded = await CardPileCmd.AddGeneratedCardToCombat(
+                handCard, PileType.Hand, player);
             if (handAdded.success)
             {
                 MegaCrit.Sts2.Core.Commands.CardCmd.PreviewCardPileAdd(handAdded);
