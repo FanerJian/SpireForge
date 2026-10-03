@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -32,20 +33,28 @@ public static class SfVanillaOverride
 {
     private const string HarmonyId = "com.spireforge.runtime.vanilla";
 
-    /// <summary>PackLoader 扫描期收集（ModelDb.Init 前），ApplyAll 时消费。</summary>
-    private static readonly List<SfCardDef> Pending = new();
+    /// <summary>PackLoader 扫描期收集（ModelDb.Init 前），ApplyAll 时消费。
+    /// modId 随定义一起记录：覆盖卡不进 PackLoader.PackOf，立绘 res:// 路径要用它拼接。</summary>
+    private static readonly List<(SfCardDef Def, string ModId)> Pending = new();
 
     /// <summary>entry → 生效中的覆盖定义（Harmony 前缀查表）。</summary>
     private static readonly Dictionary<string, SfCardDef> Active = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>entry → 所属包 id（仅记录带自定义立绘的覆盖，PortraitPostfix 与自检用）。</summary>
+    private static readonly Dictionary<string, string> PackOfVanilla = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>已生效的覆盖定义（vanillaId → 定义 + 所属包 id），供启动期立绘自检枚举。</summary>
+    public static IEnumerable<(string VanillaId, SfCardDef Def, string ModId)> Applied =>
+        Active.Select(kv => (kv.Key, kv.Value, PackOfVanilla.TryGetValue(kv.Key, out var m) ? m : ""));
+
     /// <summary>收集一个覆盖定义。同一 vanilla_id 重复时返回 false（先到先得）。</summary>
-    public static bool Collect(SfCardDef def)
+    public static bool Collect(SfCardDef def, string modId)
     {
-        if (Pending.Any(p => string.Equals(p.VanillaId, def.VanillaId, StringComparison.OrdinalIgnoreCase)))
+        if (Pending.Any(p => string.Equals(p.Def.VanillaId, def.VanillaId, StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }
-        Pending.Add(def);
+        Pending.Add((def, modId));
         return true;
     }
 
@@ -58,9 +67,9 @@ public static class SfVanillaOverride
         }
         var harmony = new Harmony(HarmonyId);
         int ok = 0;
-        foreach (var def in Pending)
+        foreach (var (def, modId) in Pending)
         {
-            if (Apply(harmony, def))
+            if (Apply(harmony, def, modId))
             {
                 ok++;
             }
@@ -69,7 +78,7 @@ public static class SfVanillaOverride
         Pending.Clear();
     }
 
-    private static bool Apply(Harmony harmony, SfCardDef def)
+    private static bool Apply(Harmony harmony, SfCardDef def, string modId)
     {
         string vid = (def.VanillaId ?? "").Trim();
         if (vid.Length == 0)
@@ -100,6 +109,13 @@ public static class SfVanillaOverride
             return false;
         }
 
+        // 查表先于补丁填充：getter 后缀一挂就可能被游戏代码读到，届时表必须已就绪
+        Active[vid] = def;
+        if (!string.IsNullOrEmpty(def.Portrait))
+        {
+            PackOfVanilla[vid] = modId;
+        }
+
         if (def.Effects is { Count: > 0 })
         {
             var onPlay = AccessTools.DeclaredMethod(template.GetType(), "OnPlay");
@@ -124,14 +140,75 @@ public static class SfVanillaOverride
                 harmony.Patch(onUpgrade, prefix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(UpgradePrefix)));
             }
         }
+        if (!string.IsNullOrEmpty(def.Portrait))
+        {
+            HookPortrait(harmony, template);
+        }
 
-        Active[vid] = def;
         SfLog.Info("vanilla override " + vid + " applied: cost=" +
                    (def.CostsX ? "X" : def.Cost.ToString()) + " type=" + def.CardType +
                    " rarity=" + def.Rarity + " target=" + def.Target +
                    " stats=" + (def.Stats?.Count ?? 0) + " effects=" + def.Effects.Count +
-                   " upgrade=" + (def.UpgradeStats?.Count ?? 0));
+                   " upgrade=" + (def.UpgradeStats?.Count ?? 0) +
+                   " portrait=" + (string.IsNullOrEmpty(def.Portrait)
+                       ? "-"
+                       : "res://" + modId + "/" + def.Portrait));
         return true;
+    }
+
+    /// <summary>已补丁过的立绘 getter（多张覆盖卡常共用 CardModel 的基类实现，只补一次）。</summary>
+    private static readonly HashSet<MethodBase> PortraitPatched = new();
+
+    /// <summary>把覆盖卡的自定义立绘接到原版模板上。PortraitPath/BetaPortraitPath 是计算型
+    /// 虚属性（无后备字段可写），纹理由 ResourceLoader 按返回路径现场加载——用后缀改写返回值。
+    /// 各卡实际执行的 getter 可能是基类实现，也可能被卡类重写（如 Wither 按升级形态取图），
+    /// 因此沿继承链取 most-derived 的声明 getter 去重后补丁；后缀按 Id.Entry 查表，
+    /// 仅命中"本 mod 覆盖且带立绘"的卡，其余实例原样返回。</summary>
+    private static void HookPortrait(Harmony harmony, CardModel template)
+    {
+        foreach (var prop in new[] { "PortraitPath", "BetaPortraitPath" })
+        {
+            var getter = DeclaredGetter(template.GetType(), prop);
+            if (getter == null || !PortraitPatched.Add(getter))
+            {
+                continue;
+            }
+            harmony.Patch(getter, postfix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(PortraitPostfix)));
+        }
+    }
+
+    /// <summary>沿继承链找属性 getter 的**声明**实现。Harmony 只接受声明处方法：
+    /// Type.GetProperty 返回的继承属性（ReflectedType=派生类）会被拒绝
+    /// （"You can only patch implemented methods/constructors"，实测启动即炸）。</summary>
+    private static MethodInfo? DeclaredGetter(Type type, string prop)
+    {
+        for (var cur = type; cur != null && typeof(CardModel).IsAssignableFrom(cur); cur = cur.BaseType)
+        {
+            var p = cur.GetProperty(prop,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            var g = p?.GetGetMethod(true);
+            if (g != null)
+            {
+                return g;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>PortraitPath/BetaPortraitPath 后缀：覆盖卡返回包内立绘，其余不动。</summary>
+    private static void PortraitPostfix(ref string __result, CardModel __instance)
+    {
+        var entry = __instance?.Id?.Entry;
+        if (string.IsNullOrEmpty(entry))
+        {
+            return;
+        }
+        if (Active.TryGetValue(entry, out var def)
+            && !string.IsNullOrEmpty(def.Portrait)
+            && PackOfVanilla.TryGetValue(entry, out var modId))
+        {
+            __result = "res://" + modId + "/" + def.Portrait;
+        }
     }
 
     /// <summary>费用覆盖。原版 X 费卡惯例：CanonicalEnergyCost=0 + CostsX（见 Cascade）。</summary>

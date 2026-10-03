@@ -397,13 +397,8 @@ public static class RuntimeEntry
                 Log.Error($"{LogTag}: LOC check failed: {e}");
             }
 
-            foreach (var (entry, def) in PackLoader.Defs)
+            void CheckPortrait(string label, string path)
             {
-                if (string.IsNullOrEmpty(def.Portrait))
-                {
-                    continue;
-                }
-                string path = $"res://{PackLoader.PackOf[entry]}/{def.Portrait}";
                 try
                 {
                     bool fileVisible = Godot.FileAccess.FileExists(path);
@@ -417,12 +412,29 @@ public static class RuntimeEntry
                     {
                         // 加载失败仅记录，不抛出
                     }
-                    Log.Info($"{LogTag}: PORTRAIT {entry} {path} fileVisible={fileVisible} exists={exists} " +
+                    Log.Info($"{LogTag}: PORTRAIT {label} {path} fileVisible={fileVisible} exists={exists} " +
                              $"loaded={(tex != null ? $"OK {tex.GetWidth()}x{tex.GetHeight()}" : "FAILED")}");
                 }
                 catch (System.Exception e)
                 {
-                    Log.Error($"{LogTag}: PORTRAIT {entry} check failed: {e.Message}");
+                    Log.Error($"{LogTag}: PORTRAIT {label} check failed: {e.Message}");
+                }
+            }
+
+            foreach (var (entry, def) in PackLoader.Defs)
+            {
+                if (!string.IsNullOrEmpty(def.Portrait))
+                {
+                    CheckPortrait(entry, $"res://{PackLoader.PackOf[entry]}/{def.Portrait}");
+                }
+            }
+
+            // 原版覆盖卡的立绘经 SfVanillaOverride 的 getter 后缀生效，这里验证包内资源本身可加载
+            foreach (var (vid, def, modId) in SfVanillaOverride.Applied)
+            {
+                if (!string.IsNullOrEmpty(def.Portrait))
+                {
+                    CheckPortrait(vid, "res://" + modId + "/" + def.Portrait);
                 }
             }
 

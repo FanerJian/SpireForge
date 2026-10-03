@@ -80,9 +80,11 @@
 | `upgrade_stats` | Harmony 前缀替换原版 `OnUpgrade`，按变量名做增量 |
 | `effects` 非空 | Harmony 前缀**整体替换**原版 `OnPlay`（解释器与新建卡共用；注意是替换不是追加——只改数值就留空） |
 | `name`/`description`/`flavor` | 打包时本地化键取 `{vanilla_id}.title/.description`，游戏 `LocTable.MergeWith` 覆盖原版文案 |
+| `portrait` | **覆盖卡也生效**（2026-10-03 起）：打包进 `images/cards/`，Runtime 以 `res://{包id}/{portrait}` Harmony 后缀改写原版模板的 `PortraitPath`/`BetaPortraitPath`（按 Entry 查表，先古卡同一加载路径；Beta 立绘一并替换为同一张图） |
 
 Runtime 应用时机：`OneTimeInitialization.ExecuteEssential` 后缀（模板就绪、Id 已赋值）。
-日志：`SPIREFORGE: vanilla override BASH applied: ...`。
+日志：`SPIREFORGE: vanilla override BASH applied: ... portrait=res://{包id}/images/cards/x.png`（无立绘为 `-`）；
+启动期 PORTRAIT 自检同样覆盖覆盖卡（debug 文件在时）。
 编辑器入口：卡牌库「原版卡」（内置 577 张原版目录，`tools/extract-vanilla-catalog.mjs` 生成）。
 
 ## 字段细则

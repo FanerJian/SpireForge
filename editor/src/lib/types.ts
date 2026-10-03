@@ -238,8 +238,18 @@ export function composeDescription(card: CardDef): { zhs: string; eng: string } 
       case 'max_hp': z.push(`生命上限 +${fx.amount}。`); e.push(`Gain ${fx.amount} Max HP.`); break;
       case 'power': {
         const zh = POWER_ZH[fx.power] ?? fx.power;
-        z.push(`给予 ${fx.amount} 层${zh}。`);
-        e.push(`Apply ${fx.amount} ${fx.power}.`);
+        // 目标措辞随 fx.target 分流（官方句式：全体=「给予所有敌人N层X」/Apply N X to ALL enemies，
+        // 自身=「获得N层X」/Gain N X，打出指定目标=「给予N层X」）
+        if (fx.target === 'all_enemies') {
+          z.push(`给予所有敌人 ${fx.amount} 层${zh}。`);
+          e.push(`Apply ${fx.amount} ${fx.power} to ALL enemies.`);
+        } else if (fx.target === 'self') {
+          z.push(`获得 ${fx.amount} 层${zh}。`);
+          e.push(`Gain ${fx.amount} ${fx.power}.`);
+        } else {
+          z.push(`给予 ${fx.amount} 层${zh}。`);
+          e.push(`Apply ${fx.amount} ${fx.power}.`);
+        }
         break;
       }
       case 'spawn': {

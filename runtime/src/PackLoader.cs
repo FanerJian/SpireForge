@@ -78,7 +78,8 @@ public static class PackLoader
                     else if (!string.IsNullOrWhiteSpace(def.VanillaId))
                     {
                         // 原版卡覆盖：不 Emit、不入池，交给 SfVanillaOverride 在 ModelDb 就绪后应用
-                        if (SfVanillaOverride.Collect(def))
+                        // （modId 一并带上：覆盖卡不进 PackOf，立绘 res:// 路径要用它拼接）
+                        if (SfVanillaOverride.Collect(def, modId))
                         {
                             SfLog.Info("vanilla override queued: " + def.VanillaId + " <- " + name);
                         }
