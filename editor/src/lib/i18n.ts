@@ -91,6 +91,7 @@ const STRINGS: Record<string, L> = {
   'pv.grantTitle': { zh: '把这张卡永久加入当前一局的主牌组（跨战斗持久、随存档保存），下一场战斗开始时入组。需要游戏正在运行；游戏没开时不会登记', en: 'Permanently adds this card to your current run\'s deck (persists across combats, saved with the run); it joins at the start of the next combat. The game must be running — nothing is queued while it is closed' },
   'pv.grantQueued': { zh: '已登记 {total} 张（本次新增 {added}）：下一场战斗开始时永久入组', en: 'Queued {total} card(s) ({added} new): they permanently join your run deck at the start of the next combat' },
   'pv.grantNoGame': { zh: '游戏未运行：请先启动游戏并进入一局，再点「在游戏中获得」', en: 'The game is not running — start the game and enter a run before using "Get in game"' },
+  'pv.grantNotInstalled': { zh: '「{v}」还没装进游戏：先在发布面板「安装到游戏」（新加/改过的卡都要重装一次），再点「在游戏中获得」', en: '"{v}" is not installed in the game yet — run "Publish / Install" first (new or changed cards require reinstalling the pack), then use "Get in game"' },
   'pv.grantFailed': { zh: '登记失败：{e}', en: 'Failed to queue: {e}' },
   'pv.export': { zh: '导出 JSON', en: 'Export JSON' },
   'pv.exported': { zh: '已导出卡牌 JSON', en: 'Card JSON exported' },

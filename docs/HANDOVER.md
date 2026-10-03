@@ -98,7 +98,18 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
   （Rust 返回 `GAME_NOT_RUNNING` → 前端「游戏未运行…」提示）；Runtime 启动时
   `ClearStaleQueue` 清掉上个会话遗留的清单，绝不跨会话补发。游戏内另有
   `sf_grant [ENTRY...]` 控制台命令（DebugOnly，无参数列出全部 Entry）；
-  效果验证闭环 = 编辑卡 → 点一下 → 进战斗拿卡试打
+  效果验证闭环 = 编辑卡 → 点一下 → 进战斗拿卡试打。
+  **发放前预检 + 排障实录（2026-10-03）**：游戏日志（`%APPDATA%/SlayTheSpire2/logs/godot.log`
+  搜 `SPIREFORGE`）实锤了首次未生效的根因——新卡没重新「安装到游戏」，游戏里装的还是旧
+  PCK，Runtime 报 `card 'DEMO_HIDDEN_GEM' not found`。故 queue_card_grant 现在做**发放前
+  预检**：扫描 mods/*/<Pack>.pck 内 cards/*.json 的 id 按 card_entry 派生出已装 Entry 集
+  （并上内嵌原版 577 张），缺卡返回 `CARD_NOT_INSTALLED:<entry>` → 编辑器明确提示「先安装
+  到游戏」。同日修复：①tasklist 子进程在 GUI 程序里闪**黑框** → duct before_spawn 加
+  CREATE_NO_WINDOW；②**严重 bug：Runtime SfEffectDef 只认 params.*，编辑器写的顶层
+  power/card_entry/pile/monster/hp 全部被静默丢弃**（日志 `power effect missing
+  params.power`）——运行时所有「施加增益/生成卡牌/召唤」效果失效——现 StringParam/
+  DecimalParam 双读兜底；③GrantAsync 加上与原版事件塞牌同款 `CardCmd.PreviewCardPileAdd`
+  官方入组预览动画（事件底层调用本就是 CardPileCmd.Add(Deck)，配方一致）
 - **零错误集成**：与 BaseLib/RitsuLib/工坊 mod 共存时，游戏启动无任何 SpireForge 错误
 - **数据安全加固**（2026-10-02）：项目已入 git；编辑/切卡/关窗/发布全程自动保存（多卡
   dirtyIds + 去抖 + beforeunload）；project.json/卡牌/PCK/设置原子写（.tmp+.bak）；卡牌 id

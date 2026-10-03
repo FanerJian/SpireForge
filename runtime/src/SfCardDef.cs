@@ -59,6 +59,26 @@ public sealed class SfEffect
     [JsonPropertyName("target")]
     public string Target { get; set; } = "";
 
+    /// <summary>施加增益/减益：PowerModel 名（编辑器写顶层字段；params.power 亦可）。</summary>
+    [JsonPropertyName("power")]
+    public string Power { get; set; } = "";
+
+    /// <summary>生成卡牌：卡牌 Entry（编辑器顶层字段；params.card_entry 亦可）。</summary>
+    [JsonPropertyName("card_entry")]
+    public string CardEntry { get; set; } = "";
+
+    /// <summary>生成卡牌：目标牌堆 draw/hand/discard（编辑器顶层字段；params.pile 亦可）。</summary>
+    [JsonPropertyName("pile")]
+    public string Pile { get; set; } = "";
+
+    /// <summary>召唤敌人：怪物类名/Entry（编辑器顶层字段；params.monster 亦可）。</summary>
+    [JsonPropertyName("monster")]
+    public string Monster { get; set; } = "";
+
+    /// <summary>召唤敌人：自定义生命（编辑器顶层字段；params.hp 亦可）。</summary>
+    [JsonPropertyName("hp")]
+    public decimal? Hp { get; set; }
+
     /// <summary>custom 效果的透传参数（任意 JSON 对象，处理器自解释）。</summary>
     [JsonPropertyName("params")]
     public Dictionary<string, System.Text.Json.JsonElement>? Params { get; set; }
@@ -84,17 +104,26 @@ public sealed class SfEffect
         _ => SfEffectKind.Custom,
     };
 
-    /// <summary>效果参数里的字符串值（params.power / params.card_entry / params.pile 等）</summary>
+    /// <summary>效果参数里的字符串值：优先 params.*，回落到编辑器的顶层字段
+    /// （power/card_entry/pile/monster——System.Text.Json 默认会丢掉未声明属性，
+    /// 所以顶层字段必须显式声明，否则编辑器卡牌的效果在游戏里静默失效）。</summary>
     public string StringParam(string key)
     {
         if (Params != null && Params.TryGetValue(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
         {
             return v.GetString() ?? "";
         }
-        return "";
+        return key switch
+        {
+            "power" => Power,
+            "card_entry" => CardEntry,
+            "pile" => Pile,
+            "monster" => Monster,
+            _ => "",
+        };
     }
 
-    /// <summary>效果参数里的数值（params.hp 等）；缺失或非数字返回 null。</summary>
+    /// <summary>效果参数里的数值（params.hp 等；hp 回落顶层字段）；缺失或非数字返回 null。</summary>
     public decimal? DecimalParam(string key)
     {
         if (Params != null && Params.TryGetValue(key, out var v))
@@ -109,7 +138,11 @@ public sealed class SfEffect
                 return d2;
             }
         }
-        return null;
+        return key switch
+        {
+            "hp" => Hp,
+            _ => null,
+        };
     }
 }
 

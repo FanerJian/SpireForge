@@ -124,13 +124,79 @@ pub struct GrantQueueResult {
 
 /// 游戏进程是否正在运行（tasklist 查询；duct 启动、不经 shell、参数全字面量）。
 fn game_process_running() -> bool {
-    duct::cmd(
+    let mut cmd = duct::cmd(
         "tasklist",
         ["/FI", "IMAGENAME eq SlayTheSpire2.exe", "/FO", "CSV", "/NH"],
-    )
-    .read()
-    .map(|out| out.to_lowercase().contains("slaythespire2.exe"))
-    .unwrap_or(false)
+    );
+    // GUI 进程里起控制台子进程会闪黑框：CREATE_NO_WINDOW 隐藏
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd = cmd.before_spawn(|c| {
+            c.creation_flags(0x0800_0000);
+            Ok(())
+        });
+    }
+    cmd.read()
+        .map(|out| out.to_lowercase().contains("slaythespire2.exe"))
+        .unwrap_or(false)
+}
+
+/// 已安装进游戏的卡牌 Entry 全集（发放预检用）：
+/// mods/*/<Pack>.pck 里 cards/*.json 的 id 按 card_entry(pack_id, id) 派生——
+/// 与 Runtime PackLoader 的 Entry 派生规则一致；并上内嵌原版目录（原版卡不在 mods）。
+fn installed_card_entries(game_dir: &str) -> std::collections::HashSet<String> {
+    let mut set = crate::vanilla::vanilla_entries();
+    let mods_dir = std::path::Path::new(game_dir).join("mods");
+    let Ok(rd) = std::fs::read_dir(&mods_dir) else {
+        return set;
+    };
+    for dir in rd.flatten() {
+        let stem = dir.file_name().to_string_lossy().into_owned();
+        let pck = dir.path().join(format!("{stem}.pck"));
+        if !pck.exists() {
+            continue;
+        }
+        // 清单：同名 <Pack>.json 的 "id"（缺省用目录名）
+        let mut pack_id = stem.clone();
+        if let Ok(raw) = std::fs::read_to_string(dir.path().join(format!("{stem}.json"))) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(id) = v.get("id").and_then(|x| x.as_str()) {
+                    pack_id = id.to_string();
+                }
+            }
+        }
+        let Ok(entries) = pcktool::read_entries(&pck) else {
+            continue;
+        };
+        for (name, data) in entries {
+            if !name.contains("/cards/") || !name.ends_with(".json") {
+                continue;
+            }
+            let Ok(txt) = String::from_utf8(data) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) else {
+                continue;
+            };
+            // 单卡对象或卡牌数组都认
+            let ids: Vec<&str> = match v.as_array() {
+                Some(arr) => arr
+                    .iter()
+                    .filter_map(|c| c.get("id").and_then(|x| x.as_str()))
+                    .collect(),
+                None => v
+                    .get("id")
+                    .and_then(|x| x.as_str())
+                    .map(|s| vec![s])
+                    .unwrap_or_default(),
+            };
+            for id in ids {
+                set.insert(crate::publish::card_entry(&pack_id, id));
+            }
+        }
+    }
+    set
 }
 
 pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String> {
@@ -171,6 +237,14 @@ pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String
         if !e.is_empty() && !merged.contains(&e) {
             merged.push(e);
             added += 1;
+        }
+    }
+    // 发放预检：Entry 必须已经装进游戏（Runtime 才注册得出），
+    // 否则到战斗开始只会留下一条玩家看不见的 not found 日志
+    let installed = installed_card_entries(&settings.game_dir);
+    for e in &merged {
+        if !installed.contains(e) {
+            return Err(format!("CARD_NOT_INSTALLED:{e}"));
         }
     }
     let payload = serde_json::json!({ "entries": merged });

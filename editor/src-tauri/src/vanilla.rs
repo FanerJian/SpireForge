@@ -10,3 +10,16 @@ pub fn catalog() -> &'static serde_json::Value {
     static CATALOG: OnceLock<serde_json::Value> = OnceLock::new();
     CATALOG.get_or_init(|| serde_json::from_str(CATALOG_RAW).unwrap_or(serde_json::Value::Null))
 }
+
+/// 内嵌原版目录的全部 Entry（发放预检用：原版卡不在 mods 里，凭此放行）。
+pub fn vanilla_entries() -> std::collections::HashSet<String> {
+    catalog()
+        .get("cards")
+        .and_then(|c| c.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| c.get("entry").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}

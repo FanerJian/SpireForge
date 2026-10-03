@@ -131,9 +131,13 @@ function PreviewPane() {
       const r = await api.queueCardGrant([cardEntry(meta.pack_id, card.id)]);
       showToast(t('pv.grantQueued', { total: r.total, added: r.added }));
     } catch (e) {
-      showToast(String(e).includes('GAME_NOT_RUNNING')
-        ? t('pv.grantNoGame')
-        : t('pv.grantFailed', { e: String(e) }));
+      const msg = String(e);
+      const ni = msg.indexOf('CARD_NOT_INSTALLED:');
+      showToast(
+        msg.includes('GAME_NOT_RUNNING') ? t('pv.grantNoGame')
+        : ni >= 0 ? t('pv.grantNotInstalled', { v: msg.slice(ni + 'CARD_NOT_INSTALLED:'.length) })
+        : t('pv.grantFailed', { e: msg }),
+      );
     }
   };
 

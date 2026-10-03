@@ -193,6 +193,8 @@ public static class SfGrant
         {
             return "add to deck prevented (Hook.ShouldAddToDeck)";
         }
+        // 与原版事件塞牌同款：入组结果交给官方预览动画（卡牌飞向牌组）
+        MegaCrit.Sts2.Core.Commands.CardCmd.PreviewCardPileAdd(added);
         bool inCombat = CombatManager.Instance is { IsInProgress: true };
         SpireForge.Api.SfEvents.RaiseCardGranted(entry, inCombat);
         return null;
