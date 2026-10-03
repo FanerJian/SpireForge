@@ -305,6 +305,16 @@ pub struct InstallResult {
     pub game_running: bool,
 }
 
+/// 检测/安装内置 Runtime 前置 mod 到游戏 mods（幂等、防降级、游戏锁文件时返回 locked）
+#[tauri::command]
+fn ensure_runtime(state: State<AppState>) -> Result<game::RuntimeEnsure, String> {
+    let game_dir = state.settings.lock().unwrap().game_dir.clone();
+    if game_dir.is_empty() {
+        return Err("尚未配置游戏目录".into());
+    }
+    game::ensure_bundled_runtime(&game_dir)
+}
+
 /// 一键安装到游戏 mods 目录
 #[tauri::command]
 fn install_to_game(state: State<AppState>, version: String) -> Result<InstallResult, String> {
@@ -313,6 +323,8 @@ fn install_to_game(state: State<AppState>, version: String) -> Result<InstallRes
     if game_dir.is_empty() {
         return Err("尚未配置游戏目录".into());
     }
+    // 前置 mod 兜底：缺失/过期时自动装（游戏运行中锁文件则保持现版本，不阻断装包）
+    let _ = game::ensure_bundled_runtime(&game_dir);
     let (meta, cards) = project::load_project(&root)?;
     if cards.is_empty() {
         return Err("卡包中没有卡牌".into());
@@ -408,6 +420,7 @@ pub fn run() {
             detect_game_dir,
             get_settings,
             set_game_dir,
+            ensure_runtime,
             queue_card_grant,
             create_demo_project,
             new_project,

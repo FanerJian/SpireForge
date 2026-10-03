@@ -17,7 +17,23 @@ export default function Welcome() {
   const [busy, setBusy] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
   const [gameDirHint, setGameDirHint] = useState(settings.game_dir ? '' : t('w.gameMissing'));
+  const [rtNote, setRtNote] = useState('');
   const packIdOk = PACK_ID_RE.test(packId.trim());
+
+  /** 游戏目录就绪后自动安装内置 Runtime 前置 mod（幂等；结果以小字提示） */
+  const ensureRt = async () => {
+    try {
+      const r = await api.ensureRuntime();
+      setRtNote(
+        r.action === 'installed' ? t('w.rtInstalled')
+        : r.action === 'updated' ? t('w.rtUpdated', { v: r.version })
+        : r.action === 'locked' ? t('w.rtLocked')
+        : '',
+      );
+    } catch {
+      setRtNote('');
+    }
+  };
 
   // 语言切换时同步默认提示
   useEffect(() => {
@@ -36,6 +52,7 @@ export default function Welcome() {
           await api.setGameDir(found);
           await refreshSettings();
           setGameDirHint('');
+          await ensureRt();
         } catch {
           /* 检测到但校验失败：保留手动配置路径 */
         }
@@ -50,6 +67,7 @@ export default function Welcome() {
       await api.setGameDir(found);
       await refreshSettings();
       setGameDirHint('');
+      await ensureRt();
     } else {
       const dir = await pickDirectory();
       if (dir) {
@@ -57,6 +75,7 @@ export default function Welcome() {
           await api.setGameDir(dir);
           await refreshSettings();
           setGameDirHint('');
+          await ensureRt();
         } catch (e) {
           setGameDirHint(String(e));
         }
@@ -137,6 +156,7 @@ export default function Welcome() {
           <span>
             {gameDirHint || t('w.gameOk')}
             {!gameDirHint && <div className="mt-0.5 font-mono text-[10px] text-emerald-500/70">{settings.game_dir}</div>}
+            {!gameDirHint && rtNote && <div className="mt-0.5 text-[11px] text-emerald-300">{rtNote}</div>}
           </span>
           <span className="shrink-0 pl-2 text-xs opacity-70">{gameDirHint ? t('w.clickConfig') : t('w.clickRedetect')}</span>
         </button>

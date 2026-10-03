@@ -111,6 +111,141 @@ pub fn validate_game_dir(dir: &str) -> bool {
         .exists()
 }
 
+// ---- 内置 Runtime 前置 mod（自动安装，玩家零手动配置）----
+
+/// 构建期内嵌 runtime/dist 产物（更新 Runtime 后重跑 `runtime/dist/刷新.cmd` 或手动覆盖+SHA256）
+const BUNDLED_RUNTIME_DLL: &[u8] = include_bytes!("../../../runtime/dist/SpireForgeRuntime.dll");
+const BUNDLED_RUNTIME_JSON: &[u8] = include_bytes!("../../../runtime/dist/SpireForgeRuntime.json");
+
+/// Runtime mod 自动安装结果（前端按 action 拼 i18n 提示）
+#[derive(Serialize)]
+pub struct RuntimeEnsure {
+    /// current = 已是最新；installed = 首次安装；updated = 升级；locked = 游戏锁文件暂缓
+    pub action: String,
+    pub version: String,
+}
+
+fn bundled_runtime_version() -> String {
+    serde_json::from_slice::<serde_json::Value>(BUNDLED_RUNTIME_JSON)
+        .ok()
+        .and_then(|v| v.get("version").and_then(|x| x.as_str()).map(|s| s.to_string()))
+        .unwrap_or_default()
+}
+
+fn manifest_version(raw: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| v.get("version").and_then(|x| x.as_str()).map(|s| s.to_string()))
+}
+
+/// 语义化版本比较（x.y.z 逐段数值，缺失段按 0）；任一侧无法解析时退回字符串相等
+fn version_ge(a: &str, b: &str) -> bool {
+    let parse = |s: &str| -> Option<Vec<u64>> {
+        s.split('.').map(|p| p.trim().parse::<u64>().ok()).collect()
+    };
+    match (parse(a), parse(b)) {
+        (Some(x), Some(y)) => {
+            let n = x.len().max(y.len());
+            for i in 0..n {
+                let (a1, b1) = (
+                    x.get(i).copied().unwrap_or(0),
+                    y.get(i).copied().unwrap_or(0),
+                );
+                if a1 != b1 {
+                    return a1 > b1;
+                }
+            }
+            true
+        }
+        _ => a == b,
+    }
+}
+
+/// 检测/安装入口：幂等 + 记录版本标记到设置
+pub fn ensure_bundled_runtime(game_dir: &str) -> Result<RuntimeEnsure, String> {
+    let r = ensure_bundled_runtime_into(game_dir)?;
+    if matches!(r.action.as_str(), "installed" | "updated") {
+        mark_runtime_version(&r.version);
+    }
+    Ok(r)
+}
+
+/// 核心安装逻辑（无设置副作用，可测）：
+/// 目标已是最新 → 不动；现有版本比内置新（如工坊装了更新版）→ 不降级；
+/// 游戏运行中 DLL 被锁 → 跳过写入（旧版仍可用，返回 locked，下次再升）。
+/// 先写 DLL 后写 manifest：中途失败不会出现"json 说新版、dll 是旧版"的错位。
+fn ensure_bundled_runtime_into(game_dir: &str) -> Result<RuntimeEnsure, String> {
+    let dir = PathBuf::from(game_dir).join("mods").join("SpireForgeRuntime");
+    let json_path = dir.join("SpireForgeRuntime.json");
+    let dll_path = dir.join("SpireForgeRuntime.dll");
+    let bundled = bundled_runtime_version();
+
+    let existing = fs::read_to_string(&json_path).ok().and_then(|s| manifest_version(&s));
+    if dll_path.exists()
+        && existing.as_deref().map(|e| version_ge(e, &bundled)).unwrap_or(false)
+    {
+        return Ok(RuntimeEnsure {
+            action: "current".into(),
+            version: existing.unwrap_or(bundled),
+        });
+    }
+
+    fs::create_dir_all(&dir).map_err(|e| format!("创建 mods/SpireForgeRuntime 失败: {e}"))?;
+    let action = if existing.is_some() { "updated" } else { "installed" };
+    match fs::write(&dll_path, BUNDLED_RUNTIME_DLL) {
+        Ok(()) => {
+            fs::write(&json_path, BUNDLED_RUNTIME_JSON)
+                .map_err(|e| format!("写入 SpireForgeRuntime.json 失败: {e}"))?;
+            Ok(RuntimeEnsure { action: action.into(), version: bundled })
+        }
+        // 游戏运行中 DLL 被锁：保留现版本，退出游戏后下次启动编辑器自动补
+        Err(_) if dll_path.exists() => Ok(RuntimeEnsure { action: "locked".into(), version: bundled }),
+        Err(e) => Err(format!("写入 SpireForgeRuntime.dll 失败: {e}")),
+    }
+}
+
+fn mark_runtime_version(v: &str) {
+    let mut s = load_settings();
+    if s.runtime_version.as_deref() != Some(v) {
+        s.runtime_version = Some(v.to_string());
+        let _ = save_settings(&s);
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+
+    #[test]
+    fn ensure_installs_and_is_idempotent() {
+        let g = std::env::temp_dir().join("sf_ensure_rt_test");
+        let _ = std::fs::remove_dir_all(&g);
+        std::fs::create_dir_all(&g).unwrap();
+        // 首次安装：DLL 与 manifest 都落位
+        let r1 = ensure_bundled_runtime_into(g.to_str().unwrap()).unwrap();
+        assert_eq!(r1.action, "installed", "first run should install");
+        let dll = g.join("mods/SpireForgeRuntime/SpireForgeRuntime.dll");
+        assert!(dll.exists());
+        assert_eq!(
+            std::fs::read(&dll).unwrap().len(),
+            BUNDLED_RUNTIME_DLL.len()
+        );
+        // 幂等：已是最新
+        let r2 = ensure_bundled_runtime_into(g.to_str().unwrap()).unwrap();
+        assert_eq!(r2.action, "current", "second run should be no-op");
+        std::fs::remove_dir_all(&g).ok();
+    }
+
+    #[test]
+    fn version_compare_segments() {
+        assert!(version_ge("0.1.0", "0.1.0"));
+        assert!(version_ge("0.2.0", "0.1.9"));
+        assert!(!version_ge("0.1.0", "0.2.0"));
+        assert!(version_ge("1.0", "0.9.9"));
+        assert!(version_ge("0.1.0", "0.1"));
+    }
+}
+
 /// 「添加至卡组」：把 Entry 清单合并写入 Runtime mod 目录的 sf_grant.json，
 /// Runtime 每帧轮询即时消费——战斗外只加入本局主牌组；战斗中额外塞一张到手牌。
 /// 消费即删除文件。

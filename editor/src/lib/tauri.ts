@@ -6,6 +6,8 @@ export const api = {
   detectGameDir: () => invoke<string | null>('detect_game_dir'),
   getSettings: () => invoke<EditorSettings>('get_settings'),
   setGameDir: (dir: string) => invoke<void>('set_game_dir', { dir }),
+  /** 内置 Runtime 前置 mod 自动安装（幂等、防降级；游戏锁文件时 action=locked） */
+  ensureRuntime: () => invoke<RuntimeEnsure>('ensure_runtime'),
 
   newProject: (path: string, packId: string, name: string, author: string) =>
     invoke<void>('new_project', { path, packId, name, author }),
@@ -69,6 +71,12 @@ export interface GrantQueueResult {
 export interface InstallResult {
   dir: string;
   game_running: boolean;
+}
+
+/** 内置 Runtime 前置 mod 自动安装结果 */
+export interface RuntimeEnsure {
+  action: 'current' | 'installed' | 'updated' | 'locked';
+  version: string;
 }
 
 export async function pickPckFile(): Promise<string | null> {
