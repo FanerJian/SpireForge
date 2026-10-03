@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -166,13 +165,12 @@ public static class SfVanillaOverride
         {
             return;
         }
+        // DynamicVarSet 本质是字典（带 this[string] 索引器）——反射枚举属性时
+        // 无参 GetValue 打到索引器会抛 Parameter count mismatch，直接枚举键值对
         var byName = new Dictionary<string, DynamicVar>(StringComparer.OrdinalIgnoreCase);
-        foreach (var prop in typeof(DynamicVarSet).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var kv in set)
         {
-            if (typeof(DynamicVar).IsAssignableFrom(prop.PropertyType) && prop.GetValue(set) is DynamicVar v)
-            {
-                byName[v.Name] = v;
-            }
+            byName[kv.Key] = kv.Value;
         }
         foreach (var (name, val) in map)
         {

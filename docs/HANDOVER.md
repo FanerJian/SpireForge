@@ -109,7 +109,15 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
   power/card_entry/pile/monster/hp 全部被静默丢弃**（日志 `power effect missing
   params.power`）——运行时所有「施加增益/生成卡牌/召唤」效果失效——现 StringParam/
   DecimalParam 双读兜底；③GrantAsync 加上与原版事件塞牌同款 `CardCmd.PreviewCardPileAdd`
-  官方入组预览动画（事件底层调用本就是 CardPileCmd.Add(Deck)，配方一致）
+  官方入组预览动画（事件底层调用本就是 CardPileCmd.Add(Deck)，配方一致）。
+  **原版覆盖卡发放修复（2026-10-03 下午）**：「隐秘宝石」实测定位出两个叠加 bug——
+  ①覆盖卡（带 vanilla_id）在 Runtime 是就地修补原版模板（SfVanillaOverride），ModelDb 里
+  **没有**包内派生 Entry（如 DEMO_HIDDEN_GEM），而登记/预检/属性面板用的恰是派生 Entry →
+  发放必 not found。现前端 `grantEntry()` 对覆盖卡改用 vanilla_id（规范化=大写+字母数字
+  下划线），发放预检的 PCK 扫描同步识别 vanilla_id，Entry 展示同步；②覆盖应用本身崩在
+  `Parameter count mismatch`：SfVanillaOverride.ApplyVars 反射枚举 DynamicVarSet 属性时
+  打到 `this[string]` 索引器（无参 GetValue 必炸）——DynamicVarSet 本质是字典，现直接
+  枚举键值对（大小写不敏感匹配保留）
 - **零错误集成**：与 BaseLib/RitsuLib/工坊 mod 共存时，游戏启动无任何 SpireForge 错误
 - **数据安全加固**（2026-10-02）：项目已入 git；编辑/切卡/关窗/发布全程自动保存（多卡
   dirtyIds + 去抖 + beforeunload）；project.json/卡牌/PCK/设置原子写（.tmp+.bak）；卡牌 id

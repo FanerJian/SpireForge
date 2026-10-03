@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, pickDirectory, pickUploaderExe } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
-import { cardEntry } from '../lib/types';
+import { grantEntry } from '../lib/types';
 
 function SectionTitle({ text }: { text: string }) {
   return (
@@ -137,7 +137,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     if (!meta) return;
     try {
       await persistAll();
-      const entries = cards.map((c) => cardEntry(meta.pack_id, c.id));
+      const entries = [...new Set(cards.map((c) => grantEntry(c, meta.pack_id)))];
       const r = await api.queueCardGrant(entries);
       showToast(t('pv.grantQueued', { total: r.total, added: r.added }));
     } catch (e) {

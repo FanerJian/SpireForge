@@ -199,6 +199,15 @@ export function cardEntry(packId: string, cardId: string): string {
   return slugify(pascal(packId) + pascal(cardId));
 }
 
+/** 「在游戏中获得」登记用的 Entry。覆盖卡（vanilla_id）在 Runtime 是就地修补原版模板，
+ *  ModelDb 里只有原版 Entry——按包内派生 Entry 登记会查无此卡，必须用原版 Entry。
+ *  规范化与 Rust 端 publish.rs 一致：大写 + 只留字母数字下划线。 */
+export function grantEntry(card: { id: string; vanilla_id?: string | null }, packId: string): string {
+  const v = card.vanilla_id?.trim();
+  if (v) return v.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+  return cardEntry(packId, card.id);
+}
+
 /** 兼容旧名 */
 export const pascalToSnake = slugify;
 

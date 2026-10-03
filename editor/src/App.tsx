@@ -8,7 +8,7 @@ import Welcome from './components/Welcome';
 import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
 import { setLang, useLang, useT } from './lib/i18n';
-import { cardEntry } from './lib/types';
+import { grantEntry } from './lib/types';
 import { bytesToDataUrl, extOf } from './lib/img';
 
 function Toast({ msg }: { msg: string }) {
@@ -128,7 +128,7 @@ function PreviewPane() {
   const doGrant = async () => {
     if (!card || !meta) return;
     try {
-      const r = await api.queueCardGrant([cardEntry(meta.pack_id, card.id)]);
+      const r = await api.queueCardGrant([grantEntry(card, meta.pack_id)]);
       showToast(t('pv.grantQueued', { total: r.total, added: r.added }));
     } catch (e) {
       const msg = String(e);
@@ -159,7 +159,7 @@ function PreviewPane() {
               {t('pv.export')}
             </button>
             <span className="whitespace-nowrap font-mono text-[11px] text-slate-600">
-              {t('pv.entry')}: {cardEntry(meta.pack_id, card.id)}
+              {t('pv.entry')}: {grantEntry(card, meta.pack_id)}
             </span>
           </div>
         </>

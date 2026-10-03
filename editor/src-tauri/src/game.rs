@@ -142,9 +142,21 @@ fn game_process_running() -> bool {
         .unwrap_or(false)
 }
 
+/// 原版 Entry 规范化（与 publish.rs 覆盖卡 Entry 规则一致）：
+/// 原版 Entry 已是游戏的最终 Slugify 形态，不能再过 slugify（BASH 会被拆成 B_A_S_H），
+/// 只做大写规范化 + 剔除非法字符。
+fn normalize_vanilla_entry(s: &str) -> String {
+    s.trim()
+        .to_uppercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect()
+}
+
 /// 已安装进游戏的卡牌 Entry 全集（发放预检用）：
 /// mods/*/<Pack>.pck 里 cards/*.json 的 id 按 card_entry(pack_id, id) 派生——
-/// 与 Runtime PackLoader 的 Entry 派生规则一致；并上内嵌原版目录（原版卡不在 mods）。
+/// 与 Runtime PackLoader 的 Entry 派生规则一致；带 vanilla_id 的覆盖卡按原版 Entry
+/// 登记；并上内嵌原版目录（原版卡不在 mods）。
 fn installed_card_entries(game_dir: &str) -> std::collections::HashSet<String> {
     let mut set = crate::vanilla::vanilla_entries();
     let mods_dir = std::path::Path::new(game_dir).join("mods");
@@ -179,20 +191,27 @@ fn installed_card_entries(game_dir: &str) -> std::collections::HashSet<String> {
             let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) else {
                 continue;
             };
-            // 单卡对象或卡牌数组都认
-            let ids: Vec<&str> = match v.as_array() {
-                Some(arr) => arr
-                    .iter()
-                    .filter_map(|c| c.get("id").and_then(|x| x.as_str()))
-                    .collect(),
-                None => v
-                    .get("id")
-                    .and_then(|x| x.as_str())
-                    .map(|s| vec![s])
-                    .unwrap_or_default(),
+            // 单卡对象或卡牌数组都认；每张卡单独取（id, vanilla_id）
+            let cards_json: Vec<&serde_json::Value> = match v.as_array() {
+                Some(arr) => arr.iter().collect(),
+                None => vec![&v],
             };
-            for id in ids {
-                set.insert(crate::publish::card_entry(&pack_id, id));
+            for c in cards_json {
+                let Some(id) = c.get("id").and_then(|x| x.as_str()) else {
+                    continue;
+                };
+                // 覆盖卡（带 vanilla_id）：Runtime 是就地修补原版模板，不会注册包内派生
+                // Entry——可发放身份就是原版 Entry 本身
+                let vid = c
+                    .get("vanilla_id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .trim();
+                if vid.is_empty() {
+                    set.insert(crate::publish::card_entry(&pack_id, id));
+                } else {
+                    set.insert(normalize_vanilla_entry(vid));
+                }
             }
         }
     }
