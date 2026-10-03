@@ -16,11 +16,12 @@ namespace SpireForge.Runtime;
 /// <summary>
 /// 「一键在游戏中获得卡」文件桥。
 /// 编辑器把 Entry 清单写入本 mod 目录的 sf_grant.json（{"entries":[...]}），
-/// Runtime 在每场战斗开始（Hook.BeforeCombatStart 后缀、首次抽牌前，此时抽牌堆
-/// 已由 PopulateCombatState 填好）消费一次。**发放是本局永久的**：卡总是先加入
-/// 玩家的主牌组（Player.Deck，跨战斗持久、随存档保存）；若发放时正在战斗中，
-/// 再按开局同款配方（CombatState.CloneCard + DeckVersion 回指）克隆一份进当前
-/// 抽牌堆，本场合计立刻可用。消费即删除，不重复发放。
+/// Runtime 在每场战斗开始（Hook.BeforeCombatStart 后缀、首次抽牌前）消费一次。
+/// **发放是本局永久的**：卡加入玩家的主牌组（Player.Deck，跨战斗持久、随存档
+/// 保存）；战斗中发放的卡从下一场战斗起可用（开局 PopulateCombatState 会把
+/// Deck 克隆进抽牌堆）。消费即删除，不重复发放。
+/// 登记只在同一次游戏会话内有效：编辑器在游戏未运行时拒绝登记；启动时清掉
+/// 上个会话遗留的清单（ClearStaleQueue），绝不跨会话补发。
 /// 文件本身就是用户意图（编辑器按钮/控制台），因此不受 DEBUG 开关限制；
 /// 游戏内也可用 sf_grant 控制台命令手动拿卡（仅调试模式可见）。
 /// </summary>
@@ -30,6 +31,24 @@ public static class SfGrant
     public static string QueuePath => Path.Combine(
         Path.GetDirectoryName(typeof(SfGrant).Assembly.Location) ?? "",
         "sf_grant.json");
+
+    /// <summary>游戏启动时清掉上个会话遗留的拿卡清单：登记不跨会话，
+    /// 排队后未消费就退出游戏的清单到下次启动一律作废。</summary>
+    public static void ClearStaleQueue()
+    {
+        try
+        {
+            if (File.Exists(QueuePath))
+            {
+                File.Delete(QueuePath);
+                SpireForge.Api.SfLog.Info("discarded stale grant queue from a previous session");
+            }
+        }
+        catch (Exception e)
+        {
+            SpireForge.Api.SfLog.Error("clear stale grant queue failed: " + e.Message);
+        }
+    }
 
     /// <summary>登记拿卡清单（编辑器写；保留顺序、去重）。</summary>
     public static void Enqueue(IEnumerable<string> entries)
@@ -102,7 +121,7 @@ public static class SfGrant
     }
 
     /// <summary>Hook.BeforeCombatStart 后缀调用。吞掉一切异常——战斗绝不能被破坏。</summary>
-    public static void ConsumeAtCombatStart(IRunState? runState, ICombatState? combatState)
+    public static void ConsumeAtCombatStart(IRunState? runState)
     {
         try
         {
@@ -121,10 +140,9 @@ public static class SfGrant
                 SpireForge.Api.SfLog.Error("grant queue skipped: run has no player");
                 return;
             }
-            bool inCombat = combatState != null;
             SpireForge.Api.SfLog.Info(
-                $"grant queue: {entries.Count} card(s) -> deck (permanent){(inCombat ? " + draw pile" : "")}");
-            _ = GrantAllAsync(player, entries, inCombat);
+                $"grant queue: {entries.Count} card(s) -> run deck (permanent)");
+            _ = GrantAllAsync(player, entries);
         }
         catch (Exception e)
         {
@@ -132,20 +150,20 @@ public static class SfGrant
         }
     }
 
-    private static async Task GrantAllAsync(Player player, List<string> entries, bool inCombat)
+    private static async Task GrantAllAsync(Player player, List<string> entries)
     {
         foreach (var entry in entries)
         {
             try
             {
-                var err = await GrantAsync(player, entry, inCombat);
+                var err = await GrantAsync(player, entry);
                 if (err != null)
                 {
                     SpireForge.Api.SfLog.Error($"grant {entry} FAILED: {err}");
                 }
                 else
                 {
-                    SpireForge.Api.SfLog.Info($"granted {entry} (deck{(inCombat ? "+draw" : "")})");
+                    SpireForge.Api.SfLog.Info($"granted {entry} (deck)");
                 }
             }
             catch (Exception e)
@@ -155,11 +173,11 @@ public static class SfGrant
         }
     }
 
-    /// <summary>把一张卡**永久**发给玩家：总是先加入本局主牌组（Player.Deck，跨战斗
-    /// 持久、随存档保存，与游戏 card &lt;X&gt; Deck 控制台命令同配方）；战斗中再克隆一份
-    /// 进当前抽牌堆（开局 PopulateCombatState 的 Deck→Draw 同款：CloneCard + DeckVersion
-    /// 回指），本场合计立刻可用。返回 null = 成功，否则为错误说明。</summary>
-    public static async Task<string?> GrantAsync(Player player, string entry, bool inCombat)
+    /// <summary>把一张卡**永久**发给玩家：加入本局主牌组（Player.Deck，跨战斗
+    /// 持久、随存档保存，与游戏 card &lt;X&gt; Deck 控制台命令同配方）。战斗中发放的卡
+    /// 从下一场战斗起可用（开局 PopulateCombatState 会把 Deck 克隆进抽牌堆）。
+    /// 返回 null = 成功，否则为错误说明。</summary>
+    public static async Task<string?> GrantAsync(Player player, string entry)
     {
         var model = ModelDb.AllCards.FirstOrDefault(c =>
             string.Equals(c.Id.Entry, entry, StringComparison.OrdinalIgnoreCase));
@@ -170,22 +188,13 @@ public static class SfGrant
         var run = RunManager.Instance.DebugOnlyGetState()
             ?? throw new InvalidOperationException("run state unavailable");
         var deckCard = run.CreateCard(model, player);
-        // 战斗中跳过入组动画：飘向顶栏牌组的特效在战斗画面下语义不明，静默入组
-        var added = await CardPileCmd.Add(deckCard, PileType.Deck, skipVisuals: inCombat);
+        var added = await CardPileCmd.Add(deckCard, PileType.Deck);
         if (!added.success)
         {
             return "add to deck prevented (Hook.ShouldAddToDeck)";
         }
+        bool inCombat = CombatManager.Instance is { IsInProgress: true };
         SpireForge.Api.SfEvents.RaiseCardGranted(entry, inCombat);
-        if (!inCombat)
-        {
-            return null;
-        }
-        var combat = CombatManager.Instance.DebugOnlyGetState()
-            ?? throw new InvalidOperationException("combat state unavailable");
-        var clone = combat.CloneCard(deckCard);
-        clone.DeckVersion = deckCard;
-        await CardPileCmd.Add(clone, PileType.Draw);
         return null;
     }
 }

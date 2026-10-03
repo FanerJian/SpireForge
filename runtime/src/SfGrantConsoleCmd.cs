@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.DevConsole.ConsoleCommands;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -13,7 +12,7 @@ namespace SpireForge.Runtime;
 /// <summary>
 /// 游戏内控制台命令 sf_grant [ENTRY ...]：
 /// 无参数 = 列出已安装 SpireForge 卡包的全部 Entry；带参数 = 永久拿卡
-/// （总是加入本局主牌组；战斗中额外克隆一份进当前抽牌堆立刻可用）。
+/// （加入本局主牌组；战斗中发放的卡从下一场战斗起可用）。
 /// 原版 Entry 同样可用（如 sf_grant BASH）。
 /// DebugOnly 保持默认 true —— 拿卡属于测试/自查功能，仅在调试会话出现。
 /// 游戏通过 ReflectionHelper.GetSubtypesInMods 自动发现本类，无需手动注册。
@@ -25,7 +24,7 @@ public sealed class SfGrantConsoleCmd : AbstractConsoleCmd
     public override string Args => "[card-entry ...]";
 
     public override string Description =>
-        "List SpireForge card entries (no args), or permanently add card(s) to your run deck (plus current draw pile in combat).";
+        "List SpireForge card entries (no args), or permanently add card(s) to your run deck.";
 
     public override bool IsNetworked => false;
 
@@ -48,26 +47,25 @@ public sealed class SfGrantConsoleCmd : AbstractConsoleCmd
             return new CmdResult(success: false,
                 "No issuing player (in multiplayer use each player's own console).");
         }
-        bool inCombat = CombatManager.Instance is { IsInProgress: true };
-        return new CmdResult(GrantAll(issuingPlayer, args, inCombat), success: true,
-            $"Granting {args.Length} card(s) to run deck (permanent){(inCombat ? " + draw pile" : "")}...");
+        return new CmdResult(GrantAll(issuingPlayer, args), success: true,
+            $"Granting {args.Length} card(s) to run deck (permanent)...");
     }
 
-    private static async Task GrantAll(Player player, string[] entries, bool inCombat)
+    private static async Task GrantAll(Player player, string[] entries)
     {
         foreach (var raw in entries)
         {
             var entry = raw.Trim().ToUpperInvariant();
             try
             {
-                var err = await SfGrant.GrantAsync(player, entry, inCombat);
+                var err = await SfGrant.GrantAsync(player, entry);
                 if (err != null)
                 {
                     SpireForge.Api.SfLog.Error($"sf_grant {entry} FAILED: {err}");
                 }
                 else
                 {
-                    SpireForge.Api.SfLog.Info($"sf_grant: granted {entry} (deck{(inCombat ? "+draw" : "")})");
+                    SpireForge.Api.SfLog.Info($"sf_grant: granted {entry} (deck)");
                 }
             }
             catch (Exception e)

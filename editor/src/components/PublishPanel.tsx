@@ -141,7 +141,9 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
       const r = await api.queueCardGrant(entries);
       showToast(t('pv.grantQueued', { total: r.total, added: r.added }));
     } catch (e) {
-      showToast(t('pv.grantFailed', { e: String(e) }));
+      showToast(String(e).includes('GAME_NOT_RUNNING')
+        ? t('pv.grantNoGame')
+        : t('pv.grantFailed', { e: String(e) }));
     }
   };
 

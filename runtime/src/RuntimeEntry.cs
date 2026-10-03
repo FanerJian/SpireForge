@@ -72,6 +72,8 @@ public static class RuntimeEntry
             postfix: new HarmonyMethod(typeof(RuntimeEntry), nameof(AfterBeforeCombatStart)));
         // 示例卡包「咔咔」：生成邪教徒时把显示名改成咔咔（Title getter 后缀 + loc 词条注入）
         SfKaka.Install(harmony);
+        // 拿卡登记只在同一次游戏会话内有效：清掉上个会话遗留的清单
+        SfGrant.ClearStaleQueue();
 
         Log.Info($"{LogTag}: hooks installed");
     }
@@ -106,7 +108,7 @@ public static class RuntimeEntry
     private static void AfterBeforeCombatStart(MegaCrit.Sts2.Core.Runs.IRunState runState,
         MegaCrit.Sts2.Core.Combat.ICombatState? combatState)
     {
-        SfGrant.ConsumeAtCombatStart(runState, combatState);
+        SfGrant.ConsumeAtCombatStart(runState);
     }
 
     /// <summary>ModelDb.Init 前缀：扫描卡包 + 生成类型。不注册（注册统一在后缀，幂等）。</summary>

@@ -112,13 +112,25 @@ pub fn validate_game_dir(dir: &str) -> bool {
 }
 
 /// 「一键在游戏中获得卡」：把 Entry 清单合并写入 Runtime mod 目录的 sf_grant.json，
-/// Runtime 在下一场战斗开始（首次抽牌前）消费一次——战斗中加入抽牌堆，
-/// 非战斗加入牌组，然后删除文件。返回 (登记总数, 本次新增数) 文案。
+/// Runtime 在下一场战斗开始（首次抽牌前）消费一次，卡永久加入本局主牌组，然后删除文件。
+/// **登记只在游戏会话内有效**：游戏进程未运行时拒绝登记（不搞「下次启动生效」）；
+/// 就算排队后没来得及消费就退出游戏，Runtime 启动时也会清掉遗留清单。
 /// 拿卡清单登记结果（total = 清单总条数，added = 本次新增；消息由前端按界面语言拼装）
 #[derive(Serialize)]
 pub struct GrantQueueResult {
     pub total: usize,
     pub added: usize,
+}
+
+/// 游戏进程是否正在运行（tasklist 查询；duct 启动、不经 shell、参数全字面量）。
+fn game_process_running() -> bool {
+    duct::cmd(
+        "tasklist",
+        ["/FI", "IMAGENAME eq SlayTheSpire2.exe", "/FO", "CSV", "/NH"],
+    )
+    .read()
+    .map(|out| out.to_lowercase().contains("slaythespire2.exe"))
+    .unwrap_or(false)
 }
 
 pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String> {
@@ -131,6 +143,10 @@ pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String
         .join("SpireForgeRuntime");
     if !runtime_dir.is_dir() {
         return Err("游戏 mods 里还没有 SpireForgeRuntime，请先在发布面板「一键安装到游戏」".into());
+    }
+    // 登记只在游戏会话内有效：游戏没开就直接拒绝，绝不跨会话补发
+    if !game_process_running() {
+        return Err("GAME_NOT_RUNNING".into());
     }
     let path = runtime_dir.join("sf_grant.json");
 

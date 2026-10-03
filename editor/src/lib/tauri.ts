@@ -36,7 +36,7 @@ export const api = {
   writeFile: (path: string, content: string) => invoke<void>('write_text_file', { path, content }),
   buildPack: (outDir: string, version: string) => invoke<string>('build_pack', { outDir, version }),
   installToGame: (version: string) => invoke<string>('install_to_game', { version }),
-  /** 登记到 Runtime 拿卡清单：下一场战斗开始时把卡永久加入本局牌组（战斗中另发抽牌堆副本） */
+  /** 登记到 Runtime 拿卡清单：下一场战斗开始时把卡永久加入本局牌组。游戏未运行时拒绝（GAME_NOT_RUNNING），登记不跨会话 */
   queueCardGrant: (entries: string[]) => invoke<GrantQueueResult>('queue_card_grant', { entries }),
   /** 发布预检：Entry 冲突 / vanilla_id 重复 / 空 handler / 缺失文案等问题清单 */
   validateProject: () => invoke<string[]>('validate_project'),

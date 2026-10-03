@@ -44,8 +44,7 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
   （pp.powerLabel/pp.powerSearch/目录描述/预填提示/入战警告），官方文本里「力量/敏捷」
   （Strength/Dexterity 专名）保留不动；描述生成器动词改用官方句式**「给予 N 层X」**
   （上勾拳/主宰等原版卡均为「给予1层易伤」，不再写「施加」）。「在游戏中永久获得」
-  按钮简化为**「在游戏中获得」**（含发布面板「全部卡」按钮；单按钮即永久入组、战斗中
-  自动克隆进抽牌堆，无单独战斗中按钮）
+  按钮简化为**「在游戏中获得」**（含发布面板「全部卡」按钮）
 - **可搜索下拉组件 Combobox**（2026-10-02）：效果/召唤怪物/生成卡牌三处弃用原生
   datalist（会同时显示英文值+中文标签），改用自定义 Combobox——**中文界面只显示中文、
   英文界面只显示英文**；顶部搜索框中英文名均可检索；效果项带官方图标（codex 图库
@@ -81,13 +80,17 @@ SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖
 - **中英双语**：zhs/eng 双语文案 + 游戏内本地化合并实测通过
 - **卡牌实时预览**：按官方规格渲染，含升级数值对照与钩子角标
 - **一键安装到游戏** + 导出卡包
-- **一键在游戏中获得卡（本局永久）**（2026-10-02）：编辑器（预览区单卡按钮 / 发布面板整包按钮）
-  把 Entry 写进 `mods/SpireForgeRuntime/sf_grant.json`，Runtime 在每场战斗开始（BeforeCombatStart
-  后缀、首次抽牌前）消费一次。**发放是本局永久的**：卡总是先 `RunState.CreateCard` +
-  `CardPileCmd.Add(Deck)` 进主牌组（跨战斗持久、随存档保存，与游戏 `card <X> Deck` 命令同配方）；
-  发放时正在战斗中的话，再按开局同款配方（`CombatState.CloneCard` + `DeckVersion` 回指）克隆一份
-  进当前抽牌堆，本场合计立刻可用。消费即删文件、不重复发放。游戏内另有 `sf_grant [ENTRY...]`
-  控制台命令（DebugOnly，无参数列出全部 Entry）；效果验证闭环 = 编辑卡 → 点一下 → 进战斗拿卡试打
+- **一键在游戏中获得卡（本局永久）**（2026-10-02，同日收敛语义）：编辑器（预览区单卡按钮 /
+  发布面板整包按钮）把 Entry 写进 `mods/SpireForgeRuntime/sf_grant.json`，Runtime 在每场战斗
+  开始（BeforeCombatStart 后缀、首次抽牌前）消费一次。**发放是本局永久的**：卡
+  `RunState.CreateCard` + `CardPileCmd.Add(Deck)` 进主牌组（跨战斗持久、随存档保存，与游戏
+  `card <X> Deck` 命令同配方）；战斗中发放的卡从下一场战斗起可用（开局 PopulateCombatState
+  会把 Deck 克隆进抽牌堆），**没有**额外的当前抽牌堆副本。消费即删文件、不重复发放。
+  **登记只在游戏会话内有效**：编辑器经 tasklist（duct）检测游戏进程，未运行时拒绝登记
+  （Rust 返回 `GAME_NOT_RUNNING` → 前端「游戏未运行…」提示）；Runtime 启动时
+  `ClearStaleQueue` 清掉上个会话遗留的清单，绝不跨会话补发。游戏内另有
+  `sf_grant [ENTRY...]` 控制台命令（DebugOnly，无参数列出全部 Entry）；
+  效果验证闭环 = 编辑卡 → 点一下 → 进战斗拿卡试打
 - **零错误集成**：与 BaseLib/RitsuLib/工坊 mod 共存时，游戏启动无任何 SpireForge 错误
 - **数据安全加固**（2026-10-02）：项目已入 git；编辑/切卡/关窗/发布全程自动保存（多卡
   dirtyIds + 去抖 + beforeunload）；project.json/卡牌/PCK/设置原子写（.tmp+.bak）；卡牌 id
