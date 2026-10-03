@@ -88,7 +88,6 @@ const STRINGS: Record<string, L> = {
   // 预览区（App.tsx PreviewPane + CardPreview）
   'pv.upgraded': { zh: '预览升级数值', en: 'Preview upgraded values' },
   'pv.grant': { zh: '添加至卡组', en: 'Add to Deck' },
-  'pv.grantTitle': { zh: '把这张卡永久加入本局卡组（跨战斗持久、随存档保存），登记后立即生效：战斗外直接入组；战斗中还会额外塞一张到手牌（本场可用）。需要游戏正在运行；游戏没开时不会登记', en: 'Permanently adds this card to your current run\'s deck (persists across combats, saved with the run). Takes effect immediately: out of combat it just joins the deck; during a combat you also get a copy in hand right away. The game must be running — nothing is queued while it is closed' },
   'pv.grantQueued': { zh: '已登记 {total} 张（本次新增 {added}）：即将加入本局卡组；战斗中登记会额外塞一张到手牌', en: 'Queued {total} card(s) ({added} new): joining your run deck shortly — during a combat you also get a copy in hand' },
   'pv.grantNoGame': { zh: '游戏未运行：请先启动游戏并进入一局，再点「添加至卡组」', en: 'The game is not running — start the game and enter a run before using "Add to Deck"' },
   'pv.grantNotInstalled': { zh: '「{v}」还没装进游戏：先在发布面板「安装到游戏」（新加/改过的卡都要重装一次），再点「添加至卡组」', en: '"{v}" is not installed in the game yet — run "Publish / Install" first (new or changed cards require reinstalling the pack), then use "Add to Deck"' },
@@ -277,7 +276,6 @@ const STRINGS: Record<string, L> = {
   'pub.upExtracting': { zh: '释放中…', en: 'extracting…' },
   'pub.install': { zh: '一键安装到游戏', en: 'Install to game' },
   'pub.grantAll': { zh: '全部卡添加至卡组（测试）', en: 'Add all cards to deck (test)' },
-  'pub.grantAllTitle': { zh: '把本卡包全部卡永久加入本局卡组：登记后立即生效，战斗中登记会额外塞一张到手牌（需要游戏正在运行）', en: 'Permanently adds every card in this pack to your run deck — effective immediately; during a combat you also get a copy in hand (the game must be running)' },
   'pub.exportPack': { zh: '导出卡包（.pck + 清单）', en: 'Export pack (.pck + manifest)' },
   'pub.workshop': { zh: 'Steam 工坊发布（点开展开）', en: 'Steam Workshop publish (click to expand)' },
   'pub.publishedTag': { zh: '· 已发布 #{id}', en: '· published #{id}' },

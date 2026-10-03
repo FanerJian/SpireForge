@@ -151,7 +151,7 @@ function PreviewPane() {
               <input type="checkbox" checked={upgraded} onChange={(e) => setUpgraded(e.target.checked)} />
               {t('pv.upgraded')}
             </label>
-            <button onClick={doGrant} title={t('pv.grantTitle')}
+            <button onClick={doGrant}
               className="whitespace-nowrap rounded border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:border-emerald-400/60">
               {t('pv.grant')}
             </button>

@@ -210,7 +210,6 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
             <button
               onClick={doGrantAll}
               disabled={busy || cards.length === 0}
-              title={t('pub.grantAllTitle')}
               className="whitespace-nowrap rounded-lg border border-emerald-400/30 bg-emerald-500/10 py-2.5 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-40"
             >
               {t('pub.grantAll')}
