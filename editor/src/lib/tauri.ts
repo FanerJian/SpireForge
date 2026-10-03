@@ -35,7 +35,7 @@ export const api = {
   exportCardJson: (id: string) => invoke<string>('export_card_json', { id }),
   writeFile: (path: string, content: string) => invoke<void>('write_text_file', { path, content }),
   buildPack: (outDir: string, version: string) => invoke<string>('build_pack', { outDir, version }),
-  installToGame: (version: string) => invoke<string>('install_to_game', { version }),
+  installToGame: (version: string) => invoke<InstallResult>('install_to_game', { version }),
   /** 登记到 Runtime 拿卡清单：游戏内即时把卡永久加入本局卡组（战斗中额外塞一张到手牌）。游戏未运行时拒绝（GAME_NOT_RUNNING），登记不跨会话 */
   queueCardGrant: (entries: string[]) => invoke<GrantQueueResult>('queue_card_grant', { entries }),
   /** 发布预检：Entry 冲突 / vanilla_id 重复 / 空 handler / 缺失文案等问题清单 */
@@ -63,6 +63,12 @@ export interface PckImportResult {
 export interface GrantQueueResult {
   total: number;
   added: number;
+}
+
+/** 安装到游戏结果：game_running=true 时提示需重启游戏生效（PCK 启动时挂载） */
+export interface InstallResult {
+  dir: string;
+  game_running: boolean;
 }
 
 export async function pickPckFile(): Promise<string | null> {

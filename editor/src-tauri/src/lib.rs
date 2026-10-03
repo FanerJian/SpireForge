@@ -298,9 +298,16 @@ fn build_pack(
     Ok(dir.to_string_lossy().into_owned())
 }
 
+/// install_to_game 的结果（game_running=true 时前端提示需重启游戏生效——PCK 是游戏启动时挂载的，运行中覆盖安装不会热加载）
+#[derive(serde::Serialize)]
+pub struct InstallResult {
+    pub dir: String,
+    pub game_running: bool,
+}
+
 /// 一键安装到游戏 mods 目录
 #[tauri::command]
-fn install_to_game(state: State<AppState>, version: String) -> Result<String, String> {
+fn install_to_game(state: State<AppState>, version: String) -> Result<InstallResult, String> {
     let root = require_root(&state)?;
     let game_dir = state.settings.lock().unwrap().game_dir.clone();
     if game_dir.is_empty() {
@@ -321,7 +328,10 @@ fn install_to_game(state: State<AppState>, version: String) -> Result<String, St
         &cards,
     )?;
     touch_last_version(&root, &meta, &version)?;
-    Ok(dir)
+    Ok(InstallResult {
+        dir,
+        game_running: game::game_process_running(),
+    })
 }
 
 /// 发布前预检：Entry 冲突 / vanilla_id 重复 / 空 custom handler / 缺失文案等

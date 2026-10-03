@@ -297,6 +297,7 @@ const STRINGS: Record<string, L> = {
   'pub.workshopNote': { zh: '需 Steam 客户端在线；工坊 id 已持久化到项目，换导出目录复用同一条目；tags 上传后无法修改。', en: 'Requires Steam running; the Workshop id is stored in the project and reused across export folders; tags can\'t change after first upload.' },
   'pub.installedTo': { zh: '已安装到：{dir}\n\n启动游戏即可在卡牌图鉴（无色卡池）中看到本卡包卡牌。\n提示：首次使用需确保 SpireForge Runtime 已随编辑器安装（见文档）。', en: 'Installed to: {dir}\n\nStart the game and the pack\'s cards appear in the card library (colorless pool).\nNote: first-time use requires the SpireForge Runtime, which the editor installs (see docs).' },
   'pub.installOk': { zh: '安装成功', en: 'Installed' },
+  'pub.installRestart': { zh: '已安装，但游戏正在运行——重启游戏后生效（卡包在游戏启动时加载）', en: 'Installed, but the game is running — restart it to load the pack (packs mount at game startup)' },
   'pub.installFailed': { zh: '安装失败：{e}', en: 'Install failed: {e}' },
   'pub.exportedTo': { zh: '卡包已导出到：{dir}', en: 'Pack exported to: {dir}' },
   'pub.exportOk': { zh: '导出成功', en: 'Exported' },

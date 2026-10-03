@@ -124,7 +124,7 @@ pub struct GrantQueueResult {
 }
 
 /// 游戏进程是否正在运行（tasklist 查询；duct 启动、不经 shell、参数全字面量）。
-fn game_process_running() -> bool {
+pub fn game_process_running() -> bool {
     let mut cmd = duct::cmd(
         "tasklist",
         ["/FI", "IMAGENAME eq SlayTheSpire2.exe", "/FO", "CSV", "/NH"],

@@ -53,10 +53,10 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     setLog('');
     try {
       await persistAll();
-      const dir = await api.installToGame(version);
+      const r = await api.installToGame(version);
       await reloadMeta();
-      setLog(t('pub.installedTo', { dir }));
-      showToast(t('pub.installOk'));
+      setLog(t('pub.installedTo', { dir: r.dir }));
+      showToast(r.game_running ? t('pub.installRestart') : t('pub.installOk'));
     } catch (e) {
       setLog(t('pub.installFailed', { e: String(e) }));
     } finally {
