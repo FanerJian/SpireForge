@@ -210,7 +210,47 @@ pub fn build_pack_files(
 }
 
 /// 清单：<PackId>/<PackId>.json
-pub fn build_manifest(pack_id: &str, name: &str, author: &str, description: &str, version: &str) -> String {
+pub fn build_manifest(
+    pack_id: &str,
+    name: &str,
+    author: &str,
+    description: &str,
+    version: &str,
+) -> String {
+    build_manifest_for_cards(pack_id, name, author, description, version, &[])
+}
+
+fn mod_ids_used(cards: &[CardDef]) -> Vec<String> {
+    let mut ids = std::collections::BTreeSet::new();
+    for card in cards {
+        for pool in crate::custom_pools::active_pool_keys(card) {
+            if let Some(rest) = pool.strip_prefix("mod:") {
+                if let Some((mod_id, type_name)) = rest.split_once(':') {
+                    if !mod_id.is_empty() && !type_name.is_empty() && mod_id != "SpireForgeRuntime"
+                    {
+                        ids.insert(mod_id.to_string());
+                    }
+                }
+            }
+        }
+    }
+    ids.into_iter().collect()
+}
+
+pub fn build_manifest_for_cards(
+    pack_id: &str,
+    name: &str,
+    author: &str,
+    description: &str,
+    version: &str,
+    cards: &[CardDef],
+) -> String {
+    let dependencies: Vec<serde_json::Value> = std::iter::once("SpireForgeRuntime".to_string())
+        .chain(mod_ids_used(cards))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|id| json!({"id": id, "min_version": null}))
+        .collect();
     serde_json::to_string_pretty(&json!({
         "id": pack_id,
         "name": name,
@@ -219,7 +259,7 @@ pub fn build_manifest(pack_id: &str, name: &str, author: &str, description: &str
         "version": version,
         "has_pck": true,
         "has_dll": false,
-        "dependencies": ["SpireForgeRuntime"],
+        "dependencies": dependencies,
         "affects_gameplay": true
     }))
     .unwrap_or_default()
@@ -243,7 +283,7 @@ pub fn build_pack(
     write_pck(&pack_dir.join(format!("{pack_id}.pck")), &files)?;
     atomic_write(
         &pack_dir.join(format!("{pack_id}.json")),
-        build_manifest(pack_id, name, author, description, version).as_bytes(),
+        build_manifest_for_cards(pack_id, name, author, description, version, cards).as_bytes(),
     )?;
     Ok(pack_dir)
 }
@@ -252,7 +292,42 @@ pub fn build_pack(
 /// 重复 Entry / 重复 vanilla_id 这类问题 Runtime 端是"先到先得"，
 /// 不该等进游戏后才从日志里发现。
 pub fn preflight(pack_id: &str, cards: &[CardDef]) -> Vec<String> {
+    preflight_with_pools(pack_id, cards, &[])
+}
+
+pub fn preflight_with_pools(
+    pack_id: &str,
+    cards: &[CardDef],
+    pools: &[crate::custom_pools::CustomPoolDef],
+) -> Vec<String> {
     let mut issues = Vec::new();
+
+    let declared: HashMap<&str, &crate::custom_pools::CustomPoolDef> =
+        pools.iter().map(|p| (p.key.as_str(), p)).collect();
+    let mut used = std::collections::BTreeSet::new();
+    for card in cards {
+        for pool in crate::custom_pools::active_pool_keys(card) {
+            if pool.starts_with("mod:") {
+                used.insert(pool);
+                if !declared.contains_key(pool) {
+                    issues.push(format!(
+                        "卡牌 {} 使用了未声明的自定义卡池：{}",
+                        card.id, pool
+                    ));
+                }
+            }
+        }
+    }
+    for key in used {
+        if let Some(pool) = declared.get(key) {
+            if pool.workshop_id.as_deref().unwrap_or("").is_empty() {
+                issues.push(format!(
+                    "自定义卡池 {} 未填写工坊 ID；请手动添加准确的依赖 ID",
+                    pool.label
+                ));
+            }
+        }
+    }
 
     let mut ids: HashSet<&str> = HashSet::new();
     for c in cards {
@@ -264,7 +339,10 @@ pub fn preflight(pack_id: &str, cards: &[CardDef]) -> Vec<String> {
     // Entry 冲突（非原版覆盖卡）：不同 id 派生出相同 Entry 时游戏只会保留一个
     let mut entries: HashMap<String, &str> = HashMap::new();
     for c in cards {
-        let vanilla = c.vanilla_id.as_deref().map_or(false, |v| !v.trim().is_empty());
+        let vanilla = c
+            .vanilla_id
+            .as_deref()
+            .map_or(false, |v| !v.trim().is_empty());
         if vanilla {
             continue;
         }
@@ -298,7 +376,10 @@ pub fn preflight(pack_id: &str, cards: &[CardDef]) -> Vec<String> {
         for fx in &c.effects {
             if let EffectDef::Custom { handler, .. } = fx {
                 if handler.trim().is_empty() {
-                    issues.push(format!("卡 {} 的自定义效果未填处理器名（运行时会被跳过）", c.id));
+                    issues.push(format!(
+                        "卡 {} 的自定义效果未填处理器名（运行时会被跳过）",
+                        c.id
+                    ));
                 }
             }
         }
@@ -318,6 +399,44 @@ pub fn preflight(pack_id: &str, cards: &[CardDef]) -> Vec<String> {
         }
     }
     issues
+}
+
+#[cfg(test)]
+mod custom_pool_tests {
+    use super::*;
+    #[test]
+    fn manifest_declares_only_used_custom_mods_and_deduplicates_runtime() {
+        let mut card = CardDef::default();
+        card.pool = "mod:Stale:Stale.Pool".into();
+        card.pools = vec![
+            "mod:HeroMod:Hero.Pool".into(),
+            "mod:Other:Other.Pool".into(),
+        ];
+        let mut override_card = CardDef::default();
+        override_card.pool = "mod:Override:Override.Pool".into();
+        override_card.vanilla_id = Some("Vanilla.Entry".into());
+        let manifest: serde_json::Value = serde_json::from_str(&build_manifest_for_cards(
+            "Pack",
+            "n",
+            "a",
+            "d",
+            "1",
+            &[card, override_card],
+        ))
+        .unwrap();
+        let ids: Vec<&str> = manifest["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["HeroMod", "Other", "SpireForgeRuntime"]);
+        assert!(manifest["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|d| d["min_version"].is_null()));
+    }
 }
 
 /// 安装到游戏 mods 目录
@@ -399,7 +518,10 @@ mod tests {
         // 覆盖卡：vanilla_id 指向原版 BASH；stats/upgrade_stats 可选携带
         let mut card = CardDef {
             id: "bash_tweak".into(),
-            name: LocText { eng: "Bash+".into(), zhs: "痛击改".into() },
+            name: LocText {
+                eng: "Bash+".into(),
+                zhs: "痛击改".into(),
+            },
             ..CardDef::default()
         };
         card.vanilla_id = Some("BASH".into());
@@ -408,8 +530,7 @@ mod tests {
         card.stats = Some(stats);
         let dir = std::env::temp_dir().join("sf_vanilla_test_proj");
         let _ = fs::create_dir_all(&dir);
-        let files =
-            build_pack_files(dir.to_str().unwrap(), "TweakPack", &[card.clone()]).unwrap();
+        let files = build_pack_files(dir.to_str().unwrap(), "TweakPack", &[card.clone()]).unwrap();
 
         // 卡牌 JSON 带 vanilla_id + stats；无立绘
         let card_json = &files["res://TweakPack/cards/bash_tweak.json"];
@@ -420,7 +541,10 @@ mod tests {
         // 本地化键 = 原版 Entry（游戏合并时覆盖原版文案）
         let zhs = &files["res://TweakPack/localization/zhs/cards.json"];
         let z: serde_json::Value = serde_json::from_slice(zhs).unwrap();
-        assert!(z.get("BASH.title").is_some(), "loc key must be vanilla entry: {z:?}");
+        assert!(
+            z.get("BASH.title").is_some(),
+            "loc key must be vanilla entry: {z:?}"
+        );
 
         // 往返一致
         let ser = serde_json::to_value(&card).unwrap();
@@ -436,18 +560,22 @@ mod tests {
 
         let mut card = CardDef {
             id: "echo".into(),
-            name: LocText { eng: "Echo".into(), zhs: "回声".into() },
+            name: LocText {
+                eng: "Echo".into(),
+                zhs: "回声".into(),
+            },
             ..CardDef::default()
         };
         card.effects.push(EffectDef::Custom {
             handler: "my_pack_storm".into(),
             amount: Some(2.0),
             target: None,
-            params: Some(
-                serde_json::from_value(json!({ "note": "hi", "n": 3 })).unwrap(),
-            ),
+            params: Some(serde_json::from_value(json!({ "note": "hi", "n": 3 })).unwrap()),
         });
-        card.on_discard.push(EffectDef::Block { amount: 4.0, props: vec![] });
+        card.on_discard.push(EffectDef::Block {
+            amount: 4.0,
+            props: vec![],
+        });
         card.on_turn_end_in_hand.push(EffectDef::Draw { amount: 1 });
         // 关键钩子字段必须是游戏侧蛇形命名，空钩子不序列化
         let v = serde_json::to_value(&card).unwrap();
@@ -462,8 +590,10 @@ mod tests {
         // 往返一致
         let back: CardDef = serde_json::from_value(v).unwrap();
         assert_eq!(back.on_discard.len(), 1);
-        assert!(matches!(&back.effects[0], EffectDef::Custom { handler, amount: Some(a), .. }
-            if handler == "my_pack_storm" && *a == 2.0));
+        assert!(
+            matches!(&back.effects[0], EffectDef::Custom { handler, amount: Some(a), .. }
+            if handler == "my_pack_storm" && *a == 2.0)
+        );
     }
 
     #[test]
@@ -472,7 +602,10 @@ mod tests {
 
         let mut card = CardDef {
             id: "kitchen_sink".into(),
-            name: LocText { eng: "Kitchen Sink".into(), zhs: "水槽".into() },
+            name: LocText {
+                eng: "Kitchen Sink".into(),
+                zhs: "水槽".into(),
+            },
             ..CardDef::default()
         };
         card.effects = vec![
@@ -481,8 +614,16 @@ mod tests {
             EffectDef::Gold { amount: 10.0 },
             EffectDef::LoseHp { amount: 3.0 },
             EffectDef::MaxHp { amount: 4.0 },
-            EffectDef::Power { amount: 2.0, power: "Vulnerable".into(), target: None },
-            EffectDef::Spawn { amount: 2, card_entry: "BASH".into(), pile: Some("draw".into()) },
+            EffectDef::Power {
+                amount: 2.0,
+                power: "Vulnerable".into(),
+                target: None,
+            },
+            EffectDef::Spawn {
+                amount: 2,
+                card_entry: "BASH".into(),
+                pile: Some("draw".into()),
+            },
         ];
         card.pools = vec!["ironclad".into(), "silent".into()];
         let v = serde_json::to_value(&card).unwrap();
@@ -492,7 +633,10 @@ mod tests {
         assert_eq!(v["effects"][3]["kind"], "lose_hp");
         assert_eq!(v["effects"][5]["kind"], "power");
         assert_eq!(v["effects"][5]["power"], "Vulnerable");
-        assert!(v["effects"][5].get("target").is_none(), "target=None 不序列化（=打出目标）");
+        assert!(
+            v["effects"][5].get("target").is_none(),
+            "target=None 不序列化（=打出目标）"
+        );
         assert_eq!(v["effects"][6]["kind"], "spawn");
         assert_eq!(v["effects"][6]["card_entry"], "BASH");
         assert_eq!(v["effects"][6]["pile"], "draw");
@@ -505,10 +649,15 @@ mod tests {
         assert!(sv.get("pools").is_none(), "pools 为空时不序列化");
         // 往返一致
         let back: CardDef = serde_json::from_value(v).unwrap();
-        assert_eq!(back.pools, vec!["ironclad".to_string(), "silent".to_string()]);
+        assert_eq!(
+            back.pools,
+            vec!["ironclad".to_string(), "silent".to_string()]
+        );
         assert!(matches!(&back.effects[0], EffectDef::Discard { amount } if *amount == 1.0));
         assert!(matches!(&back.effects[3], EffectDef::LoseHp { amount } if *amount == 3.0));
-        assert!(matches!(&back.effects[5], EffectDef::Power { power, .. } if power == "Vulnerable"));
+        assert!(
+            matches!(&back.effects[5], EffectDef::Power { power, .. } if power == "Vulnerable")
+        );
     }
 
     #[test]

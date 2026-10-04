@@ -125,6 +125,7 @@ public static class RuntimeEntry
     {
         try
         {
+            SfPoolRegistry.Refresh();
             PackLoader.ScanAllMods();
             foreach (var (entry, def) in PackLoader.Defs)
             {
@@ -136,7 +137,13 @@ public static class RuntimeEntry
                     var poolType = PoolFor(poolName);
                     if (poolType == null)
                     {
-                        Log.Error($"{LogTag}: unknown pool '{poolName}' for {entry}");
+                        string? detail = null;
+                        if (poolName.StartsWith("mod:", System.StringComparison.Ordinal))
+                        {
+                            _ = SfPoolRegistry.Resolve(poolName, out detail);
+                        }
+                        Log.Error($"{LogTag}: unresolved pool '{poolName}' for {entry}" +
+                                  (detail == null ? " (unknown built-in pool alias)" : $": {detail}"));
                         unknown = true;
                         break;
                     }
@@ -147,6 +154,13 @@ public static class RuntimeEntry
                 }
                 if (unknown || pools.Count == 0)
                 {
+                    continue;
+                }
+                // ModelDb.Init can be re-entered by other frameworks. Emitted type names
+                // cannot be defined twice, and the already created types must stay available.
+                if (CardTypes.ContainsKey(entry))
+                {
+                    CardPoolList[entry] = pools;
                     continue;
                 }
                 string typeName = IdHelper.Pascal(PackLoader.PackOf[entry]) + IdHelper.Pascal(def.Id);
@@ -374,7 +388,7 @@ public static class RuntimeEntry
         "regent" => typeof(RegentCardPool),
         "necrobinder" => typeof(NecrobinderCardPool),
         "defect" => typeof(DefectCardPool),
-        _ => null,
+        _ => SfPoolRegistry.Resolve(pool),
     };
 
     // ---- 自检（ExecuteEssential postfix：ModelDb 已 Init+InitIds）----
@@ -443,6 +457,89 @@ public static class RuntimeEntry
             foreach (var (entry, type) in CardTypes)
             {
                 Check(entry, type);
+            }
+        }
+
+        ExportPoolCatalog();
+    }
+
+    /// <summary>Writes the loaded third-party pool catalog for the editor after ModelDb has finished initialization.</summary>
+    private static void ExportPoolCatalog()
+    {
+        string? tempPath = null;
+        try
+        {
+            const int maxPools = 512;
+            var entries = new List<SfPoolCatalogEntry>();
+            foreach (var pool in ModelDb.AllCardPools)
+            {
+                try
+                {
+                    Type type = pool.GetType();
+                    if (!SfPoolRegistry.TryGetModForPool(type, out var mod) || mod == null)
+                        continue;
+
+                    string typeName = type.FullName ?? type.Name;
+                    string label = "";
+                    try
+                    {
+                        label = pool.Title;
+                    }
+                    catch (System.Exception e)
+                    {
+                        Log.Warn($"{LogTag}: could not read title for pool '{typeName}': {e.Message}");
+                    }
+                    if (string.IsNullOrWhiteSpace(label))
+                        label = !string.IsNullOrWhiteSpace(typeName) ? typeName : mod.Name;
+
+                    entries.Add(new SfPoolCatalogEntry(
+                        SfPoolRegistry.KeyOf(mod.Id, typeName), label, mod.Id, typeName, mod.WorkshopId));
+                }
+                catch (System.Exception e)
+                {
+                    Log.Warn($"{LogTag}: skipped a custom card pool while exporting catalog: {e.Message}");
+                }
+            }
+
+            var uniqueEntries = entries
+                .GroupBy(entry => entry.Key, System.StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(entry => entry.ModId, System.StringComparer.Ordinal)
+                .ThenBy(entry => entry.TypeName, System.StringComparer.Ordinal)
+                .ToList();
+            if (entries.Count > maxPools)
+                Log.Warn($"{LogTag}: pool catalog contains {entries.Count} pools; truncating to {maxPools}");
+            if (uniqueEntries.Count > maxPools)
+                uniqueEntries = uniqueEntries.Take(maxPools).ToList();
+
+            var catalog = new
+            {
+                format_version = 1,
+                generated_at_utc = System.DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                loaded_mod_ids = SfPoolRegistry.LoadedModIds,
+                pools = uniqueEntries,
+            };
+            string json = System.Text.Json.JsonSerializer.Serialize(catalog, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower,
+            });
+
+            string directory = System.IO.Path.GetDirectoryName(typeof(RuntimeEntry).Assembly.Location) ?? "";
+            string targetPath = System.IO.Path.Combine(directory, "spireforge-pools.json");
+            tempPath = targetPath + "." + System.Guid.NewGuid().ToString("N") + ".tmp";
+            System.IO.File.WriteAllText(tempPath, json, new System.Text.UTF8Encoding(false));
+            System.IO.File.Move(tempPath, targetPath, true);
+            tempPath = null;
+            Log.Info($"{LogTag}: exported {uniqueEntries.Count} custom card pool(s) to {targetPath}");
+        }
+        catch (System.Exception e)
+        {
+            Log.Error($"{LogTag}: failed to export card pool catalog: {e.Message}");
+            if (tempPath != null)
+            {
+                try { System.IO.File.Delete(tempPath); }
+                catch (System.Exception) { }
             }
         }
     }

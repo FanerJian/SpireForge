@@ -1,3 +1,4 @@
+mod custom_pools;
 mod demo;
 mod game;
 mod import;
@@ -7,6 +8,7 @@ mod publish;
 mod vanilla;
 mod workshop;
 
+use custom_pools::CustomPoolDef;
 use game::EditorSettings;
 use model::{CardDef, ProjectMeta};
 use std::collections::HashSet;
@@ -32,7 +34,9 @@ fn get_settings(state: State<AppState>) -> EditorSettings {
 #[tauri::command]
 fn set_game_dir(state: State<AppState>, dir: String) -> Result<(), String> {
     if !game::validate_game_dir(&dir) {
-        return Err("目录中未找到 data_sts2_windows_x86_64/sts2.dll，请确认选择了游戏根目录".into());
+        return Err(
+            "目录中未找到 data_sts2_windows_x86_64/sts2.dll，请确认选择了游戏根目录".into(),
+        );
     }
     let mut s = state.settings.lock().unwrap();
     s.game_dir = dir;
@@ -54,14 +58,23 @@ fn create_demo_project(path: String, state: State<AppState>) -> Result<(), Strin
 }
 
 #[tauri::command]
-fn new_project(path: String, pack_id: String, name: String, author: String, state: State<AppState>) -> Result<(), String> {
+fn new_project(
+    path: String,
+    pack_id: String,
+    name: String,
+    author: String,
+    state: State<AppState>,
+) -> Result<(), String> {
     project::create_project(&path, &pack_id, &name, &author)?;
     *state.project_root.lock().unwrap() = Some(path);
     Ok(())
 }
 
 #[tauri::command]
-fn open_project(path: String, state: State<AppState>) -> Result<(ProjectMeta, Vec<CardDef>), String> {
+fn open_project(
+    path: String,
+    state: State<AppState>,
+) -> Result<(ProjectMeta, Vec<CardDef>), String> {
     let data = project::load_project(&path)?;
     *state.project_root.lock().unwrap() = Some(path);
     Ok(data)
@@ -110,7 +123,28 @@ fn update_project_meta(state: State<AppState>, meta: ProjectMeta) -> Result<(), 
 }
 
 #[tauri::command]
-fn save_portrait(state: State<AppState>, id: String, ext: String, bytes: Vec<u8>) -> Result<String, String> {
+fn read_game_pools(state: State<AppState>) -> Result<Vec<CustomPoolDef>, String> {
+    let game_dir = state
+        .settings
+        .lock()
+        .map_err(|_| "设置读取失败")?
+        .game_dir
+        .clone();
+    custom_pools::read_game_pools(&game_dir)
+}
+
+#[tauri::command]
+fn import_custom_pools(raw: String) -> Result<Vec<CustomPoolDef>, String> {
+    custom_pools::parse_catalog(&raw)
+}
+
+#[tauri::command]
+fn save_portrait(
+    state: State<AppState>,
+    id: String,
+    ext: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
     let root = require_root(&state)?;
     project::save_portrait(&root, &id, &ext, &bytes)
 }
@@ -177,7 +211,10 @@ fn import_card_any(state: State<AppState>, raw: String) -> Result<import::Import
 
 /// 批量导入卡牌 JSON（数组 / {cards:[...]} / SpireForge 整包），逐张入库并自动去重 id
 #[tauri::command]
-fn import_cards_any(state: State<AppState>, raw: String) -> Result<Vec<import::ImportReport>, String> {
+fn import_cards_any(
+    state: State<AppState>,
+    raw: String,
+) -> Result<Vec<import::ImportReport>, String> {
     let reports = import::import_many(&raw)?;
     let root = require_root(&state)?;
     let meta = project::read_meta(&root)?;
@@ -195,7 +232,10 @@ fn import_cards_any(state: State<AppState>, raw: String) -> Result<Vec<import::I
 /// 从 .pck 卡包导入：解出 cards/*.json 与 images/ 立绘；立绘按卡牌最终 id
 /// 落盘到 assets/cards/（导入→再打包不再丢图），找不到图的卡清空 portrait 并说明
 #[tauri::command]
-fn import_pack_pck(state: State<AppState>, path: String) -> Result<import::PckImportResult, String> {
+fn import_pack_pck(
+    state: State<AppState>,
+    path: String,
+) -> Result<import::PckImportResult, String> {
     let result = import::import_pck(&path)?;
     let root = require_root(&state)?;
     let meta = project::read_meta(&root)?;
@@ -207,14 +247,20 @@ fn import_pack_pck(state: State<AppState>, path: String) -> Result<import::PckIm
         card.id = dedup_id(&mut used, &card.id);
         if !card.portrait.is_empty() {
             // 包内 portrait 是 PCK 内路径（images/cards/x.png），按最后一段文件名匹配解出的图
-            let fname = card.portrait.rsplit('/').next().unwrap_or_default().to_string();
+            let fname = card
+                .portrait
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_string();
             card.portrait = match result.images.iter().find(|i| i.file_name == fname) {
                 Some(img) => {
                     let ext = fname.rsplit('.').next().unwrap_or("png").to_string();
                     match project::save_portrait(&root, &card.id, &ext, &img.data) {
                         Ok(rel) => rel,
                         Err(e) => {
-                            r.notes.push(format!("立绘 {fname} 落盘失败（{e}），已移除引用"));
+                            r.notes
+                                .push(format!("立绘 {fname} 落盘失败（{e}），已移除引用"));
                             String::new()
                         }
                     }
@@ -228,7 +274,11 @@ fn import_pack_pck(state: State<AppState>, path: String) -> Result<import::PckIm
         project::add_card(&root, &card)?;
         imported.push(import::ImportReport { card, ..r });
     }
-    Ok(import::PckImportResult { imported, errors: result.errors, images: vec![] })
+    Ok(import::PckImportResult {
+        imported,
+        errors: result.errors,
+        images: vec![],
+    })
 }
 
 /// 原版卡牌目录（导入原版卡用）
@@ -277,11 +327,7 @@ fn touch_last_version(root: &str, meta: &ProjectMeta, version: &str) -> Result<(
 
 /// 构建卡包到指定目录（不安装）
 #[tauri::command]
-fn build_pack(
-    state: State<AppState>,
-    out_dir: String,
-    version: String,
-) -> Result<String, String> {
+fn build_pack(state: State<AppState>, out_dir: String, version: String) -> Result<String, String> {
     let root = require_root(&state)?;
     let (meta, cards) = project::load_project(&root)?;
     let dir = publish::build_pack(
@@ -351,7 +397,11 @@ fn install_to_game(state: State<AppState>, version: String) -> Result<InstallRes
 fn validate_project(state: State<AppState>) -> Result<Vec<String>, String> {
     let root = require_root(&state)?;
     let (meta, cards) = project::load_project(&root)?;
-    Ok(publish::preflight(&meta.pack_id, &cards))
+    Ok(publish::preflight_with_pools(
+        &meta.pack_id,
+        &cards,
+        &meta.custom_pools,
+    ))
 }
 
 /// 生成工坊上传工作区（dependencies 按 meta.runtime_workshop_id 写入；
@@ -430,6 +480,8 @@ pub fn run() {
             rename_card,
             delete_card,
             update_project_meta,
+            read_game_pools,
+            import_custom_pools,
             save_portrait,
             read_portrait,
             import_card_json,

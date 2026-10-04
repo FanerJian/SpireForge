@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/tauri';
 import { useStore } from '../lib/store';
+import CustomPoolSection from './CustomPoolSection';
 import { Combobox, type ComboItem } from './Combobox';
 import PortraitCropper from './PortraitCropper';
 import { bytesToDataUrl, extOf } from '../lib/img';
@@ -1071,7 +1072,11 @@ export default function PropertyPanel() {
               <IdField card={card} />
             </Field>
 
-            <Field label={t('pp.poolLabel')} hint={t('pp.poolHint')}>
+            <div className="block min-w-0">
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="shrink-0 whitespace-nowrap text-xs font-medium text-slate-400">{t('pp.poolLabel')}</span>
+                <span title={t('pp.poolHint')} className="truncate text-right text-[10px] text-slate-600">{t('pp.poolHint')}</span>
+              </div>
               <div className="flex flex-wrap gap-1">
                 {(Object.entries(POOL_LABEL)).map(([v, l]) => {
                   const cur = card.pools?.length ? card.pools : [card.pool];
@@ -1091,7 +1096,8 @@ export default function PropertyPanel() {
                   );
                 })}
               </div>
-            </Field>
+              <CustomPoolSection card={card} onToggle={togglePool} />
+            </div>
 
             <Field label={t('pp.typeLabel')}>
               <Segmented

@@ -5,6 +5,9 @@
 #[path = "../../../editor/src-tauri/src/model.rs"]
 pub mod model;
 
+#[path = "../../../editor/src-tauri/src/custom_pools.rs"]
+pub mod custom_pools;
+
 #[path = "../../../editor/src-tauri/src/project.rs"]
 pub mod project;
 

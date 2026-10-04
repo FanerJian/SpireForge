@@ -11,7 +11,15 @@ export type TargetType =
   | 'None' | 'Self' | 'AnyEnemy' | 'AllEnemies' | 'RandomEnemy'
   | 'AnyPlayer' | 'AnyAlly' | 'AllAllies' | 'TargetedNoCreature' | 'Osty';
 export type MultiplayerConstraint = 'none' | 'multiplayer_only' | 'singleplayer_only';
-export type Pool = 'colorless' | 'curse' | 'status' | 'ironclad' | 'silent' | 'regent' | 'necrobinder' | 'defect';
+export type Pool = string;
+
+export interface CustomPoolDef {
+  key: string;
+  label: string;
+  mod_id: string;
+  type_name: string;
+  workshop_id?: string | null;
+}
 
 export interface LocText {
   eng: string;
@@ -98,6 +106,8 @@ export interface ProjectMeta {
   last_version?: string | null;
   /** SpireForge Runtime 的工坊 id：写入 workshop.json dependencies，订阅时自动带前置 */
   runtime_workshop_id?: number | null;
+  /** 第三方角色卡池；旧项目省略时按空列表处理。 */
+  custom_pools?: CustomPoolDef[];
 }
 
 export interface EditorSettings {

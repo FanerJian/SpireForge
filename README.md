@@ -41,6 +41,7 @@ cd runtime && dotnet build -c Release
 - ⏱️ **生命周期钩子**：抽到时 / 被弃时 / 被消耗时 / 战斗开始时 / 回合末在手——复用同一效果系统
 - 🧩 **自定义效果接口**：`custom` 效果 + `SfEffects` 注册表，其他 mod 引用 Runtime.dll 即可扩展任意行为
 - 📥 **批量导入**：多卡 JSON 容器整批导入；`.pck` 卡包直读（其他 SpireForge 用户的卡包可解包再编辑）
+- 🧩 **第三方角色卡池**：从游戏读取、导入角色配置 JSON 或手动添加，将新卡放入其他角色 Mod 的卡池（专属机制需额外适配）
 - 🖼️ **自定义贴图**：PNG/JPEG/WebP 上传，官方 250×190 规格提示
 - 🌏 **中英双语**：占位符 `{Damage}`、BBCode 着色、升级数值对照
 - 📦 **一键安装**：编辑器内打包 PCK 并写入游戏 mods 目录
@@ -61,6 +62,7 @@ cd runtime && dotnet build -c Release
 - [HANDOVER.md](docs/HANDOVER.md) — 项目现状、五分钟上手、路线图、踩坑记录
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — 四组件架构、注册时序、PCK 格式
 - [SCHEMA.md](docs/SCHEMA.md) — 卡牌 JSON 逐字段说明
+- [CUSTOM-POOLS.md](docs/CUSTOM-POOLS.md) — 第三方角色卡池导入、依赖与兼容边界
 - [RUNTIME-MOD.md](docs/RUNTIME-MOD.md) — Runtime 设计 + 游戏版本升级适配流程
 - [BUILD.md](docs/BUILD.md) — 环境要求、构建、测试矩阵
 - [RESEARCH.md](docs/RESEARCH.md) — 竞品调研与设计决策依据

@@ -49,8 +49,8 @@ pub fn validate_pack_id(id: &str) -> Result<(), String> {
         return Err("包 id 只能包含字母、数字和下划线（2–64 位，字母开头）".into());
     }
     const RESERVED: [&str; 22] = [
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-        "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(id)) {
         return Err(format!("包 id 不能使用 Windows 保留名 {id}"));
@@ -112,13 +112,18 @@ pub fn read_meta(root: &str) -> Result<ProjectMeta, String> {
             meta.format_version, FORMAT_VERSION
         ));
     }
+    crate::custom_pools::validate_pools(&meta.custom_pools)?;
     Ok(meta)
 }
 
 pub fn create_project(root: &str, pack_id: &str, name: &str, author: &str) -> Result<(), String> {
     validate_pack_id(pack_id)?;
     let root_dir = PathBuf::from(root);
-    if root_dir.exists() && fs::read_dir(&root_dir).map(|mut d| d.next().is_some()).unwrap_or(false) {
+    if root_dir.exists()
+        && fs::read_dir(&root_dir)
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false)
+    {
         return Err("目标目录非空，请选择空目录".into());
     }
     fs::create_dir_all(root_dir.join("cards")).map_err(|e| e.to_string())?;
@@ -134,6 +139,7 @@ pub fn create_project(root: &str, pack_id: &str, name: &str, author: &str) -> Re
 }
 
 pub fn write_meta(root: &str, meta: &ProjectMeta) -> Result<(), String> {
+    crate::custom_pools::validate_pools(&meta.custom_pools)?;
     let raw = serde_json::to_string_pretty(meta).map_err(|e| e.to_string())?;
     atomic_write(&meta_path(root), raw.as_bytes())
 }
@@ -216,7 +222,11 @@ pub fn rename_card(root: &str, old_id: &str, new_id: &str) -> Result<(), String>
     if old_id == new_id {
         return Ok(());
     }
-    if PathBuf::from(root).join("cards").join(format!("{new_id}.json")).exists() {
+    if PathBuf::from(root)
+        .join("cards")
+        .join(format!("{new_id}.json"))
+        .exists()
+    {
         return Err(format!("卡牌 id {new_id} 已被占用"));
     }
     let mut card = read_card(root, old_id)?;
@@ -288,7 +298,10 @@ mod tests {
     }
 
     fn sample_card(id: &str) -> CardDef {
-        CardDef { id: id.into(), ..CardDef::default() }
+        CardDef {
+            id: id.into(),
+            ..CardDef::default()
+        }
     }
 
     #[test]
@@ -335,6 +348,25 @@ mod tests {
     }
 
     #[test]
+    fn custom_pool_metadata_round_trips_and_rejects_invalid_schema() {
+        let root = tmp_root("custom_pools_roundtrip");
+        create_project(&root, "Poolpack", "Pools", "Author").unwrap();
+        let mut meta = read_meta(&root).unwrap();
+        meta.custom_pools.push(crate::custom_pools::CustomPoolDef {
+            key: "mod:HeroMod:Hero.Pool".into(),
+            label: "英雄卡池".into(),
+            mod_id: "HeroMod".into(),
+            type_name: "Hero.Pool".into(),
+            workshop_id: Some("123456".into()),
+        });
+        write_meta(&root, &meta).unwrap();
+        assert_eq!(read_meta(&root).unwrap().custom_pools, meta.custom_pools);
+        meta.custom_pools[0].key = "mod:Other:Hero.Pool".into();
+        assert!(write_meta(&root, &meta).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn rename_card_transaction() {
         let root = tmp_root("rename");
         create_project(&root, "TestPack", "T", "a").unwrap();
@@ -353,8 +385,12 @@ mod tests {
         assert_eq!(meta.cards, vec!["new_id".to_string()]);
         let got = read_card(&root, "new_id").unwrap();
         assert_eq!(got.portrait, "assets/cards/new_id.png");
-        assert!(PathBuf::from(&root).join("assets/cards/new_id.png").exists());
-        assert!(!PathBuf::from(&root).join("assets/cards/old_id.png").exists());
+        assert!(PathBuf::from(&root)
+            .join("assets/cards/new_id.png")
+            .exists());
+        assert!(!PathBuf::from(&root)
+            .join("assets/cards/old_id.png")
+            .exists());
 
         // 改名到已占用 id 必须拒绝
         add_card(&root, &sample_card("taken")).unwrap();

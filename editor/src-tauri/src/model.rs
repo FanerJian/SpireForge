@@ -299,6 +299,9 @@ pub struct ProjectMeta {
     /// SpireForge Runtime 的工坊 id：写入 workshop.json 的 dependencies，
     /// 玩家订阅卡包时 Steam 自动带上 Runtime 前置
     pub runtime_workshop_id: Option<u64>,
+    /// 项目使用的第三方角色卡池声明；旧项目缺字段时兼容为空。
+    #[serde(default)]
+    pub custom_pools: Vec<crate::custom_pools::CustomPoolDef>,
 }
 
 impl Default for ProjectMeta {
@@ -313,6 +316,7 @@ impl Default for ProjectMeta {
             workshop_id: None,
             last_version: None,
             runtime_workshop_id: None,
+            custom_pools: vec![],
         }
     }
 }

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import type { CardDef, EditorSettings, ProjectMeta, VanillaCatalog } from './types';
+import type { CardDef, CustomPoolDef, EditorSettings, ProjectMeta, VanillaCatalog } from './types';
 
 export const api = {
   detectGameDir: () => invoke<string | null>('detect_game_dir'),
@@ -22,6 +22,8 @@ export const api = {
   deleteCard: (id: string) => invoke<void>('delete_card', { id }),
   updateProjectMeta: (meta: ProjectMeta) => invoke<void>('update_project_meta', { meta }),
   getProjectMeta: () => invoke<ProjectMeta>('get_project_meta'),
+  readGamePools: () => invoke<CustomPoolDef[]>('read_game_pools'),
+  importCustomPools: (raw: string) => invoke<CustomPoolDef[]>('import_custom_pools', { raw }),
 
   savePortrait: (id: string, ext: string, bytes: Uint8Array) =>
     invoke<string>('save_portrait', { id, ext, bytes: Array.from(bytes) }),
@@ -92,6 +94,12 @@ export async function pickJsonRaw(): Promise<string | null> {
     filters: [{ name: '卡牌 JSON', extensions: ['json', 'sts2pack', 'txt'] }],
     title: '导入卡牌（SpireForge / 第三方格式）',
   });
+  if (typeof path !== 'string') return null;
+  return invoke<string>('read_text_file', { path });
+}
+
+export async function pickPoolCatalogRaw(): Promise<string | null> {
+  const path = await open({ filters: [{ name: '角色卡池配置', extensions: ['json'] }], title: '导入角色卡池配置（JSON）' });
   if (typeof path !== 'string') return null;
   return invoke<string>('read_text_file', { path });
 }

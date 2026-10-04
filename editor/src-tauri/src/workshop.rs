@@ -13,6 +13,59 @@
 //! 由 duct 在后台线程收集；run_uploader 带 15 分钟超时，超时 kill 子进程。
 
 use crate::model::{CardDef, ProjectMeta};
+use std::collections::BTreeSet;
+
+pub fn dependencies_for_cards(meta: &ProjectMeta, cards: &[CardDef]) -> Vec<String> {
+    let mut used = BTreeSet::new();
+    for card in cards {
+        used.extend(crate::custom_pools::active_pool_keys(card));
+    }
+    let mut ids = BTreeSet::new();
+    if let Some(id) = meta.runtime_workshop_id {
+        ids.insert(id.to_string());
+    }
+    for pool in &meta.custom_pools {
+        if used.contains(pool.key.as_str()) {
+            if let Some(id) = &pool.workshop_id {
+                ids.insert(id.clone());
+            }
+        }
+    }
+    ids.into_iter().collect()
+}
+
+#[cfg(test)]
+mod custom_pool_tests {
+    use super::*;
+    #[test]
+    fn workshop_dependencies_include_only_used_pools_and_deduplicate_ids() {
+        let mut meta = ProjectMeta::default();
+        meta.runtime_workshop_id = Some(123);
+        meta.custom_pools = vec![
+            crate::custom_pools::CustomPoolDef {
+                key: "mod:A:A.Pool".into(),
+                label: "A".into(),
+                mod_id: "A".into(),
+                type_name: "A.Pool".into(),
+                workshop_id: Some("456".into()),
+            },
+            crate::custom_pools::CustomPoolDef {
+                key: "mod:B:B.Pool".into(),
+                label: "B".into(),
+                mod_id: "B".into(),
+                type_name: "B.Pool".into(),
+                workshop_id: Some("789".into()),
+            },
+        ];
+        let mut card = CardDef::default();
+        card.pool = "mod:Stale:Stale.Pool".into();
+        card.pools = vec!["mod:A:A.Pool".into()];
+        let mut override_card = CardDef::default();
+        override_card.pool = "mod:B:B.Pool".into();
+        override_card.vanilla_id = Some("Vanilla.Entry".into());
+        assert_eq!(dependencies_for_cards(&meta, &[card, override_card]), vec!["123", "456"]);
+    }
+}
 use crate::project::atomic_write;
 use serde_json::json;
 use std::fs;
@@ -43,7 +96,11 @@ pub fn ensure_bundled_uploader(base_dir: &str) -> Result<String, String> {
     let exe = dir.join("ModUploader.exe");
     let stamp = dir.join(".bundled_version");
     // 内置内容变化（换版本）时重写；stamp 内容 = 版本 + 内嵌文件字节数指纹
-    let fingerprint = format!("v0.2.0 exe={} dll={}\n", UPLOADER_EXE.len(), STEAM_API_DLL.len());
+    let fingerprint = format!(
+        "v0.2.0 exe={} dll={}\n",
+        UPLOADER_EXE.len(),
+        STEAM_API_DLL.len()
+    );
     let needs_extract = match fs::read_to_string(&stamp) {
         Ok(s) => s != fingerprint,
         Err(_) => !exe.exists(), // 无 stamp 但 exe 在：视为用户手工放置，不覆盖
@@ -95,10 +152,7 @@ pub fn prepare_workspace(
     // workshop.json（字段名对齐官方 template）
     // dependencies：SpireForge Runtime 的工坊 id（项目设置里配置），
     // 玩家订阅卡包时 Steam 自动安装 Runtime——不写的话卡包加载会失败。
-    let dependencies: Vec<String> = meta
-        .runtime_workshop_id
-        .map(|id| vec![id.to_string()])
-        .unwrap_or_default();
+    let dependencies = dependencies_for_cards(meta, cards);
     let visibility_norm = match visibility {
         "public" | "private" | "unlisted" | "friends_only" => visibility,
         _ => "private",
@@ -114,7 +168,9 @@ pub fn prepare_workspace(
     });
     atomic_write(
         &ws.join("workshop.json"),
-        serde_json::to_string_pretty(&ws_json).unwrap_or_default().as_bytes(),
+        serde_json::to_string_pretty(&ws_json)
+            .unwrap_or_default()
+            .as_bytes(),
     )?;
 
     // 工坊 id 持久化：已发布过（meta.workshop_id）而工作区是新目录时恢复 mod_id.txt，
@@ -183,9 +239,16 @@ pub fn run_uploader(uploader: &str, workspace: &str) -> Result<String, String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    let log = if stderr.trim().is_empty() { stdout } else { format!("{stdout}\n{stderr}") };
+    let log = if stderr.trim().is_empty() {
+        stdout
+    } else {
+        format!("{stdout}\n{stderr}")
+    };
     if !output.status.success() {
-        return Err(format!("上传失败（退出码 {:?}）:\n{log}", output.status.code()));
+        return Err(format!(
+            "上传失败（退出码 {:?}）:\n{log}",
+            output.status.code()
+        ));
     }
     Ok(log)
 }

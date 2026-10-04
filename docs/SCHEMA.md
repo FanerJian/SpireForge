@@ -26,7 +26,8 @@
   "cards": ["my_strike", "my_guard"],
   "workshop_id": null,            // 本卡包的工坊 id：首次上传成功后由 mod_id.txt 回填；重新生成工作区时据此恢复
   "last_version": "0.1.0",        // 上次安装/发布版本号（发布面板默认值）
-  "runtime_workshop_id": null     // SpireForge Runtime 的工坊 id → 写入 workshop.json dependencies
+  "runtime_workshop_id": null,    // SpireForge Runtime 的工坊 id → 写入 workshop.json dependencies
+  "custom_pools": []              // 导入的第三方角色卡池配置，旧项目缺省为空
 }
 ```
 
@@ -96,10 +97,14 @@ Runtime 应用时机：`OneTimeInitialization.ExecuteEssential` 后缀（模板�
 | `curse` | CurseCardPool | 诅咒（配合 card_type=Curse） |
 | `status` | StatusCardPool | 状态牌（配合 card_type=Status） |
 | `ironclad`/`silent`/`regent`/`necrobinder`/`defect` | 各角色池 | 角色专属（决定卡框颜色/能量色） |
+| `mod:<mod_id>:<type_name>` | 已加载角色 Mod 的具体 CardPoolModel 子类 | 第三方角色卡池，区分大小写 |
 
 **多池卡**：`pools: ["ironclad", "silent", ...]` 非空时本卡注册进列出的全部角色卡池
 （铁甲和沉默都能在奖励里抽到）；为空时只有 `pool` 单池。主池 = 数组首项。
-"新建角色/职业"需要游戏角色选择界面支持，纯数据 mod 做不到，暂不支持。
+第三方池的显示名称、Mod ID、完整类名和可选工坊 ID 保存在项目 `custom_pools` 中。
+Runtime 在游戏初始化完成后导出 `spireforge-pools.json`，编辑器可读取并导入；也支持
+导入相同格式的 JSON 或手动添加。具体流程和格式见 [CUSTOM-POOLS.md](CUSTOM-POOLS.md)。
+角色本体仍需要对应角色 Mod；尖塔锻炉的纯数据卡包不负责创建角色或实现其专属机制。
 
 ### effects（效果清单，按顺序执行）
 | kind | 参数 | 游戏 API | 说明 |
