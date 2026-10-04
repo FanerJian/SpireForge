@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import type { CardDef, CustomPoolDef, EditorSettings, ProjectMeta, VanillaCatalog } from './types';
+import type { CardDef, CustomPoolDef, EditorSettings, ProjectMeta, RuntimeCatalog, VanillaCatalog } from './types';
 
 export const api = {
   detectGameDir: () => invoke<string | null>('detect_game_dir'),
@@ -24,6 +24,8 @@ export const api = {
   getProjectMeta: () => invoke<ProjectMeta>('get_project_meta'),
   readGamePools: () => invoke<CustomPoolDef[]>('read_game_pools'),
   importCustomPools: (raw: string) => invoke<CustomPoolDef[]>('import_custom_pools', { raw }),
+  /** 游戏内容目录（Runtime 导出的全部力量/怪物/卡牌，含 mod buff）；文件缺失/损坏时 reject，调用方静默降级 */
+  readGameCatalog: () => invoke<RuntimeCatalog>('read_game_catalog'),
 
   savePortrait: (id: string, ext: string, bytes: Uint8Array) =>
     invoke<string>('save_portrait', { id, ext, bytes: Array.from(bytes) }),

@@ -157,6 +157,48 @@ export interface VanillaCatalog {
   cards: VanillaEntry[];
 }
 
+/** 游戏内容目录条目：Runtime 从游戏内导出的力量（含 mod 角色 buff） */
+export interface RuntimePower {
+  /** SfPowerResolver 解析名（类名去 Power 后缀） */
+  name: string;
+  entry: string;
+  class_name: string;
+  /** 游戏当前语言的标题/描述（缺失为空串，显示回落规范名） */
+  title: string;
+  description: string;
+  /** buff / debuff / none */
+  type: string;
+  /** 来源程序集（mod DLL 名 / 原版程序集） */
+  source: string;
+}
+
+/** Runtime 导出的怪物条目（name = 类名，召唤效果 params.monster 值） */
+export interface RuntimeMonster {
+  name: string;
+  entry: string;
+  title: string;
+  hp: string;
+  source: string;
+}
+
+/** Runtime 导出的卡牌条目（entry 规范值，spawn 效果 card_entry 值） */
+export interface RuntimeCard {
+  entry: string;
+  title: string;
+  type: string;
+  rarity: string;
+  source: string;
+}
+
+/** 游戏内容目录（mods/SpireForgeRuntime/spireforge-catalog.json；读取失败时为 null） */
+export interface RuntimeCatalog {
+  language: string;
+  generated_at_utc: string;
+  powers: RuntimePower[];
+  monsters: RuntimeMonster[];
+  cards: RuntimeCard[];
+}
+
 export function newCard(id: string): CardDef {
   return {
     format_version: 1,

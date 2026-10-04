@@ -12,14 +12,18 @@ import {
 } from '../lib/i18n';
 import {
   cardEntry, composeDescription, effectsFromVanillaVars,
-  type CardDef, type CardType, type EffectDef, type Pool, type TargetType,
-  type VanillaCatalog, type VanillaEntry,
+  type CardDef, type CardType, type EffectDef, type Pool, type RuntimeCatalog,
+  type TargetType, type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
 import { POWERS } from '../lib/powers';
 import { MONSTERS } from '../lib/monsters';
 
 // ---- 原版目录缓存（模块级：整个会话只拉一次）----
 let vanillaCache: VanillaCatalog | null = null;
+
+// ---- 游戏内容目录缓存（Runtime 导出，含 mod 角色的 buff/怪物/卡牌）----
+// null = 尚未读到（Runtime 未装/游戏未重开/无 mod 内容），每次挂载重试；读到后缓存整个会话
+let runtimeCatalogCache: RuntimeCatalog | null = null;
 
 /** 原版卡覆盖时的目录条目（原版描述/数值/关键词展示用） */
 function useVanillaEntry(vanillaId: string | null | undefined): VanillaEntry | null {
@@ -328,6 +332,7 @@ function EffectsTab({ card }: { card: CardDef }) {
   const genDesc = useGenDescription();
   const [trigger, setTrigger] = useState<TriggerKey>('play');
   const [vanilla, setVanilla] = useState<VanillaEntry[]>([]);
+  const [runtime, setRuntime] = useState<RuntimeCatalog | null>(runtimeCatalogCache);
   const u = card.upgrades;
 
   // 原版目录（生成卡牌效果的可选项；模块级缓存，整个会话只拉一次）
@@ -346,26 +351,87 @@ function EffectsTab({ card }: { card: CardDef }) {
     };
   }, []);
 
+  // 游戏内容目录（mod buff 等的来源）：挂载时读缓存，窗口重新聚焦时重读——
+  // 用户先开编辑器、后进游戏拿到新目录，切回来即可生效；读失败保持现状不闪空
+  useEffect(() => {
+    let cancelled = false;
+    const load = async (force: boolean) => {
+      try {
+        if (force || !runtimeCatalogCache) {
+          runtimeCatalogCache = await api.readGameCatalog();
+        }
+        if (!cancelled) setRuntime(runtimeCatalogCache);
+      } catch {
+        // 未装 Runtime / 游戏没重开 / 文件损坏：静默降级为内置目录
+      }
+    };
+    void load(false);
+    const onFocus = () => void load(true);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  // mod 目录条目（Runtime 游戏内导出）：只保留内置目录没有的（mod buff/怪物/新游戏内容）
+  const modPowers = useMemo(() => {
+    if (!runtime) return [];
+    const known = new Set(POWERS.map((p) => p.name.toLowerCase()));
+    return runtime.powers.filter((p) => !known.has(p.name.toLowerCase()));
+  }, [runtime]);
+  const modMonsters = useMemo(() => {
+    if (!runtime) return [];
+    const known = new Set(MONSTERS.map((m) => m.name.toLowerCase()));
+    return runtime.monsters.filter((m) => !known.has(m.name.toLowerCase()));
+  }, [runtime]);
+
   // 效果下拉：中文界面只显示中文（英文界面只显示英文），描述随语言，搜索词两种语言都匹配
-  const powerCombo: ComboItem[] = useMemo(() => POWERS.map((p) => ({
-    value: p.name,
-    primary: lang === 'en' ? p.en : p.zh,
-    secondary: stripBbcode(lang === 'en' ? p.desc_en : p.desc),
-    icon: p.icon || undefined,
-    badge: p.debuff ? (lang === 'en' ? 'Debuff' : '减益') : undefined,
-    badgeTone: p.debuff ? ('danger' as const) : undefined,
-    keywords: lang === 'en' ? p.zh : p.en,
-  })), [lang]);
+  const powerCombo: ComboItem[] = useMemo(() => {
+    const items: ComboItem[] = POWERS.map((p) => ({
+      value: p.name,
+      primary: lang === 'en' ? p.en : p.zh,
+      secondary: stripBbcode(lang === 'en' ? p.desc_en : p.desc),
+      icon: p.icon || undefined,
+      badge: p.debuff ? (lang === 'en' ? 'Debuff' : '减益') : undefined,
+      badgeTone: p.debuff ? ('danger' as const) : undefined,
+      keywords: lang === 'en' ? p.zh : p.en,
+    }));
+    for (const p of modPowers) {
+      items.push({
+        value: p.name,
+        primary: p.title || p.name,
+        secondary: stripBbcode(p.description) || p.entry,
+        badge: p.type === 'debuff' ? (lang === 'en' ? 'Debuff' : '减益') : 'MOD',
+        badgeTone: p.type === 'debuff' ? ('danger' as const) : ('neutral' as const),
+        keywords: [p.name, p.entry, p.class_name, p.source].filter(Boolean).join(' '),
+      });
+    }
+    return items;
+  }, [lang, modPowers]);
 
   // 怪物下拉：类型徽章 + 原生生命；图标太大不打包，用徽章代替
-  const monsterCombo: ComboItem[] = useMemo(() => MONSTERS.map((m) => ({
-    value: m.name,
-    primary: lang === 'en' ? m.en : m.zh,
-    secondary: m.hp ? (lang === 'en' ? `HP ${m.hp}` : `生命 ${m.hp}`) : undefined,
-    badge: m.type || undefined,
-    badgeTone: (m.type === 'Boss' || m.type === 'Elite') ? ('danger' as const) : ('neutral' as const),
-    keywords: lang === 'en' ? m.zh : m.en,
-  })), [lang]);
+  const monsterCombo: ComboItem[] = useMemo(() => {
+    const items: ComboItem[] = MONSTERS.map((m) => ({
+      value: m.name,
+      primary: lang === 'en' ? m.en : m.zh,
+      secondary: m.hp ? (lang === 'en' ? `HP ${m.hp}` : `生命 ${m.hp}`) : undefined,
+      badge: m.type || undefined,
+      badgeTone: (m.type === 'Boss' || m.type === 'Elite') ? ('danger' as const) : ('neutral' as const),
+      keywords: lang === 'en' ? m.zh : m.en,
+    }));
+    for (const m of modMonsters) {
+      items.push({
+        value: m.name,
+        primary: m.title || m.name,
+        secondary: m.hp ? (lang === 'en' ? `HP ${m.hp}` : `生命 ${m.hp}`) : m.entry,
+        badge: 'MOD',
+        badgeTone: 'neutral' as const,
+        keywords: [m.name, m.entry, m.source].filter(Boolean).join(' '),
+      });
+    }
+    return items;
+  }, [lang, modMonsters]);
 
   // 生成卡牌下拉：本项目卡优先，其后原版卡；次要行显示 Entry（同名卡/变体靠它区分）
   const spawnCombo: ComboItem[] = useMemo(() => {
@@ -393,8 +459,25 @@ function EffectsTab({ card }: { card: CardDef }) {
         keywords: v.name_en,
       });
     }
+    // 游戏内导出的卡牌（mod 卡等）：按 Entry 去重后追加
+    if (runtime) {
+      const seen = new Set(items.map((i) => i.value.toUpperCase()));
+      for (const c of runtime.cards) {
+        if (seen.has(c.entry.toUpperCase())) continue;
+        seen.add(c.entry.toUpperCase());
+        const typeLabel = c.type ? c.type.charAt(0).toUpperCase() + c.type.slice(1) : '';
+        items.push({
+          value: c.entry,
+          primary: c.title || c.entry,
+          secondary: c.entry,
+          badge: TYPE_LABEL[typeLabel as CardType] ? pick(TYPE_LABEL[typeLabel as CardType], lang) : (typeLabel || undefined),
+          badgeTone: 'neutral' as const,
+          keywords: [c.entry, c.source, c.rarity].filter(Boolean).join(' '),
+        });
+      }
+    }
     return items;
-  }, [cards, vanilla, lang, meta?.pack_id, card.id]);
+  }, [cards, vanilla, runtime, lang, meta?.pack_id, card.id]);
 
   const list: EffectDef[] = trigger === 'play' ? card.effects : (card[trigger] ?? []);
   const setList = (fx: EffectDef[]) => {
@@ -584,7 +667,13 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                     type="number"
                     className={inputCls + ' w-24'}
                     value={(e as { amount: number }).amount}
-                    onChange={(ev) => patch(i, { amount: Number(ev.target.value) } as Partial<EffectDef>)}
+                    onChange={(ev) => {
+                      // 清空不提交：Number('')=0 会静默清零，而缺 amount 存盘会被 Rust 默认成 6；
+                      // 要替换数值直接全选输入即可
+                      if (ev.target.value === '') return;
+                      const n = Number(ev.target.value);
+                      if (!Number.isNaN(n)) patch(i, { amount: n } as Partial<EffectDef>);
+                    }}
                   />
                   {e.kind === 'gold' && (
                     <span className="text-[10px] text-slate-600">{t('pp.goldNegative')}</span>

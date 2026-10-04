@@ -33,6 +33,7 @@ Godot 源生成器缺失 → 引擎回调（`ResourceFormatLoader._Load` 等 GDV
 | `SfEffects.cs` | 对外扩展 API（`SpireForge.Api`）：自定义效果注册表、卡包查询、日志 |
 | `SfEvents.cs` | 对外扩展 API：生命周期事件总线（BeforeEffect/AfterEffect/CardGranted，订阅者异常隔离） |
 | `SfGrant.cs` | 「添加至卡组」文件桥：sf_grant.json 排队、Runtime 每帧轮询即时消费（战斗外入组 / 战斗中额外塞手牌；启动时清上个会话的遗留清单，登记不跨会话） |
+| `SfCatalogExport.cs` | 游戏内容目录导出：全部已加载力量/怪物/卡牌（原版+mod）写 `spireforge-catalog.json`，供编辑器下拉合并展示 mod buff 等 |
 | `SfGrantConsoleCmd.cs` | 控制台命令 `sf_grant`（列出/永久拿卡，调试模式） |
 | `SfKaka.cs` | 战斗中生成敌人 + 实例级改名（ConditionalWeakTable 标记 + Title getter 后缀 + loc 词条注入） |
 | `SfHookTestCmd.cs` | 调试自测控制台命令 `sf_hooktest`（自动验证钩子/自定义效果，debug 模式） |

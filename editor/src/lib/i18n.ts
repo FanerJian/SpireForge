@@ -91,6 +91,8 @@ const STRINGS: Record<string, L> = {
   'pv.grantQueued': { zh: '已登记 {total} 张（本次新增 {added}）：即将加入本局卡组；战斗中登记会额外塞一张到手牌', en: 'Queued {total} card(s) ({added} new): joining your run deck shortly — during a combat you also get a copy in hand' },
   'pv.grantNoGame': { zh: '游戏未运行：请先启动游戏并进入一局，再点「添加至卡组」', en: 'The game is not running — start the game and enter a run before using "Add to Deck"' },
   'pv.grantNotInstalled': { zh: '「{v}」还没装进游戏：先在发布面板「安装到游戏」（新加/改过的卡都要重装一次），再点「添加至卡组」', en: '"{v}" is not installed in the game yet — run "Publish / Install" first (new or changed cards require reinstalling the pack), then use "Add to Deck"' },
+  'pv.grantModDisabled': { zh: '卡包「{v}」在游戏的 Mod 管理里被禁用了：到游戏主菜单「模组」列表里启用它（顺便确认依赖的角色 Mod 也已启用），重启游戏进一局后再点「添加至卡组」', en: 'Pack "{v}" is disabled in the game\'s mod list — enable it in the Mods screen on the game\'s main menu (make sure its character mod dependency is enabled too), restart the game, enter a run, then use "Add to Deck"' },
+  'pv.grantModNotDetected': { zh: '游戏还没识别到卡包「{v}」（新装的卡包要重启游戏才会被识别），重启游戏进一局后再点「添加至卡组」', en: 'The game has not detected pack "{v}" yet (newly installed packs require a game restart) — restart the game, enter a run, then use "Add to Deck"' },
   'pv.grantFailed': { zh: '登记失败：{e}', en: 'Failed to queue: {e}' },
   'pv.export': { zh: '导出 JSON', en: 'Export JSON' },
   'pv.exported': { zh: '已导出卡牌 JSON', en: 'Card JSON exported' },

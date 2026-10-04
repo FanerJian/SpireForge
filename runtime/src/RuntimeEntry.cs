@@ -69,6 +69,8 @@ public static class RuntimeEntry
         if (Godot.Engine.GetMainLoop() is Godot.SceneTree sceneTree)
         {
             SfGrant.InstallPolling(sceneTree);
+            // 目录导出的延时重写：部分 mod 本地化表合并较晚，几秒后重导补全标题/描述
+            SfCatalogExport.InstallDeferred(sceneTree, 6.0);
         }
         else
         {
@@ -461,6 +463,7 @@ public static class RuntimeEntry
         }
 
         ExportPoolCatalog();
+        SfCatalogExport.Export();
     }
 
     /// <summary>Writes the loaded third-party pool catalog for the editor after ModelDb has finished initialization.</summary>

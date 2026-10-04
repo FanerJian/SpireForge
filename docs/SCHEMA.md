@@ -106,6 +106,12 @@ Runtime 在游戏初始化完成后导出 `spireforge-pools.json`，编辑器可
 导入相同格式的 JSON 或手动添加。具体流程和格式见 [CUSTOM-POOLS.md](CUSTOM-POOLS.md)。
 角色本体仍需要对应角色 Mod；尖塔锻炉的纯数据卡包不负责创建角色或实现其专属机制。
 
+**mod 内容目录**：Runtime 还会在同目录导出 `spireforge-catalog.json`——本次会话
+ModelDb 里的全部力量/怪物/卡牌（原版 + 所有已启用 mod），含官方译名、描述（游戏
+当前语言）、增减益类型与来源程序集。编辑器读取后与内置目录合并：mod 角色的 buff、
+mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文件缺失时静默降级为内置
+目录。装/换 mod 后重启游戏进一次主菜单即可刷新。
+
 ### effects（效果清单，按顺序执行）
 | kind | 参数 | 游戏 API | 说明 |
 |---|---|---|---|

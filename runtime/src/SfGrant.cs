@@ -234,7 +234,9 @@ public static class SfGrant
             string.Equals(c.Id.Entry, entry, StringComparison.OrdinalIgnoreCase));
         if (model == null)
         {
-            return $"card '{entry}' not found";
+            // 常见根因（实测）：卡包 mod 在游戏的 Mod 管理里被禁用，或改卡后没重装卡包
+            return "card '" + entry + "' not found (was its pack mod DISABLED in the game's" +
+                   " mod list, or the pack not reinstalled after changes?)";
         }
         var run = RunManager.Instance.DebugOnlyGetState()
             ?? throw new InvalidOperationException("run state unavailable");

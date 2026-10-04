@@ -143,8 +143,12 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     } catch (e) {
       const msg = String(e);
       const ni = msg.indexOf('CARD_NOT_INSTALLED:');
+      const di = msg.indexOf('GAME_MOD_DISABLED:');
+      const nd = msg.indexOf('GAME_MOD_NOT_DETECTED:');
       showToast(
         msg.includes('GAME_NOT_RUNNING') ? t('pv.grantNoGame')
+        : di >= 0 ? t('pv.grantModDisabled', { v: msg.slice(di + 'GAME_MOD_DISABLED:'.length) })
+        : nd >= 0 ? t('pv.grantModNotDetected', { v: msg.slice(nd + 'GAME_MOD_NOT_DETECTED:'.length) })
         : ni >= 0 ? t('pv.grantNotInstalled', { v: msg.slice(ni + 'CARD_NOT_INSTALLED:'.length) })
         : t('pv.grantFailed', { e: msg }),
       );

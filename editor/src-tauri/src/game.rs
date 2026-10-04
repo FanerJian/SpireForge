@@ -244,6 +244,24 @@ mod runtime_tests {
         assert!(version_ge("1.0", "0.9.9"));
         assert!(version_ge("0.1.0", "0.1"));
     }
+
+    #[test]
+    fn parses_mod_enable_list_with_bom_and_skips_garbage() {
+        // 实测 settings.save 带 UTF-8 BOM；MyPack/Demo/SFDeepPack 曾全部 is_enabled=false
+        let raw = "\u{feff}{\"mod_settings\":{\"mod_list\":[\
+            {\"id\":\"SpireForgeRuntime\",\"is_enabled\":true,\"source\":\"mods_directory\"},\
+            {\"id\":\"MyPack\",\"is_enabled\":false,\"source\":\"mods_directory\"},\
+            {\"id\":\"Watcher\",\"is_enabled\":true,\"source\":\"steam_workshop\"}]}}";
+        let m = parse_mod_enable_list(raw).unwrap();
+        assert_eq!(m.get("MyPack"), Some(&false));
+        assert_eq!(m.get("SpireForgeRuntime"), Some(&true));
+        assert_eq!(m.get("Watcher"), Some(&true));
+        assert_eq!(m.get("不存在的"), None);
+        // 无 BOM 也能解析；坏结构 / 坏 JSON 一律 None（预检跳过）
+        assert!(parse_mod_enable_list(raw.strip_prefix('\u{feff}').unwrap_or(raw)).is_some());
+        assert!(parse_mod_enable_list("{\"mod_settings\":{}}").is_none());
+        assert!(parse_mod_enable_list("not json").is_none());
+    }
 }
 
 /// 「添加至卡组」：把 Entry 清单合并写入 Runtime mod 目录的 sf_grant.json，
@@ -293,11 +311,19 @@ fn normalize_vanilla_entry(s: &str) -> String {
 /// mods/*/<Pack>.pck 里 cards/*.json 的 id 按 card_entry(pack_id, id) 派生——
 /// 与 Runtime PackLoader 的 Entry 派生规则一致；带 vanilla_id 的覆盖卡按原版 Entry
 /// 登记；并上内嵌原版目录（原版卡不在 mods）。
-fn installed_card_entries(game_dir: &str) -> std::collections::HashSet<String> {
+/// 同时返回 Entry → 包 ID 映射（原版目录条目无包，不入映射），供启用状态预检定位卡包。
+fn installed_card_entries(
+    game_dir: &str,
+) -> (
+    std::collections::HashSet<String>,
+    std::collections::HashMap<String, String>,
+) {
     let mut set = crate::vanilla::vanilla_entries();
+    let mut pack_of: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     let mods_dir = std::path::Path::new(game_dir).join("mods");
     let Ok(rd) = std::fs::read_dir(&mods_dir) else {
-        return set;
+        return (set, pack_of);
     };
     for dir in rd.flatten() {
         let stem = dir.file_name().to_string_lossy().into_owned();
@@ -343,15 +369,60 @@ fn installed_card_entries(game_dir: &str) -> std::collections::HashSet<String> {
                     .and_then(|x| x.as_str())
                     .unwrap_or_default()
                     .trim();
-                if vid.is_empty() {
-                    set.insert(crate::publish::card_entry(&pack_id, id));
+                let entry = if vid.is_empty() {
+                    crate::publish::card_entry(&pack_id, id)
                 } else {
-                    set.insert(normalize_vanilla_entry(vid));
-                }
+                    normalize_vanilla_entry(vid)
+                };
+                set.insert(entry.clone());
+                pack_of.insert(entry, pack_id.clone());
             }
         }
     }
-    set
+    (set, pack_of)
+}
+
+/// 解析 settings.save 的 mod 启用表（纯函数，可测）。
+/// 游戏写出的文件带 UTF-8 BOM（serde_json 不接受，需先剔除）；
+/// 结构不对返回 None（预检跳过，绝不因猜不透的文件把发放拦死）。
+fn parse_mod_enable_list(raw: &str) -> Option<std::collections::HashMap<String, bool>> {
+    let raw = raw.strip_prefix('\u{feff}').unwrap_or(raw);
+    let v = serde_json::from_str::<serde_json::Value>(raw).ok()?;
+    let list = v
+        .get("mod_settings")?
+        .get("mod_list")?
+        .as_array()?;
+    let mut out = std::collections::HashMap::new();
+    for m in list {
+        let Some(id) = m.get("id").and_then(|x| x.as_str()) else {
+            continue;
+        };
+        let enabled = m.get("is_enabled").and_then(|x| x.as_bool()).unwrap_or(false);
+        out.insert(id.to_string(), enabled);
+    }
+    Some(out)
+}
+
+/// 游戏 mod 启用状态（%APPDATA%\SlayTheSpire2\steam\<账号>\settings.save，
+/// 多账号取最近修改的）。读不到/解析不了返回 None——跳过启用预检，
+/// 让 Runtime 端的日志兜底（那里会留下 not found）。
+fn game_mod_enabled() -> Option<std::collections::HashMap<String, bool>> {
+    let appdata = std::env::var("APPDATA").ok()?;
+    let root = std::path::Path::new(&appdata).join("SlayTheSpire2").join("steam");
+    let rd = fs::read_dir(&root).ok()?;
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for dir in rd.flatten() {
+        let p = dir.path().join("settings.save");
+        if let Ok(meta) = fs::metadata(&p) {
+            let mtime = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+            if best.as_ref().map(|(t, _)| mtime > *t).unwrap_or(true) {
+                best = Some((mtime, p));
+            }
+        }
+    }
+    let (_, path) = best?;
+    let raw = fs::read_to_string(&path).ok()?;
+    parse_mod_enable_list(&raw)
 }
 
 pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String> {
@@ -395,11 +466,23 @@ pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String
         }
     }
     // 发放预检：Entry 必须已经装进游戏（Runtime 才注册得出），
-    // 否则到战斗开始只会留下一条玩家看不见的 not found 日志
-    let installed = installed_card_entries(&settings.game_dir);
+    // 否则到战斗开始只会留下一条玩家看不见的 not found 日志；
+    // 再查卡包 mod 在游戏里的启用状态——被禁用 = PCK 不挂载 = 注册不出，
+    // 实测 MyPack 被禁时表现完全一致（godot.log: "Skipping loading mod ... disabled"）
+    let (installed, pack_of) = installed_card_entries(&settings.game_dir);
+    let mod_enabled = game_mod_enabled();
     for e in &merged {
         if !installed.contains(e) {
             return Err(format!("CARD_NOT_INSTALLED:{e}"));
+        }
+        if let Some(mod_enabled) = &mod_enabled {
+            if let Some(pack) = pack_of.get(e) {
+                match mod_enabled.get(pack) {
+                    Some(false) => return Err(format!("GAME_MOD_DISABLED:{pack}")),
+                    None => return Err(format!("GAME_MOD_NOT_DETECTED:{pack}")),
+                    _ => {}
+                }
+            }
         }
     }
     let payload = serde_json::json!({ "entries": merged });

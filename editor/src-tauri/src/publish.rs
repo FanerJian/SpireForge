@@ -373,14 +373,42 @@ pub fn preflight_with_pools(
     }
 
     for c in cards {
-        for fx in &c.effects {
-            if let EffectDef::Custom { handler, .. } = fx {
-                if handler.trim().is_empty() {
+        // 效果引用完整性：主效果与全部钩子列表一起查（空引用运行时只会静默跳过）
+        let effect_lists = c
+            .effects
+            .iter()
+            .chain(c.on_draw.iter())
+            .chain(c.on_discard.iter())
+            .chain(c.on_exhaust.iter())
+            .chain(c.on_enter_combat.iter())
+            .chain(c.on_turn_end_in_hand.iter());
+        for fx in effect_lists {
+            match fx {
+                EffectDef::Custom { handler, .. } if handler.trim().is_empty() => {
                     issues.push(format!(
                         "卡 {} 的自定义效果未填处理器名（运行时会被跳过）",
                         c.id
                     ));
                 }
+                EffectDef::Power { power, .. } if power.trim().is_empty() => {
+                    issues.push(format!(
+                        "卡 {} 的施加效果未填力量名（运行时会跳过）",
+                        c.id
+                    ));
+                }
+                EffectDef::Spawn { card_entry, .. } if card_entry.trim().is_empty() => {
+                    issues.push(format!(
+                        "卡 {} 的生成效果未填卡牌 Entry（运行时会跳过）",
+                        c.id
+                    ));
+                }
+                EffectDef::Summon { monster, .. } if monster.trim().is_empty() => {
+                    issues.push(format!(
+                        "卡 {} 的召唤效果未填怪物名（运行时会跳过）",
+                        c.id
+                    ));
+                }
+                _ => {}
             }
         }
         if c.on_enter_combat
@@ -624,6 +652,11 @@ mod tests {
                 card_entry: "BASH".into(),
                 pile: Some("draw".into()),
             },
+            EffectDef::Summon {
+                amount: 1,
+                monster: "DampCultist".into(),
+                hp: Some(13.0),
+            },
         ];
         card.pools = vec!["ironclad".into(), "silent".into()];
         let v = serde_json::to_value(&card).unwrap();
@@ -640,6 +673,9 @@ mod tests {
         assert_eq!(v["effects"][6]["kind"], "spawn");
         assert_eq!(v["effects"][6]["card_entry"], "BASH");
         assert_eq!(v["effects"][6]["pile"], "draw");
+        assert_eq!(v["effects"][7]["kind"], "summon");
+        assert_eq!(v["effects"][7]["monster"], "DampCultist");
+        assert_eq!(v["effects"][7]["hp"], json!(13.0));
         // 多池
         assert_eq!(v["pools"], json!(["ironclad", "silent"]));
         // 单池卡不序列化 pools（向后兼容）
@@ -657,6 +693,9 @@ mod tests {
         assert!(matches!(&back.effects[3], EffectDef::LoseHp { amount } if *amount == 3.0));
         assert!(
             matches!(&back.effects[5], EffectDef::Power { power, .. } if power == "Vulnerable")
+        );
+        assert!(
+            matches!(&back.effects[7], EffectDef::Summon { monster, hp: Some(h), .. } if monster == "DampCultist" && *h == 13.0)
         );
     }
 

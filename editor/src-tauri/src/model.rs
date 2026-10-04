@@ -163,6 +163,15 @@ pub enum EffectDef {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pile: Option<String>,
     },
+    /// 召唤敌人：monster = 怪物类名/Entry（DampCultist），hp = 指定生命（缺省用原生区间）
+    Summon {
+        #[serde(default = "default_amount_int")]
+        amount: i64,
+        #[serde(default)]
+        monster: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hp: Option<f64>,
+    },
 }
 
 fn default_amount() -> f64 {

@@ -1,6 +1,7 @@
 mod custom_pools;
 mod demo;
 mod game;
+mod game_catalog;
 mod import;
 mod model;
 mod project;
@@ -136,6 +137,19 @@ fn read_game_pools(state: State<AppState>) -> Result<Vec<CustomPoolDef>, String>
 #[tauri::command]
 fn import_custom_pools(raw: String) -> Result<Vec<CustomPoolDef>, String> {
     custom_pools::parse_catalog(&raw)
+}
+
+/// 读取游戏内容目录（Runtime 导出的全部力量/怪物/卡牌，含 mod 内容）。
+/// 文件不存在/损坏时报错，由前端静默降级为内置目录。
+#[tauri::command]
+fn read_game_catalog(state: State<AppState>) -> Result<game_catalog::RuntimeCatalog, String> {
+    let game_dir = state
+        .settings
+        .lock()
+        .map_err(|_| "设置读取失败")?
+        .game_dir
+        .clone();
+    game_catalog::read_game_catalog(&game_dir)
 }
 
 #[tauri::command]
@@ -482,6 +496,7 @@ pub fn run() {
             update_project_meta,
             read_game_pools,
             import_custom_pools,
+            read_game_catalog,
             save_portrait,
             read_portrait,
             import_card_json,
