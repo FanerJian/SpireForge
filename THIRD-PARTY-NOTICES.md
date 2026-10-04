@@ -5,8 +5,11 @@
 ## MegaCrit/sts2-mod-uploader（ModUploader）
 
 - 用途：Steam 创意工坊上传器，以二进制内嵌于编辑器（`tools/uploader/`，运行时自动释放）。
-- 许可：MIT License，版权所有 © Mega Crit。官方仓库：
-  <https://github.com/MegaCrit/sts2-mod-uploader>（MIT 允许再分发；完整性见 `tools/uploader/SHA256SUMS`）。
+- 来源：官方仓库 <https://github.com/MegaCrit/sts2-mod-uploader>，本地内嵌版本为 v0.2.0。
+- 完整性：仓库中的 `tools/uploader/SHA256SUMS` 记录了本地 `ModUploader.exe`、`steam_api64.dll` 和
+  `steam_appid.txt` 副本的 SHA-256；哈希只用于核对文件是否一致，不证明许可或分发授权。
+- 许可与分发：上游 v0.2.0 发布包和源码未附可核实的许可文本；此前标注为 MIT 的说法未经证实，
+  该二进制及相关文件的分发授权仍待核实。不得将本说明理解为上游授予了分发许可。
 
 ## Spire Codex（spire-codex）
 

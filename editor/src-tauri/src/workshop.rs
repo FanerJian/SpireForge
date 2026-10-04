@@ -73,7 +73,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
-// ---- 内置 ModUploader（MegaCrit/sts2-mod-uploader v0.2.0，MIT 协议，可再分发）----
+// ---- 内置 ModUploader（MegaCrit/sts2-mod-uploader v0.2.0；许可与分发授权待核实）----
 // 以字节内嵌进编辑器，首次使用时释放到应用数据目录，用户无需单独下载。
 const UPLOADER_EXE: &[u8] = include_bytes!("../../../tools/uploader/ModUploader.exe");
 const STEAM_API_DLL: &[u8] = include_bytes!("../../../tools/uploader/steam_api64.dll");
@@ -81,9 +81,13 @@ const STEAM_APPID: &[u8] = include_bytes!("../../../tools/uploader/steam_appid.t
 
 const UPLOADER_NOTICE: &[u8] = b"\
 ModUploader v0.2.0 - bundled with SpireForge editor
-Source: github.com/MegaCrit/sts2-mod-uploader (MIT License, (c) MegaCrit)
-steam_api64.dll / steam_appid.txt: Steamworks redistributables from the
-uploader's official release zip. Do not redistribute outside of mod tooling.
+Source: https://github.com/MegaCrit/sts2-mod-uploader
+SHA-256 ModUploader.exe: 7d5283dbaff01ec5182bc08a09f4aac864cff870d7d692af08daf3830b4efa19
+SHA-256 steam_api64.dll: eb17909a76668cf9ae0b92a618a34a50f6c73d3a6787cb4dd8ce36a8b10bfb75
+SHA-256 steam_appid.txt: bc80578ba89b7f67e609974743e33203e7da3d1eaae0b1c0bb1ddbb9b4f104f5
+The upstream v0.2.0 release package and source do not include verifiable license text.
+The previous MIT label was unverified; distribution authorization remains unverified.
+The hashes identify these bundled copies only and do not establish license or permission.
 ";
 
 /// 上传超时：Steam 卡住时不能让发布面板永久 busy
