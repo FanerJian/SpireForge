@@ -82,32 +82,45 @@ public abstract class SfCardBase : CardModel
             _ => CardMultiplayerConstraint.None,
         };
 
-    /// <summary>每个效果种类一个 DynamicVar（键名 = 效果种类名，供描述占位符引用）。
+    /// <summary>每个打出效果一个 DynamicVar（命名见 SfVarNaming，供描述占位符引用与升级）。
+    /// damage/block/draw/energy/heal 用原版专用变量类型（保留力量/附魔修正链），
+    /// 其余数值种类用 IntVar 承载数值（引擎语义不变，只让数值可升级、描述可占位）。
     /// 钩子与 custom 效果使用字面数值，不参与变量绑定。</summary>
     protected override IEnumerable<DynamicVar> CanonicalVars
     {
         get
         {
             var def = Def();
-            foreach (var e in def.Effects)
+            var effects = def.Effects;
+            for (var i = 0; i < effects.Count; i++)
             {
+                var e = effects[i];
+                var name = SfVarNaming.Name(effects, i);
+                if (name == null)
+                {
+                    continue;
+                }
                 var props = SfEffectEngine.ParseProps(e.Props);
                 switch (e.Kind)
                 {
                     case SfEffectKind.Damage:
-                        yield return new DamageVar(e.Amount, props);
+                        yield return new DamageVar(name, e.Amount, props);
                         break;
                     case SfEffectKind.Block:
-                        yield return new BlockVar(e.Amount, props);
+                        yield return new BlockVar(name, e.Amount, props);
                         break;
                     case SfEffectKind.Draw:
-                        yield return new CardsVar((int)e.Amount);
+                        yield return new CardsVar(name, (int)e.Amount);
                         break;
                     case SfEffectKind.Energy:
-                        yield return new EnergyVar((int)e.Amount);
+                        yield return new EnergyVar(name, (int)e.Amount);
                         break;
                     case SfEffectKind.Heal:
-                        yield return new HealVar(e.Amount);
+                        yield return new HealVar(name, e.Amount);
+                        break;
+                    default:
+                        // lose_hp/gold/max_hp/discard/exhaust/spawn/summon：通用数值变量
+                        yield return new IntVar(name, e.Amount);
                         break;
                 }
             }
@@ -182,25 +195,34 @@ public abstract class SfCardBase : CardModel
     {
         var def = Def();
         var u = def.Upgrades;
-        foreach (var e in def.Effects)
+        var effects = def.Effects;
+        var legacyApplied = new HashSet<SfEffectKind>();
+        for (var i = 0; i < effects.Count; i++)
         {
-            switch (e.Kind)
+            var e = effects[i];
+            var delta = e.UpgradeAmount;
+            if (delta == 0 && legacyApplied.Add(e.Kind))
             {
-                case SfEffectKind.Damage when u.Damage != 0:
-                    DynamicVars.Damage.UpgradeValueBy(u.Damage);
-                    break;
-                case SfEffectKind.Block when u.Block != 0:
-                    DynamicVars.Block.UpgradeValueBy(u.Block);
-                    break;
-                case SfEffectKind.Draw when u.Draw != 0:
-                    DynamicVars.Cards.UpgradeValueBy(u.Draw);
-                    break;
-                case SfEffectKind.Energy when u.Energy != 0:
-                    DynamicVars.Energy.UpgradeValueBy(u.Energy);
-                    break;
-                case SfEffectKind.Heal when u.Heal != 0:
-                    DynamicVars.Heal.UpgradeValueBy(u.Heal);
-                    break;
+                // 兼容旧五通道（2026-10 前的卡包）：效果未单独写 upgrade_amount 时，
+                // 该种类第一条效果沿用 upgrades.* 的增量；写了 per-effect 则以它为准
+                delta = e.Kind switch
+                {
+                    SfEffectKind.Damage => u.Damage,
+                    SfEffectKind.Block => u.Block,
+                    SfEffectKind.Draw => u.Draw,
+                    SfEffectKind.Energy => u.Energy,
+                    SfEffectKind.Heal => u.Heal,
+                    _ => 0,
+                };
+            }
+            if (delta == 0)
+            {
+                continue;
+            }
+            var name = SfVarNaming.Name(effects, i);
+            if (name != null && DynamicVars.TryGetValue(name, out var v))
+            {
+                v.UpgradeValueBy(delta);
             }
         }
     }

@@ -32,8 +32,9 @@ public static class SfEffectEngine
     public static async Task RunAsync(
         CardModel card, List<SfEffect> effects, PlayerChoiceContext? ctx, CardPlay? play, string trigger)
     {
-        foreach (var e in effects)
+        for (var i = 0; i < effects.Count; i++)
         {
+            var e = effects[i];
             if (ctx == null && NeedsChoice.Contains(e.Kind))
             {
                 SfLog.Error("card " + card.Id + ": effect " + e.KindName +
@@ -42,7 +43,7 @@ public static class SfEffectEngine
             }
             try
             {
-                await RunOne(card, e, ctx, play, trigger);
+                await RunOne(card, e, ctx, play, trigger, SfVarNaming.Name(effects, i));
             }
             catch (System.Exception ex)
             {
@@ -51,8 +52,21 @@ public static class SfEffectEngine
         }
     }
 
+    /// <summary>效果的实际数值：绑定的 DynamicVar 存在（含升级后的值）则取变量，
+    /// 否则回落字面值（钩子效果、原版覆盖卡没有对应变量的种类）。
+    /// 查找用 TryGetValue——DynamicVarSet 的索引器对缺失键直接抛异常。</summary>
+    private static decimal Amount(CardModel card, SfEffect e, string? varName)
+    {
+        if (varName != null && card.DynamicVars != null
+            && card.DynamicVars.TryGetValue(varName, out var v))
+        {
+            return v.BaseValue;
+        }
+        return e.Amount;
+    }
+
     private static async Task RunOne(
-        CardModel card, SfEffect e, PlayerChoiceContext? ctx, CardPlay? play, string trigger)
+        CardModel card, SfEffect e, PlayerChoiceContext? ctx, CardPlay? play, string trigger, string? varName)
     {
         switch (e.Kind)
         {
@@ -65,42 +79,46 @@ public static class SfEffectEngine
                         SfLog.Error("card " + card.Id + " requires a target, damage skipped");
                         break;
                     }
-                    if (card.DynamicVars?.Damage != null)
+                    if (varName != null && card.DynamicVars != null
+                        && card.DynamicVars.TryGetValue(varName, out var v) && v is DamageVar damageVar)
                     {
-                        // 走卡牌自带的 Damage 变量：保留力量/易伤等修正链（原版语义）
-                        await CreatureCmd.Damage(ctx!, play.Target, card.DynamicVars.Damage, card, play);
+                        // 走卡牌自带的 Damage 变量：保留力量/易伤等修正链与升级（原版语义）
+                        await CreatureCmd.Damage(ctx!, play.Target, damageVar, card, play);
                     }
                     else
                     {
                         // 被覆盖的原版卡可能没有 Damage 变量：按字面数值直接结算
-                        await CreatureCmd.Damage(ctx!, play.Target, e.Amount, ParseProps(e.Props), card, play);
+                        await CreatureCmd.Damage(ctx!, play.Target, Amount(card, e, varName), ParseProps(e.Props), card, play);
                     }
                 }
                 else
                 {
-                    await CreatureCmd.Damage(ctx!, ResolveTargets(card, e), e.Amount, ParseProps(e.Props),
+                    await CreatureCmd.Damage(ctx!, ResolveTargets(card, e), Amount(card, e, varName), ParseProps(e.Props),
                         card.Owner.Creature);
                 }
                 break;
             }
             case SfEffectKind.Block:
-                if (play != null && card.DynamicVars?.Block != null)
+            {
+                if (play != null && varName != null && card.DynamicVars != null
+                    && card.DynamicVars.TryGetValue(varName, out var bv) && bv is BlockVar blockVar)
                 {
-                    await CreatureCmd.GainBlock(card.Owner.Creature, card.DynamicVars.Block, play);
+                    await CreatureCmd.GainBlock(card.Owner.Creature, blockVar, play);
                 }
                 else
                 {
-                    await CreatureCmd.GainBlock(card.Owner.Creature, e.Amount, ParseProps(e.Props), play);
+                    await CreatureCmd.GainBlock(card.Owner.Creature, Amount(card, e, varName), ParseProps(e.Props), play);
                 }
                 break;
+            }
             case SfEffectKind.Draw:
-                await CardPileCmd.Draw(ctx!, e.Amount, card.Owner);
+                await CardPileCmd.Draw(ctx!, (int)Amount(card, e, varName), card.Owner);
                 break;
             case SfEffectKind.Energy:
-                await PlayerCmd.GainEnergy(e.Amount, card.Owner);
+                await PlayerCmd.GainEnergy(Amount(card, e, varName), card.Owner);
                 break;
             case SfEffectKind.Heal:
-                await CreatureCmd.Heal(card.Owner.Creature, e.Amount);
+                await CreatureCmd.Heal(card.Owner.Creature, Amount(card, e, varName));
                 break;
 
             // ---- 以下为 2026-10 扩充种类 ----
@@ -114,7 +132,7 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": no combat hand, discard skipped");
                     break;
                 }
-                foreach (var c in PickRandomCards(hand.Cards, (int)e.Amount, card))
+                foreach (var c in PickRandomCards(hand.Cards, (int)Amount(card, e, varName), card))
                 {
                     await CardCmd.Discard(ctx!, c);
                 }
@@ -128,35 +146,41 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": no combat hand, exhaust skipped");
                     break;
                 }
-                foreach (var c in PickRandomCards(hand.Cards, (int)e.Amount, card))
+                foreach (var c in PickRandomCards(hand.Cards, (int)Amount(card, e, varName), card))
                 {
                     await CardCmd.Exhaust(ctx!, c);
                 }
                 break;
             }
             case SfEffectKind.Gold:
-                if (e.Amount >= 0)
+            {
+                var gold = Amount(card, e, varName);
+                if (gold >= 0)
                 {
-                    await PlayerCmd.GainGold(e.Amount, card.Owner);
+                    await PlayerCmd.GainGold(gold, card.Owner);
                 }
                 else
                 {
-                    await PlayerCmd.LoseGold(-e.Amount, card.Owner);
+                    await PlayerCmd.LoseGold(-gold, card.Owner);
                 }
                 break;
+            }
             case SfEffectKind.LoseHp:
                 // 失去生命：无来源、不可格挡、不受力量修正（原版 HP loss 语义）
-                await CreatureCmd.Damage(ctx!, card.Owner.Creature, e.Amount,
+                await CreatureCmd.Damage(ctx!, card.Owner.Creature, Amount(card, e, varName),
                     ValueProp.Unblockable | ValueProp.Unpowered, null, null, play);
                 break;
             case SfEffectKind.MaxHp:
-                if (e.Amount <= 0)
+            {
+                var gain = Amount(card, e, varName);
+                if (gain <= 0)
                 {
                     SfLog.Warn("card " + card.Id + ": max_hp amount must be positive, skipped");
                     break;
                 }
-                await CreatureCmd.GainMaxHp(card.Owner.Creature, e.Amount);
+                await CreatureCmd.GainMaxHp(card.Owner.Creature, gain);
                 break;
+            }
             case SfEffectKind.Power:
             {
                 // 施加增益/减益：params.power = 力量名（Vulnerable/Poison/Strength/任意 PowerModel 子类名）
@@ -174,7 +198,7 @@ public static class SfEffectEngine
                 }
                 foreach (var target in ResolveTargetList(card, e, play))
                 {
-                    await SfPowerResolver.Apply(ctx!, powerType, target, e.Amount, card.Owner.Creature, card);
+                    await SfPowerResolver.Apply(ctx!, powerType, target, Amount(card, e, varName), card.Owner.Creature, card);
                 }
                 break;
             }
@@ -200,10 +224,19 @@ public static class SfEffectEngine
                     "discard" => PileType.Discard,
                     _ => PileType.Draw,
                 };
-                var count = System.Math.Max(1, (int)e.Amount);
+                var combat = card.Owner.Creature.CombatState;
+                if (combat == null)
+                {
+                    SfLog.Error("card " + card.Id + ": spawn has no combat state, skipped");
+                    break;
+                }
+                var count = System.Math.Max(1, (int)Amount(card, e, varName));
                 for (var i = 0; i < count; i++)
                 {
-                    var clone = template.ToMutable();
+                    // 必须经 CombatState.CreateCard 注册（= CreateCard：ToMutable+登记 Owner+AfterCreated）。
+                    // 裸 ToMutable 克隆没有 Owner，AddGeneratedCardsToCombat 里 list[0].Owner.Creature
+                    // 直接 NRE（游戏内实测）；ForgeCmd/DualWield/SfGrant 全是同款正规配方。
+                    var clone = combat.CreateCard(template, card.Owner);
                     await CardPileCmd.AddGeneratedCardToCombat(clone, pileType, card.Owner);
                 }
                 break;
@@ -228,7 +261,7 @@ public static class SfEffectEngine
                     break;
                 }
                 var hp = e.DecimalParam("hp");
-                var count = System.Math.Max(1, (int)e.Amount);
+                var count = System.Math.Max(1, (int)Amount(card, e, varName));
                 for (var i = 0; i < count; i++)
                 {
                     var model = template.ToMutable();
@@ -351,6 +384,54 @@ public static class SfEffectEngine
             }
         }
         return p;
+    }
+}
+
+/// <summary>
+/// 打出效果 → DynamicVar 名的确定性命名（SfCardBase.CanonicalVars 建变量与
+/// SfEffectEngine 取值必须使用同一规则）。同种类第 n 条（n≥2）加序号后缀：
+/// DynamicVarSet 对重复键直接抛 ArgumentException（如两张 damage 都叫 "Damage"）。
+/// 变量基名与原版 loc 占位符约定一致（抽牌 = Cards、失去生命 = LoseHp…）。
+/// 钩子效果与 custom 不建变量（Name 返回 null，引擎回落字面值）。
+/// </summary>
+internal static class SfVarNaming
+{
+    /// <summary>种类 → 变量基名；返回空串 = 该种类无数值变量。</summary>
+    public static string BaseName(SfEffectKind k) => k switch
+    {
+        SfEffectKind.Damage => "Damage",
+        SfEffectKind.Block => "Block",
+        SfEffectKind.Draw => "Cards",
+        SfEffectKind.Energy => "Energy",
+        SfEffectKind.Heal => "Heal",
+        SfEffectKind.LoseHp => "LoseHp",
+        SfEffectKind.Gold => "Gold",
+        SfEffectKind.MaxHp => "MaxHp",
+        SfEffectKind.Discard => "Discard",
+        SfEffectKind.Exhaust => "Exhaust",
+        SfEffectKind.Spawn => "Spawn",
+        SfEffectKind.Summon => "Summon",
+        _ => "",
+    };
+
+    /// <summary>效果清单中第 index 条的变量名；无数值变量（custom 等）返回 null。
+    /// 同种类多条：第一条用基名，其后 Damage2/Damage3…（编辑器描述生成用同名规则）。</summary>
+    public static string? Name(IReadOnlyList<SfEffect> effects, int index)
+    {
+        var baseName = BaseName(effects[index].Kind);
+        if (baseName.Length == 0)
+        {
+            return null;
+        }
+        var seen = 0;
+        for (var i = 0; i <= index; i++)
+        {
+            if (effects[i].Kind == effects[index].Kind)
+            {
+                seen++;
+            }
+        }
+        return seen == 1 ? baseName : baseName + seen;
     }
 }
 

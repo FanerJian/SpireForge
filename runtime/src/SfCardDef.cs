@@ -50,6 +50,13 @@ public sealed class SfEffect
     [JsonPropertyName("props")]
     public List<string> Props { get; set; } = [];
 
+    /// <summary>升级增量：升级时对本效果绑定的变量 UpgradeValueBy 此值（每次升级叠加）。
+    /// 0/缺省 = 未单独设置——damage/block/draw/energy/heal 回落 upgrades.* 旧通道，其余种类无升级。
+    /// 打出效果全部绑定 DynamicVar（见 SfVarNaming），因此所有内建种类的数值都可升级；
+    /// 钩子效果与 custom 不建变量，本字段不生效。</summary>
+    [JsonPropertyName("upgrade_amount")]
+    public decimal UpgradeAmount { get; set; }
+
     /// <summary>custom 效果的处理器名（由其他 mod 通过 SpireForge.Api.SfEffects.Register 注册）。</summary>
     [JsonPropertyName("handler")]
     public string Handler { get; set; } = "";

@@ -603,8 +603,9 @@ mod tests {
         card.on_discard.push(EffectDef::Block {
             amount: 4.0,
             props: vec![],
+            upgrade_amount: 0.0,
         });
-        card.on_turn_end_in_hand.push(EffectDef::Draw { amount: 1 });
+        card.on_turn_end_in_hand.push(EffectDef::Draw { amount: 1, upgrade_amount: 0.0 });
         // 关键钩子字段必须是游戏侧蛇形命名，空钩子不序列化
         let v = serde_json::to_value(&card).unwrap();
         let obj = v.as_object().unwrap();
@@ -637,25 +638,28 @@ mod tests {
             ..CardDef::default()
         };
         card.effects = vec![
-            EffectDef::Discard { amount: 1.0 },
-            EffectDef::Exhaust { amount: 2.0 },
-            EffectDef::Gold { amount: 10.0 },
-            EffectDef::LoseHp { amount: 3.0 },
-            EffectDef::MaxHp { amount: 4.0 },
+            EffectDef::Discard { amount: 1.0, upgrade_amount: 0.0 },
+            EffectDef::Exhaust { amount: 2.0, upgrade_amount: 0.0 },
+            EffectDef::Gold { amount: 10.0, upgrade_amount: 0.0 },
+            EffectDef::LoseHp { amount: 3.0, upgrade_amount: 2.0 },
+            EffectDef::MaxHp { amount: 4.0, upgrade_amount: 0.0 },
             EffectDef::Power {
                 amount: 2.0,
                 power: "Vulnerable".into(),
                 target: None,
+                upgrade_amount: 0.0,
             },
             EffectDef::Spawn {
                 amount: 2,
                 card_entry: "BASH".into(),
                 pile: Some("draw".into()),
+                upgrade_amount: 0.0,
             },
             EffectDef::Summon {
                 amount: 1,
                 monster: "DampCultist".into(),
                 hp: Some(13.0),
+                upgrade_amount: 0.0,
             },
         ];
         card.pools = vec!["ironclad".into(), "silent".into()];
@@ -689,8 +693,8 @@ mod tests {
             back.pools,
             vec!["ironclad".to_string(), "silent".to_string()]
         );
-        assert!(matches!(&back.effects[0], EffectDef::Discard { amount } if *amount == 1.0));
-        assert!(matches!(&back.effects[3], EffectDef::LoseHp { amount } if *amount == 3.0));
+        assert!(matches!(&back.effects[0], EffectDef::Discard { amount, .. } if *amount == 1.0));
+        assert!(matches!(&back.effects[3], EffectDef::LoseHp { amount, upgrade_amount } if *amount == 3.0 && *upgrade_amount == 2.0));
         assert!(
             matches!(&back.effects[5], EffectDef::Power { power, .. } if power == "Vulnerable")
         );
@@ -717,5 +721,31 @@ mod tests {
         let card: CardDef = serde_json::from_str(raw).unwrap();
         assert_eq!(card.effects.len(), 1);
         assert!(card.on_discard.is_empty() && card.on_draw.is_empty());
+    }
+
+    #[test]
+    fn effect_upgrade_amount_serializes() {
+        use crate::model::EffectDef;
+        use serde_json::json;
+        // 非 0 增量照常序列化；0/缺省省略且反序列化为 0（旧卡包兼容）
+        let v = serde_json::to_value(EffectDef::LoseHp { amount: 3.0, upgrade_amount: 2.0 }).unwrap();
+        assert_eq!(v["upgrade_amount"], json!(2.0));
+        let v = serde_json::to_value(EffectDef::LoseHp { amount: 3.0, upgrade_amount: 0.0 }).unwrap();
+        assert!(v.get("upgrade_amount").is_none(), "0 增量不序列化");
+        let back: EffectDef = serde_json::from_value(v).unwrap();
+        assert!(matches!(&back, EffectDef::LoseHp { upgrade_amount: 0.0, .. }));
+        // 旧卡包无 upgrade_amount 字段 → 缺省 0（升级走 upgrades.* 旧通道）
+        let old: EffectDef =
+            serde_json::from_str(r#"{"kind":"lose_hp","amount":3.0}"#).unwrap();
+        assert!(matches!(&old, EffectDef::LoseHp { amount: 3.0, upgrade_amount: 0.0 }));
+        // spawn 增量 = 每次升级多生成几张
+        let v = serde_json::to_value(EffectDef::Spawn {
+            amount: 1,
+            card_entry: "BASH".into(),
+            pile: Some("hand".into()),
+            upgrade_amount: 1.0,
+        })
+        .unwrap();
+        assert_eq!(v["upgrade_amount"], json!(1.0));
     }
 }

@@ -113,6 +113,12 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 目录。装/换 mod 后重启游戏进一次主菜单即可刷新。
 
 ### effects（效果清单，按顺序执行）
+每个内建数值效果可带可选字段 **`upgrade_amount: number`**（升级增量；0/缺省 = 不变，
+其中 damage/block/draw/energy/heal 缺省时回落 `upgrades.*` 旧通道）。升级时 Runtime 对
+该效果绑定的变量 `UpgradeValueBy(增量)`，打出时按变量取实际数值——**全部内建种类的
+数值都可升级**（含 lose_hp/spawn/summon 等）。同种类多条效果各自独立建变量
+（`Damage`/`Damage2`/…），增量互不影响。
+
 | kind | 参数 | 游戏 API | 说明 |
 |---|---|---|---|
 | `damage` | `amount: number`, `props: string[]`, `target?` | `CreatureCmd.Damage` | props：`Move`(受 buff 修正——伤害吃力量、格挡吃敏捷，默认) / `Unpowered`(不受 buff 加成) / `Unblockable`(不可格挡)，可组合 |
@@ -126,7 +132,7 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 | `lose_hp` | `amount: number` | `CreatureCmd.Damage`（Unblockable\|Unpowered、无来源） | 自身失去生命；需选择上下文 |
 | `max_hp` | `amount: number` | `CreatureCmd.GainMaxHp` | 生命上限 +N（正数） |
 | `power` | `amount`, `power: string`, `target?` | `PowerCmd.Apply<T>`（反射解析） | 施加增益/减益，见下 |
-| `spawn` | `amount`, `card_entry: string`, `pile?` | `CardPileCmd.AddGeneratedCardToCombat` | 生成卡牌，见下 |
+| `spawn` | `amount`, `card_entry: string`, `pile?` | `ICombatState.CreateCard` + `CardPileCmd.AddGeneratedCardToCombat` | 生成卡牌，见下 |
 | `custom` | `handler: string`, `amount?`, `target?`, `params?` | 由处理器定义 | 见下方「自定义效果」 |
 
 `damage.target` 只在钩子上下文生效（打出时永远以玩家指定目标为准）：
@@ -141,7 +147,8 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 - 需要玩家选择上下文（on_enter_combat 不可用）
 
 **spawn（生成卡牌）**：
-- `card_entry` = 目标卡的 Entry（自定义卡 `SF_包ID_卡ID` 或原版 `BASH`），按 ToMutable 克隆
+- `card_entry` = 目标卡的 Entry（自定义卡 `SF_包ID_卡ID` 或原版 `BASH`；含第三方 mod 卡），
+  经 `ICombatState.CreateCard` 正规生成（登记 Owner 进战斗状态，与 ForgeCmd/DualWield 同配方）
 - `pile`：`draw`（默认）/ `hand` / `discard`
 - 不需要选择上下文（on_enter_combat 可用）
 
@@ -192,14 +199,21 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 
 ### 数值占位符（描述文本内）
 - `{Damage}` `{Block}` `{Cards}` `{Energy}` `{Heal}` — 渲染为该效果的数值（**红色加粗**）
+- `{LoseHp}` `{MaxHp}` `{Discard}` `{Exhaust}` — 扩充种类的数值变量（2026-10 起，升级后自动更新）
 - `{Damage:diff()}` — 升级对比展示（官方风格 `9+4`）
 - `[gold]…[/gold]` `[red]…[/red]` `[unplayable]…[/unplayable]` — BBCode 着色
 
-变量名必须与效果 kind 对应（damage→Damage、block→Block、draw→Cards、energy→Energy、heal→Heal），
-否则游戏内显示为原文。**编辑器预览会即时校验**（未匹配变量显示为 `{xxx}` 原样）。
+变量名与效果 kind 对应（damage→Damage、block→Block、draw→Cards、energy→Energy、
+heal→Heal、lose_hp→LoseHp、max_hp→MaxHp、discard→Discard、exhaust→Exhaust）；
+**同种类多条效果**第二条起加序号后缀（`Damage2`/`Damage3`…，与 Runtime `SfVarNaming`
+同规则），否则游戏建卡时 DynamicVarSet 重复键直接抛异常。
+gold/spawn/summon 的描述带得失/去向措辞，编辑器生成字面数值（变量仍存在可升级，
+升级后需手改描述）。**编辑器预览会即时校验**（未匹配变量显示为 `{xxx}` 原样）。
 
-### upgrades（升级增量）
-- 与效果种类对应的增量：`damage`/`block`/`draw`/`energy`/`heal`（0 = 升级不变）
+### upgrades（升级增量，旧五通道）
+- 仅 `damage`/`block`/`draw`/`energy`/`heal`（0 = 升级不变），作为旧卡包兼容通道保留：
+  效果未单独写 `upgrade_amount` 时，该种类第一条效果沿用此通道
+- 新做法：直接在效果上写 `upgrade_amount`（全种类支持、每条效果独立）
 - `keywords`：升级后追加的关键词（如 `["Innate"]`）
 - `max_upgrade_level`：>1 为多级升级（游戏默认 1 级；多级需描述用 `:diff()` 表达所有档位）
 

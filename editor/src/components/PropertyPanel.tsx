@@ -11,9 +11,11 @@ import {
   pick, useLang, useT, type TriggerKey,
 } from '../lib/i18n';
 import {
-  cardEntry, composeDescription, effectsFromVanillaVars,
-  type CardDef, type CardType, type EffectDef, type Pool, type RuntimeCatalog,
-  type TargetType, type VanillaCatalog, type VanillaEntry,
+  cardEntry, composeDescription, composeHookDescription, effectsFromVanillaVars,
+  AMOUNT_KINDS,
+  type CardDef, type CardType, type EffectDef, type HookField, type Pool,
+  type RuntimeCatalog, type TargetType, type UpgradeDef,
+  type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
 import { POWERS } from '../lib/powers';
 import { MONSTERS } from '../lib/monsters';
@@ -50,8 +52,10 @@ function useVanillaEntry(vanillaId: string | null | undefined): VanillaEntry | n
   return entry;
 }
 
-/** 参与升级变量的效果种类（其余种类用字面数值） */
-const UPGRADEABLE = ['damage', 'block', 'draw', 'energy', 'heal'];
+/** 参与升级变量的旧五通道（effect.upgrade_amount 未设时回落；见 SfCardBase.OnUpgrade） */
+const LEGACY_UPGRADE: Partial<Record<EffectDef['kind'], keyof Omit<UpgradeDef, 'keywords'>>> = {
+  damage: 'damage', block: 'block', draw: 'draw', energy: 'energy', heal: 'heal',
+};
 
 /** 需要玩家选择上下文的效果种类（on_enter_combat 不可用） */
 const NEEDS_CHOICE = ['damage', 'draw', 'lose_hp', 'power', 'discard', 'exhaust'];
@@ -75,6 +79,27 @@ function useGenDescription() {
     }
     updateCard({ description: composed });
     showToast(t('pp.genDescDone'));
+  };
+}
+
+/** 钩子页签的「按效果生成描述」：把当前钩子效果的句子（带触发时机前缀）追加到卡面描述 */
+function useAppendHookDescription() {
+  const { updateCard, showToast } = useStore();
+  const t = useT();
+  return (card: CardDef, trigger: HookField, list: EffectDef[]) => {
+    const composed = composeHookDescription(trigger, list);
+    if (!composed) {
+      showToast(t('pp.genDescHookEmpty'));
+      return;
+    }
+    const cur = card.description;
+    updateCard({
+      description: {
+        zhs: cur.zhs.trim() ? `${cur.zhs.replace(/\s+$/, '')}\n${composed.zhs}` : composed.zhs,
+        eng: cur.eng.trim() ? `${cur.eng.replace(/\s+$/, '')}\n${composed.eng}` : composed.eng,
+      },
+    });
+    showToast(t('pp.genDescAppended'));
   };
 }
 
@@ -330,6 +355,7 @@ function EffectsTab({ card }: { card: CardDef }) {
   const t = useT();
   const lang = useLang();
   const genDesc = useGenDescription();
+  const appendHookDesc = useAppendHookDescription();
   const [trigger, setTrigger] = useState<TriggerKey>('play');
   const [vanilla, setVanilla] = useState<VanillaEntry[]>([]);
   const [runtime, setRuntime] = useState<RuntimeCatalog | null>(runtimeCatalogCache);
@@ -532,15 +558,13 @@ function EffectsTab({ card }: { card: CardDef }) {
         />
         <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
           <span className="text-[11px] text-slate-600">{pick(triggerMeta.hint, lang)}</span>
-          {isPlay && (
-            <button
-              onClick={() => genDesc(card)}
-              title={t('pp.genDescBtnTitle')}
-              className="shrink-0 whitespace-nowrap text-[11px] text-sky-300/80 underline hover:text-sky-200"
-            >
-              {t('pp.genDescBtn')}
-            </button>
-          )}
+          <button
+            onClick={() => (isPlay ? genDesc(card) : appendHookDesc(card, trigger, list))}
+            title={t(isPlay ? 'pp.genDescBtnTitle' : 'pp.genDescHookTitle')}
+            className="shrink-0 whitespace-nowrap text-[11px] text-sky-300/80 underline hover:text-sky-200"
+          >
+            {t(isPlay ? 'pp.genDescBtn' : 'pp.genDescBtnHook')}
+          </button>
         </div>
       </Field>
 
@@ -787,28 +811,26 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                     </select>
                   </div>
                 )}
-                {isPlay && UPGRADEABLE.includes(e.kind) && (
+                {isPlay && AMOUNT_KINDS.includes(e.kind) && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-500">{t('pp.upgradeDelta')}</span>
                     <input
                       type="number"
                       className={inputCls + ' w-24'}
-                      value={
-                        e.kind === 'draw' ? u.draw
-                        : e.kind === 'damage' ? u.damage
-                        : e.kind === 'block' ? u.block
-                        : e.kind === 'heal' ? u.heal
-                        : u.energy
-                      }
+                      value={(e as { upgrade_amount?: number }).upgrade_amount
+                        ?? (LEGACY_UPGRADE[e.kind] != null ? u[LEGACY_UPGRADE[e.kind]!] : 0)}
                       onChange={(ev) => {
                         const v = Number(ev.target.value) || 0;
-                        if (e.kind === 'draw') updateCard({ upgrades: { ...u, draw: v } });
-                        else if (e.kind === 'damage') updateCard({ upgrades: { ...u, damage: v } });
-                        else if (e.kind === 'block') updateCard({ upgrades: { ...u, block: v } });
-                        else if (e.kind === 'heal') updateCard({ upgrades: { ...u, heal: v } });
-                        else updateCard({ upgrades: { ...u, energy: v } });
+                        // 增量写在本效果上（升级时对绑定变量 UpgradeValueBy）；
+                        // 旧五通道种类同时清零通道值，避免两处来源互相覆盖
+                        patch(i, { upgrade_amount: v } as Partial<EffectDef>);
+                        const lk = LEGACY_UPGRADE[e.kind];
+                        if (lk && u[lk] !== 0) updateCard({ upgrades: { ...u, [lk]: 0 } });
                       }}
                     />
+                    {(e.kind === 'spawn' || e.kind === 'summon' || e.kind === 'gold') && (
+                      <span className="text-[10px] text-slate-600">{t('pp.upgradeLiteralHint')}</span>
+                    )}
                   </div>
                 )}
               </div>

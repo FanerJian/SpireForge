@@ -26,20 +26,24 @@ export interface LocText {
   zhs: string;
 }
 
+/** 官方 SpireForge Runtime 的创意工坊 id（与 Rust OFFICIAL_RUNTIME_WORKSHOP_ID 一致）。
+ *  卡包必须依赖 Runtime 才能加载：新建项目自动写入此依赖，发布面板可改写。 */
+export const OFFICIAL_RUNTIME_WORKSHOP_ID = 3812654552;
+
 export type EffectDef =
-  | { kind: 'damage'; amount: number; props: string[]; target?: string }
-  | { kind: 'block'; amount: number; props: string[] }
-  | { kind: 'draw'; amount: number }
-  | { kind: 'energy'; amount: number }
-  | { kind: 'heal'; amount: number }
-  | { kind: 'discard'; amount: number }
-  | { kind: 'exhaust'; amount: number }
-  | { kind: 'gold'; amount: number }
-  | { kind: 'lose_hp'; amount: number }
-  | { kind: 'max_hp'; amount: number }
-  | { kind: 'power'; amount: number; power: string; target?: string }
-  | { kind: 'spawn'; amount: number; card_entry: string; pile?: string }
-  | { kind: 'summon'; amount: number; monster: string; hp?: number }
+  | { kind: 'damage'; amount: number; props: string[]; target?: string; upgrade_amount?: number }
+  | { kind: 'block'; amount: number; props: string[]; upgrade_amount?: number }
+  | { kind: 'draw'; amount: number; upgrade_amount?: number }
+  | { kind: 'energy'; amount: number; upgrade_amount?: number }
+  | { kind: 'heal'; amount: number; upgrade_amount?: number }
+  | { kind: 'discard'; amount: number; upgrade_amount?: number }
+  | { kind: 'exhaust'; amount: number; upgrade_amount?: number }
+  | { kind: 'gold'; amount: number; upgrade_amount?: number }
+  | { kind: 'lose_hp'; amount: number; upgrade_amount?: number }
+  | { kind: 'max_hp'; amount: number; upgrade_amount?: number }
+  | { kind: 'power'; amount: number; power: string; target?: string; upgrade_amount?: number }
+  | { kind: 'spawn'; amount: number; card_entry: string; pile?: string; upgrade_amount?: number }
+  | { kind: 'summon'; amount: number; monster: string; hp?: number; upgrade_amount?: number }
   | { kind: 'custom'; handler: string; amount?: number; target?: string; params?: Record<string, unknown> };
 
 /** 生命周期钩子字段名（与 CardDef 上的可选 EffectDef[] 字段一致） */
@@ -269,62 +273,150 @@ export { POWER_ZH };
 
 const PILE_ZH: Record<string, string> = { draw: '抽牌堆', hand: '手牌', discard: '弃牌堆' };
 
-/** 按打出效果生成中/英描述（钩子与 custom 走字面文本）；无打出效果时返回 null */
-export function composeDescription(card: CardDef): { zhs: string; eng: string } | null {
+/** 参与升级数值编辑的打出效果种类（custom 的数值语义由处理器定义，不参与） */
+export const AMOUNT_KINDS: EffectDef['kind'][] = [
+  'damage', 'block', 'draw', 'energy', 'heal', 'discard', 'exhaust',
+  'gold', 'lose_hp', 'max_hp', 'power', 'spawn', 'summon',
+];
+
+/** 打出效果 → 描述占位符变量基名（与 Runtime SfVarNaming.BaseName 一致；
+ *  gold/spawn/summon 的描述带措辞不走占位符，但仍建变量可升级） */
+const VAR_BASE: Partial<Record<EffectDef['kind'], string>> = {
+  damage: 'Damage', block: 'Block', draw: 'Cards', energy: 'Energy', heal: 'Heal',
+  lose_hp: 'LoseHp', max_hp: 'MaxHp', discard: 'Discard', exhaust: 'Exhaust',
+};
+
+/** 效果清单第 i 条的变量名：同种类第 n 条加序号后缀（Damage/Damage2…）。
+ *  必须与 Runtime SfVarNaming.Name 同规则——占位符才能解析到对应变量。 */
+function effectVarName(list: EffectDef[], i: number): string | null {
+  const base = VAR_BASE[list[i].kind];
+  if (!base) return null;
+  let seen = 0;
+  for (let j = 0; j <= i; j++) if (list[j].kind === list[i].kind) seen++;
+  return seen === 1 ? base : base + seen;
+}
+
+/** 单条效果的描述句。varName 非空时数值走 {占位符}（游戏内升级后自动更新），
+ *  否则字面值（钩子效果、gold/spawn/summon 等带措辞的句子——改数值需手改描述）。 */
+function effectSentence(fx: EffectDef, varName: string | null): { zhs: string; eng: string } {
+  const num = (v: string | null, literal: number) => (v ? `{${v}}` : `${literal}`);
+  switch (fx.kind) {
+    case 'damage': {
+      const n = num(varName, fx.amount);
+      return { zhs: `造成 ${n} 点伤害。`, eng: `Deal ${n} damage.` };
+    }
+    case 'block': {
+      const n = num(varName, fx.amount);
+      return { zhs: `获得 ${n} 点格挡。`, eng: `Gain ${n} Block.` };
+    }
+    case 'draw': {
+      const n = num(varName, fx.amount);
+      return { zhs: `抽 ${n} 张牌。`, eng: `Draw ${n} card(s).` };
+    }
+    case 'energy': {
+      const n = num(varName, fx.amount);
+      return { zhs: `获得 ${n} 点能量。`, eng: `Gain ${n} Energy.` };
+    }
+    case 'heal': {
+      const n = num(varName, fx.amount);
+      return { zhs: `回复 ${n} 点生命。`, eng: `Heal ${n} HP.` };
+    }
+    case 'discard': {
+      const n = num(varName, fx.amount);
+      return { zhs: `随机弃置 ${n} 张手牌。`, eng: `Discard ${n} random card(s).` };
+    }
+    case 'exhaust': {
+      const n = num(varName, fx.amount);
+      return { zhs: `随机消耗 ${n} 张手牌。`, eng: `Exhaust ${n} random card(s).` };
+    }
+    case 'lose_hp': {
+      const n = num(varName, fx.amount);
+      return { zhs: `失去 ${n} 点生命。`, eng: `Lose ${n} HP.` };
+    }
+    case 'max_hp': {
+      const n = num(varName, fx.amount);
+      return { zhs: `生命上限 +${n}。`, eng: `Gain ${n} Max HP.` };
+    }
+    case 'gold': {
+      // 带得失措辞，用字面值（变量仍存在，升级后需手改描述）
+      const a = fx.amount;
+      return a >= 0
+        ? { zhs: `获得 ${a} 金币。`, eng: `Gain ${a} gold.` }
+        : { zhs: `失去 ${-a} 金币。`, eng: `Lose ${-a} gold.` };
+    }
+    case 'power': {
+      const zh = POWER_ZH[fx.power] ?? fx.power;
+      // 目标措辞随 fx.target 分流（官方句式：全体=「给予所有敌人N层X」/Apply N X to ALL enemies，
+      // 自身=「获得N层X」/Gain N X，打出指定目标=「给予N层X」）
+      if (fx.target === 'all_enemies') {
+        return { zhs: `给予所有敌人 ${fx.amount} 层${zh}。`, eng: `Apply ${fx.amount} ${fx.power} to ALL enemies.` };
+      }
+      if (fx.target === 'self') {
+        return { zhs: `获得 ${fx.amount} 层${zh}。`, eng: `Gain ${fx.amount} ${fx.power}.` };
+      }
+      return { zhs: `给予 ${fx.amount} 层${zh}。`, eng: `Apply ${fx.amount} ${fx.power}.` };
+    }
+    case 'spawn': {
+      const pile = PILE_ZH[fx.pile ?? 'draw'] ?? '抽牌堆';
+      return {
+        zhs: `将 ${Math.max(1, fx.amount)} 张「${fx.card_entry || '?'}」置入${pile}。`,
+        eng: `Put ${Math.max(1, fx.amount)} ${fx.card_entry || '?'} into your ${fx.pile ?? 'draw'} pile.`,
+      };
+    }
+    case 'summon': {
+      const zh = MONSTER_ZH[fx.monster] ?? fx.monster;
+      const n = Math.max(1, fx.amount);
+      const hp = fx.hp && fx.hp > 0 ? (n > 1 ? `（每只 ${fx.hp} 点生命）` : `（${fx.hp} 点生命）`) : '';
+      return {
+        zhs: n > 1 ? `召唤 ${n} 只「${zh}」${hp}。` : `召唤「${zh}」${hp}。`,
+        eng: n > 1
+          ? `Summon ${n} ${fx.monster}s${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP each` : ''}.`
+          : `Summon a ${fx.monster}${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP` : ''}.`,
+      };
+    }
+    case 'custom':
+      return { zhs: `【${fx.handler || '自定义效果'}】`, eng: `[custom:${fx.handler || '?'}]` };
+  }
+}
+
+/** 效果清单 → 多行描述；useVars=true（打出效果）时数值型种类用变量占位符 */
+function composeListDescription(list: EffectDef[], useVars: boolean): { zhs: string; eng: string } | null {
   const z: string[] = [];
   const e: string[] = [];
-  for (const fx of card.effects) {
-    switch (fx.kind) {
-      case 'damage': z.push('造成 {Damage} 点伤害。'); e.push('Deal {Damage} damage.'); break;
-      case 'block': z.push('获得 {Block} 点格挡。'); e.push('Gain {Block} Block.'); break;
-      case 'draw': z.push('抽 {Cards} 张牌。'); e.push('Draw {Cards} card(s).'); break;
-      case 'energy': z.push('获得 {Energy} 点能量。'); e.push('Gain {Energy} Energy.'); break;
-      case 'heal': z.push('回复 {Heal} 点生命。'); e.push('Heal {Heal} HP.'); break;
-      case 'gold':
-        z.push(fx.amount >= 0 ? `获得 ${fx.amount} 金币。` : `失去 ${-fx.amount} 金币。`);
-        e.push(`Gain ${fx.amount} gold.`);
-        break;
-      case 'discard': z.push(`随机弃置 ${fx.amount} 张手牌。`); e.push(`Discard ${fx.amount} random card(s).`); break;
-      case 'exhaust': z.push(`随机消耗 ${fx.amount} 张手牌。`); e.push(`Exhaust ${fx.amount} random card(s).`); break;
-      case 'lose_hp': z.push(`失去 ${fx.amount} 点生命。`); e.push(`Lose ${fx.amount} HP.`); break;
-      case 'max_hp': z.push(`生命上限 +${fx.amount}。`); e.push(`Gain ${fx.amount} Max HP.`); break;
-      case 'power': {
-        const zh = POWER_ZH[fx.power] ?? fx.power;
-        // 目标措辞随 fx.target 分流（官方句式：全体=「给予所有敌人N层X」/Apply N X to ALL enemies，
-        // 自身=「获得N层X」/Gain N X，打出指定目标=「给予N层X」）
-        if (fx.target === 'all_enemies') {
-          z.push(`给予所有敌人 ${fx.amount} 层${zh}。`);
-          e.push(`Apply ${fx.amount} ${fx.power} to ALL enemies.`);
-        } else if (fx.target === 'self') {
-          z.push(`获得 ${fx.amount} 层${zh}。`);
-          e.push(`Gain ${fx.amount} ${fx.power}.`);
-        } else {
-          z.push(`给予 ${fx.amount} 层${zh}。`);
-          e.push(`Apply ${fx.amount} ${fx.power}.`);
-        }
-        break;
-      }
-      case 'spawn': {
-        const pile = PILE_ZH[fx.pile ?? 'draw'] ?? '抽牌堆';
-        z.push(`将 ${Math.max(1, fx.amount)} 张「${fx.card_entry || '?'}」置入${pile}。`);
-        e.push(`Put ${Math.max(1, fx.amount)} ${fx.card_entry || '?'} into your ${fx.pile ?? 'draw'} pile.`);
-        break;
-      }
-      case 'summon': {
-        const zh = MONSTER_ZH[fx.monster] ?? fx.monster;
-        const n = Math.max(1, fx.amount);
-        const hp = fx.hp && fx.hp > 0 ? (n > 1 ? `（每只 ${fx.hp} 点生命）` : `（${fx.hp} 点生命）`) : '';
-        z.push(n > 1 ? `召唤 ${n} 只「${zh}」${hp}。` : `召唤「${zh}」${hp}。`);
-        e.push(n > 1
-          ? `Summon ${n} ${fx.monster}s${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP each` : ''}.`
-          : `Summon a ${fx.monster}${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP` : ''}.`);
-        break;
-      }
-      case 'custom': z.push(`【${fx.handler || '自定义效果'}】`); e.push(`[custom:${fx.handler || '?'}]`); break;
-    }
-  }
+  list.forEach((fx, i) => {
+    const s = effectSentence(fx, useVars ? effectVarName(list, i) : null);
+    z.push(s.zhs);
+    e.push(s.eng);
+  });
   if (z.length === 0) return null;
   return { zhs: z.join('\n'), eng: e.join('\n') };
+}
+
+/** 按打出效果生成中/英描述（占位符自动对应数值变量）；无打出效果时返回 null */
+export function composeDescription(card: CardDef): { zhs: string; eng: string } | null {
+  return composeListDescription(card.effects, true);
+}
+
+/** 钩子触发的描述前缀（官方风格短语，en 尾带空格） */
+const TRIGGER_PREFIX: Record<HookField, { zhs: string; eng: string }> = {
+  on_draw: { zhs: '抽到时，', eng: 'When drawn, ' },
+  on_discard: { zhs: '被弃置时，', eng: 'When discarded, ' },
+  on_exhaust: { zhs: '被消耗时，', eng: 'When exhausted, ' },
+  on_enter_combat: { zhs: '战斗开始时，', eng: 'At combat start, ' },
+  on_turn_end_in_hand: { zhs: '回合结束时若在手中，', eng: 'At turn end while in hand, ' },
+};
+
+/** 钩子效果 → 描述句（字面数值 + 每行带触发时机前缀）；清单为空返回 null。
+ *  供钩子页签的「按效果生成描述」追加到卡面文本。 */
+export function composeHookDescription(trigger: HookField, list: EffectDef[]): { zhs: string; eng: string } | null {
+  if (list.length === 0) return null;
+  const body = composeListDescription(list, false);
+  if (!body) return null;
+  const p = TRIGGER_PREFIX[trigger];
+  return {
+    zhs: body.zhs.split('\n').map((l) => p.zhs + l).join('\n'),
+    eng: body.eng.split('\n').map((l) => p.eng + l).join('\n'),
+  };
 }
 
 /** 新建卡牌模板：两三下点击得到一张能进游戏的卡，再改数值即可 */

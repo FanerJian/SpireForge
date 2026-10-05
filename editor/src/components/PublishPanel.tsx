@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, pickDirectory, pickUploaderExe } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
-import { grantEntry } from '../lib/types';
+import { grantEntry, OFFICIAL_RUNTIME_WORKSHOP_ID } from '../lib/types';
 
 function SectionTitle({ text }: { text: string }) {
   return (
@@ -19,7 +19,11 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
   const { meta, cards, settings, showToast, refreshSettings, persistAll, updateMeta, reloadMeta } = useStore();
   const t = useT();
   const [version, setVersion] = useState(meta?.last_version ?? '0.1.0');
-  const [runtimeDep, setRuntimeDep] = useState(meta?.runtime_workshop_id?.toString() ?? '');
+  // Runtime 依赖 id：官方前置自动预填（新项目在创建时已写入 meta；旧项目回落官方值），
+  // 用户只需在用第三方 Runtime 分叉时改填
+  const [runtimeDep, setRuntimeDep] = useState(
+    meta?.runtime_workshop_id?.toString() ?? String(OFFICIAL_RUNTIME_WORKSHOP_ID),
+  );
   const [issues, setIssues] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string>('');
@@ -238,13 +242,31 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
               <span className="mb-1 block text-xs font-medium text-slate-400">
                 {t('pub.runtimeDep')}
               </span>
-              <input
-                value={runtimeDep}
-                onChange={(e) => setRuntimeDep(e.target.value.replace(/\D/g, ''))}
-                placeholder={t('pub.runtimeDepPh')}
-                className={inputCls + ' font-mono'}
-              />
-              {!runtimeDepId && (
+              <div className="flex items-center gap-2">
+                <input
+                  value={runtimeDep}
+                  onChange={(e) => setRuntimeDep(e.target.value.replace(/\D/g, ''))}
+                  placeholder={t('pub.runtimeDepPh')}
+                  className={inputCls + ' font-mono'}
+                />
+                {runtimeDepId !== OFFICIAL_RUNTIME_WORKSHOP_ID && (
+                  <button
+                    onClick={() => setRuntimeDep(String(OFFICIAL_RUNTIME_WORKSHOP_ID))}
+                    className="shrink-0 whitespace-nowrap text-[11px] text-sky-300/80 underline hover:text-sky-200"
+                  >
+                    {t('pub.runtimeDepReset')}
+                  </button>
+                )}
+              </div>
+              {runtimeDepId === OFFICIAL_RUNTIME_WORKSHOP_ID ? (
+                <span className="mt-1 block text-[11px] text-emerald-400/80">
+                  {t('pub.runtimeDepAuto', { id: OFFICIAL_RUNTIME_WORKSHOP_ID })}
+                </span>
+              ) : runtimeDepId ? (
+                <span className="mt-1 block text-[11px] text-slate-500">
+                  {t('pub.runtimeDepCustom')}
+                </span>
+              ) : (
                 <span className="mt-1 block text-[11px] text-amber-400/80">
                   {t('pub.runtimeDepWarn')}
                 </span>

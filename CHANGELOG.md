@@ -1,5 +1,15 @@
 # 更新记录
 
+## 0.1.3
+
+- 修复：「生成卡牌」效果在战斗中打出时静默无效（游戏日志报 `effect spawn failed on play: Object reference not set to an instance of an object.`）——生成卡现在走 `ICombatState.CreateCard` 正规配方（登记 Owner 进战斗状态，与 ForgeCmd/DualWield 同款），此前裸克隆没有 Owner，游戏内部加堆时直接空引用。所有角色受此影响，观者等 Mod 角色尤其常见。
+- 升级数值全面开放：全部内建效果（失去生命/生成卡牌/召唤/金币/弃牌/消耗/施加/上限等）都可设置「升级 +」增量——升级时对绑定变量 `UpgradeValueBy`，打出时按变量取实际数值。旧卡包的五通道 `upgrades`（伤害/格挡/抽牌/能量/回复）继续兼容，效果上新增的 `upgrade_amount` 字段优先。
+- 修复：同一张卡添加两条同种类效果（如两个伤害）会导致游戏建卡时 `DynamicVarSet` 重复键异常——每个效果现在绑定唯一命名变量（`Damage`/`Damage2`/…），描述占位符同规则可分别引用。
+- 描述自动生成覆盖全部触发时机：抽到时/被弃时/被消耗时/战斗开始时/回合末在手也有「✨ 追加到卡面描述」，生成句子带触发时机前缀，追加而非覆盖。
+- 打出效果的描述占位符扩展：失去生命/上限/弃牌/消耗等生成 `{LoseHp}` `{MaxHp}` 等占位符，升级后游戏内数值自动更新。
+- 发布卡包不再需要手输 Runtime 工坊 id：官方前置（SpireForge Runtime）自动预填并写入新项目默认依赖，仅第三方 Runtime 分叉需要改填，一键可恢复官方默认。
+- SpireForge Runtime 更新至 0.1.4（生成卡牌修复 + 全种类升级变量）。
+
 ## 0.1.2
 
 - 效果下拉可读取 Mod 内容：Runtime 启动后把游戏内全部已加载的力量/怪物/卡牌（原版 + 所有已启用 Mod）导出到 `spireforge-catalog.json`，编辑器合并展示——Mod 角色的 buff、Mod 怪物、Mod 卡牌带 `MOD` 徽章进入下拉框，装/换 Mod 后重启游戏进一次主菜单、回到编辑器即自动刷新。

@@ -210,10 +210,10 @@ fn import_object(v: Value, _outer_notes: &mut Vec<String>) -> Result<Partial, St
             if let Some(kind) = e.get("kind").or_else(|| e.get("type")).and_then(|k| k.as_str()) {
                 let amount = e.get("amount").or_else(|| e.get("value")).and_then(|a| a.as_f64()).unwrap_or(0.0);
                 match kind.to_ascii_lowercase().as_str() {
-                    "damage" => effects.push(EffectDef::Damage { amount, props: vec!["Move".into()], target: None }),
-                    "block" => effects.push(EffectDef::Block { amount, props: vec!["Move".into()] }),
-                    "draw" | "cards" => effects.push(EffectDef::Draw { amount: amount as i64 }),
-                    "energy" => effects.push(EffectDef::Energy { amount }),
+                    "damage" => effects.push(EffectDef::Damage { amount, props: vec!["Move".into()], target: None, upgrade_amount: 0.0 }),
+                    "block" => effects.push(EffectDef::Block { amount, props: vec!["Move".into()], upgrade_amount: 0.0 }),
+                    "draw" | "cards" => effects.push(EffectDef::Draw { amount: amount as i64, upgrade_amount: 0.0 }),
+                    "energy" => effects.push(EffectDef::Energy { amount, upgrade_amount: 0.0 }),
                     // 未知 kind 一律保留为自定义效果（Runtime 端转交 SfEffects 注册表）
                     other => {
                         let params = e.get("params").and_then(|p| p.as_object()).cloned();
@@ -231,13 +231,13 @@ fn import_object(v: Value, _outer_notes: &mut Vec<String>) -> Result<Partial, St
         }
     } else {
         if let Some(n) = pick_num(&v, &["damage", "dmg"]) {
-            effects.push(EffectDef::Damage { amount: n, props: vec!["Move".into()], target: None });
+            effects.push(EffectDef::Damage { amount: n, props: vec!["Move".into()], target: None, upgrade_amount: 0.0 });
         }
         if let Some(n) = pick_num(&v, &["block", "blockAmount"]) {
-            effects.push(EffectDef::Block { amount: n, props: vec!["Move".into()] });
+            effects.push(EffectDef::Block { amount: n, props: vec!["Move".into()], upgrade_amount: 0.0 });
         }
         if let Some(n) = pick_num(&v, &["draw", "drawCards", "cards"]) {
-            effects.push(EffectDef::Draw { amount: n as i64 });
+            effects.push(EffectDef::Draw { amount: n as i64, upgrade_amount: 0.0 });
         }
         if !effects.is_empty() {
             notes.push("效果来自平铺字段推断（damage/block/draw），请核对".into());

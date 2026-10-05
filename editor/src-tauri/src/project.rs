@@ -133,6 +133,8 @@ pub fn create_project(root: &str, pack_id: &str, name: &str, author: &str) -> Re
         pack_id: pack_id.into(),
         name: name.into(),
         author: author.into(),
+        // 卡包离不开 Runtime 前置：新项目默认依赖官方 Runtime，用户零填写
+        runtime_workshop_id: Some(crate::model::OFFICIAL_RUNTIME_WORKSHOP_ID),
         ..Default::default()
     };
     write_meta(root, &meta)

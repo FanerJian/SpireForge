@@ -66,6 +66,11 @@ pub struct LocText {
     pub zhs: String,
 }
 
+/// 官方 SpireForge Runtime 的创意工坊 id（编辑器自带并自动安装的前置 mod）。
+/// 卡包必须依赖 Runtime 才能加载，新项目默认写入此依赖；第三方 Runtime 分叉
+/// 可在发布面板改写。
+pub const OFFICIAL_RUNTIME_WORKSHOP_ID: u64 = 3812654552;
+
 /// 效果定义 —— 与 Runtime 的 SfEffect/SfEffectKind 一一对应；
 /// kind 不属于内建五种时由 Runtime 转交 SpireForge.Api.SfEffects 注册表
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +86,9 @@ pub enum EffectDef {
         /// 钩子上下文取敌：self / random_enemy / all_enemies（默认 random_enemy）
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
+        /// 升级增量（升级时对绑定变量 UpgradeValueBy）；缺省/0 = 回落 upgrades.* 旧通道
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 获得格挡（BlockVar）
     Block {
@@ -88,21 +96,33 @@ pub enum EffectDef {
         amount: f64,
         #[serde(default)]
         props: Vec<String>,
+        /// 升级增量；缺省/0 = 回落 upgrades.block 旧通道
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 抽牌（CardsVar）
     Draw {
         #[serde(default = "default_amount_int")]
         amount: i64,
+        /// 升级增量；缺省/0 = 回落 upgrades.draw 旧通道
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 获得能量
     Energy {
         #[serde(default = "default_amount")]
         amount: f64,
+        /// 升级增量；缺省/0 = 回落 upgrades.energy 旧通道
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 回复生命（HealVar）
     Heal {
         #[serde(default = "default_amount")]
         amount: f64,
+        /// 升级增量；缺省/0 = 回落 upgrades.heal 旧通道
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 自定义效果：handler 必须由某个已加载 mod 通过
     /// SpireForge.Api.SfEffects.Register(kind, handler) 注册
@@ -123,26 +143,41 @@ pub enum EffectDef {
     Discard {
         #[serde(default = "default_amount")]
         amount: f64,
+        /// 升级增量
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 随机消耗 N 张手牌（需要玩家选择上下文）
     Exhaust {
         #[serde(default = "default_amount")]
         amount: f64,
+        /// 升级增量
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 获得金币（负数 = 失去）
     Gold {
         #[serde(default = "default_amount")]
         amount: f64,
+        /// 升级增量
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 失去生命（无来源、不可格挡、不受力量修正；需要玩家选择上下文）
     LoseHp {
         #[serde(default = "default_amount")]
         amount: f64,
+        /// 升级增量
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 上限增加（正数）
     MaxHp {
         #[serde(default = "default_amount")]
         amount: f64,
+        /// 升级增量
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 施加增益/减益：power = 效果名（Vulnerable/Poison/Strength/任意 PowerModel 子类名）；
     /// target: self = 给自己上（Strength/Focus 等增益），缺省 = 打出目标/钩子取敌
@@ -153,6 +188,9 @@ pub enum EffectDef {
         power: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
+        /// 升级增量
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 生成卡牌：card_entry = 目标卡 Entry（自定义或原版），pile = draw/hand/discard
     Spawn {
@@ -162,6 +200,9 @@ pub enum EffectDef {
         card_entry: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pile: Option<String>,
+        /// 升级增量（= 每次升级多生成的张数）
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
     /// 召唤敌人：monster = 怪物类名/Entry（DampCultist），hp = 指定生命（缺省用原生区间）
     Summon {
@@ -171,6 +212,9 @@ pub enum EffectDef {
         monster: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         hp: Option<f64>,
+        /// 升级增量（= 每次升级多召唤的只数）
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
     },
 }
 
@@ -179,6 +223,10 @@ fn default_amount() -> f64 {
 }
 fn default_amount_int() -> i64 {
     1
+}
+/// upgrade_amount 省略序列化：0 = 未单独设置（damage/block/draw/energy/heal 回落 upgrades.*）
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
 }
 
 /// 升级增量
