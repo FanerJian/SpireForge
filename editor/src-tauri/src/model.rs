@@ -217,13 +217,17 @@ pub enum EffectDef {
         upgrade_amount: f64,
     },
     /// 延迟效果：下 turns 回合的每回合开始/结束时执行内嵌 effects 清单
-    /// （Runtime 用 SfDelayedPower 承载；timing = turn_end（默认）/ turn_start；
+    /// （every_turn=false 改为等 turns 回合后仅在最后一次时机触发一次；
+    /// Runtime 用 SfDelayedPower 承载；timing = turn_end（默认）/ turn_start；
     /// 内嵌清单语法与打出效果一致，目标语义同钩子，可再嵌套 delayed）
     Delayed {
         #[serde(default = "default_turns")]
         turns: i64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         timing: Option<String>,
+        /// true（缺省）= 每回合触发；false = 仅最后一回合触发一次（显式 false 才落盘）
+        #[serde(default = "default_true", skip_serializing_if = "is_true")]
+        every_turn: bool,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         effects: Vec<EffectDef>,
     },
@@ -231,6 +235,14 @@ pub enum EffectDef {
 
 fn default_turns() -> i64 {
     1
+}
+
+fn default_true() -> bool {
+    true
+}
+/// every_turn 缺省 true：只有显式 false 才序列化（旧卡包 JSON 保持原样）
+fn is_true(v: &bool) -> bool {
+    *v
 }
 
 fn default_amount() -> f64 {

@@ -676,6 +676,7 @@ mod tests {
             EffectDef::Delayed {
                 turns: 2,
                 timing: Some("turn_end".into()),
+                every_turn: false,
                 effects: vec![EffectDef::Block {
                     amount: 4.0,
                     props: vec!["Move".into()],
@@ -705,6 +706,7 @@ mod tests {
         assert_eq!(v["effects"][8]["kind"], "delayed");
         assert_eq!(v["effects"][8]["turns"], json!(2));
         assert_eq!(v["effects"][8]["timing"], "turn_end");
+        assert_eq!(v["effects"][8]["every_turn"], json!(false));
         assert_eq!(v["effects"][8]["effects"][0]["kind"], "block");
         // 多池
         assert_eq!(v["pools"], json!(["ironclad", "silent"]));
@@ -729,8 +731,15 @@ mod tests {
         );
         assert!(matches!(
             &back.effects[8],
-            EffectDef::Delayed { turns: 2, timing: Some(t), effects }
+            EffectDef::Delayed { turns: 2, timing: Some(t), every_turn: false, effects }
             if t == "turn_end" && effects.len() == 1
+        ));
+        // 兼容旧卡包：every_turn/effects 全缺省（黑屏卡 card_1 的形态）必须照常解析
+        let legacy_delayed: EffectDef =
+            serde_json::from_value(json!({"kind": "delayed", "turns": 2, "timing": "turn_end"})).unwrap();
+        assert!(matches!(
+            legacy_delayed,
+            EffectDef::Delayed { every_turn: true, effects, .. } if effects.is_empty()
         ));
     }
 

@@ -44,7 +44,7 @@ export type EffectDef =
   | { kind: 'power'; amount: number; power: string; target?: string; upgrade_amount?: number }
   | { kind: 'spawn'; amount: number; card_entry: string; pile?: string; upgrade_amount?: number }
   | { kind: 'summon'; amount: number; monster: string; hp?: number; upgrade_amount?: number }
-  | { kind: 'delayed'; turns: number; timing?: 'turn_start' | 'turn_end'; effects: EffectDef[] }
+  | { kind: 'delayed'; turns: number; timing?: 'turn_start' | 'turn_end'; every_turn?: boolean; effects?: EffectDef[] }
   | { kind: 'custom'; handler: string; amount?: number; target?: string; params?: Record<string, unknown> };
 
 /** 生命周期钩子字段名（与 CardDef 上的可选 EffectDef[] 字段一致） */
@@ -400,17 +400,30 @@ function effectSentence(fx: EffectDef, varName: string | null): { zhs: string; e
     case 'custom':
       return { zhs: `【${fx.handler || '自定义效果'}】`, eng: `[custom:${fx.handler || '?'}]` };
     case 'delayed': {
-      // 内嵌效果走字面数值（变量属于打出效果，延迟执行不借用）
+      // 内嵌效果走字面数值（变量属于打出效果，延迟执行不借用）；
+      // effects 可缺失（删空内嵌后 Rust 端不落该字段，老卡包 JSON 里就是没有）
       const n = Math.max(1, Math.round(fx.turns));
       const timingZh = fx.timing === 'turn_start' ? '开始' : '结束';
       const timingEn = fx.timing === 'turn_start' ? 'start' : 'end';
-      const inner = fx.effects.map((f) => effectSentence(f, null));
+      const inner = (fx.effects ?? []).map((f) => effectSentence(f, null));
+      const zhBody = inner.map((s) => s.zhs).join('\n');
+      const enBody = inner.map((s) => s.eng).join('\n');
+      if (fx.every_turn === false) {
+        return {
+          zhs: inner.length
+            ? `打出后，${n} 回合后的回合${timingZh}时：\n${zhBody}`
+            : `打出后，${n} 回合后的回合${timingZh}时触发延迟效果。`,
+          eng: inner.length
+            ? `After you play this, ${n} turn(s) from now, at the ${timingEn} of that turn:\n${enBody}`
+            : `After you play this, ${n} turn(s) from now, at the ${timingEn} of that turn, trigger the delayed effect.`,
+        };
+      }
       return {
         zhs: inner.length
-          ? `打出后，接下来 ${n} 个回合的每回合${timingZh}时：\n${inner.map((s) => s.zhs).join('\n')}`
+          ? `打出后，接下来 ${n} 个回合的每回合${timingZh}时：\n${zhBody}`
           : `打出后，接下来 ${n} 个回合的每回合${timingZh}时触发延迟效果。`,
         eng: inner.length
-          ? `After you play this, at the ${timingEn} of each of the next ${n} turn(s):\n${inner.map((s) => s.eng).join('\n')}`
+          ? `After you play this, at the ${timingEn} of each of the next ${n} turn(s):\n${enBody}`
           : `After you play this, at the ${timingEn} of each of the next ${n} turn(s), trigger the delayed effect.`,
       };
     }

@@ -269,6 +269,9 @@ const STRINGS: Record<string, L> = {
   'pp.delayedTiming': { zh: '触发时机', en: 'Timing' },
   'pp.delayedTurnEnd': { zh: '回合结束时', en: 'Turn end' },
   'pp.delayedTurnStart': { zh: '回合开始时', en: 'Turn start' },
+  'pp.delayedMode': { zh: '触发方式', en: 'Trigger mode' },
+  'pp.delayedEvery': { zh: '每回合都触发', en: 'Every turn' },
+  'pp.delayedFinal': { zh: '仅最后一回合（等 N 回合后一次）', en: 'Once, on the final turn' },
   'pp.delayedEmpty': { zh: '还没有内嵌效果，从下面添加', en: 'No nested effects yet — add one below' },
   'pp.delayedHint': { zh: '内嵌效果用字面数值（不参与升级/占位符）；打出当回合不触发，从下一回合开始计', en: 'Nested effects use literal values (no upgrade/placeholders); the play turn itself is skipped — counting starts next turn' },
   'pp.upgradeLiteralHint': { zh: '描述里是字面数值，升级后请手改描述', en: 'description uses literal numbers — update it manually after upgrading' },
@@ -448,7 +451,7 @@ export const EFFECT_META: Record<string, { label: L; varName: string; desc: L }>
   power: { label: { zh: '施加增益/减益', en: 'Apply power' }, varName: '', desc: { zh: '给目标施加所选效果（下拉含全部游戏效果官方中文名，也可输入任意 PowerModel 名）', en: 'Apply a power to the target (the dropdown lists every game power with its official Chinese name — or type any PowerModel name)' } },
   spawn: { label: { zh: '生成卡牌', en: 'Spawn card' }, varName: '', desc: { zh: '把一张卡（自定义或原版 Entry）加入抽牌堆/手牌/弃牌堆', en: 'Put a card (custom or vanilla Entry) into draw/hand/discard pile' } },
   summon: { label: { zh: '召唤敌人', en: 'Summon enemy' }, varName: '', desc: { zh: '在对面召唤一只怪物（下拉含全部游戏怪物官方中文译名；不填生命用原生值）', en: 'Summon a monster on the enemy side (the dropdown lists every game monster with its official Chinese name; leave HP empty to use its native range)' } },
-  delayed: { label: { zh: '延迟·下几回合', en: 'Delayed (next N turns)' }, varName: '', desc: { zh: '打出后，接下来 N 个回合的每回合开始/结束时执行内嵌效果', en: 'After playing, run the nested effects at the start/end of each of the next N turns' } },
+  delayed: { label: { zh: '延迟·下几回合', en: 'Delayed (next N turns)' }, varName: '', desc: { zh: '打出后，接下来 N 个回合的每回合开始/结束时执行内嵌效果；触发方式也可改为等 N 回合后仅触发一次', en: 'After playing, run the nested effects at the start/end of each of the next N turns — or only once, on the final turn' } },
   custom: { label: { zh: '自定义', en: 'Custom' }, varName: '', desc: { zh: '行为由处理器 mod 定义（SfEffects 注册表）', en: 'Behavior defined by a handler mod (SfEffects registry)' } },
 };
 

@@ -15,6 +15,8 @@ namespace SpireForge.Runtime;
 /// <summary>
 /// 「下几回合」延迟效果的承载力量：打出 delayed 效果时施加给玩家，剩余回合数即层数，
 /// 每回合按 timing 触发内嵌效果清单并减层（到 0 由 ShouldRemoveDueToAmount 自动移除）。
+/// EveryTurn=false 时改为静默倒计时，仅在最后一层（Amount==1，减层即移除）的那次时机触发，
+/// =「等 N 回合后触发一次」。
 /// 内嵌效果挂在力量实例上（ConditionalWeakTable，不阻止 GC）；Apply 传入的是本实例
 /// （不克隆），标记先于施加。InstanceType=Instanced：重复打出各建各的实例，互不叠加，
 /// 各自携带各自的内嵌清单与倒计时。
@@ -27,6 +29,7 @@ public sealed class SfDelayedPower : PowerModel
     {
         public required CardModel Card;
         public required List<SfEffect> Effects;
+        public required bool EveryTurn;
     }
 
     private static readonly ConditionalWeakTable<PowerModel, Payload> Payloads = new();
@@ -67,13 +70,13 @@ public sealed class SfDelayedPower : PowerModel
                 {
                     [LocKey + ".title"] = "Delayed effect",
                     [LocKey + ".description"] =
-                        "Trigger the applying card's delayed effect each turn. Turns remaining: [blue]{Amount}[/blue].",
+                        "Triggers the applying card's delayed effect. Turns remaining: [blue]{Amount}[/blue].",
                 }
                 : new Dictionary<string, string>
                 {
                     [LocKey + ".title"] = "延迟效果",
                     [LocKey + ".description"] =
-                        "每回合触发施加此效果的卡牌的延迟效果。剩余 [blue]{Amount}[/blue] 回合。",
+                        "触发施加此效果的卡牌的延迟效果。剩余 [blue]{Amount}[/blue] 回合。",
                 };
             LocManager.Instance.GetTable("powers").MergeWith(entries);
         }
@@ -87,16 +90,16 @@ public sealed class SfDelayedPower : PowerModel
     /// ctx 可为 null（on_enter_combat 调度场景），施加动作本身用 Throwing 上下文兜底。</summary>
     public static async Task Schedule(
         ICombatState combat, CardModel source, PlayerChoiceContext? ctx,
-        List<SfEffect> effects, int turns, string timing)
+        List<SfEffect> effects, int turns, string timing, bool everyTurn)
     {
         var template = ModelDb.Power<SfDelayedPower>().ToMutable();
-        Payloads.Add(template, new Payload { Card = source, Effects = effects });
+        Payloads.Add(template, new Payload { Card = source, Effects = effects, EveryTurn = everyTurn });
         EnsureLoc();
         await PowerCmd.Apply(
             ctx ?? new ThrowingPlayerChoiceContext(), template, source.Owner.Creature,
             turns, null, source, false);
         MegaCrit.Sts2.Core.Logging.Log.Info(
-            $"SPIREFORGE: delayed effect scheduled on {source.Id} ({turns} turn(s), {timing})");
+            $"SPIREFORGE: delayed effect scheduled on {source.Id} ({turns} turn(s), {timing}, every_turn={everyTurn})");
     }
 
     public override async Task BeforeSideTurnStart(
@@ -123,6 +126,12 @@ public sealed class SfDelayedPower : PowerModel
     {
         if (!Payloads.TryGetValue(this, out var payload) || payload == null)
         {
+            return;
+        }
+        // every_turn=false：只在最后一层（减层即移除）的那次时机触发，其余回合静默倒计时
+        if (!payload.EveryTurn && Amount > 1)
+        {
+            await PowerCmd.Decrement(this);
             return;
         }
         Flash();

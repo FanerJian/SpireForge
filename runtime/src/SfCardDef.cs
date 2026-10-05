@@ -95,6 +95,10 @@ public sealed class SfEffect
     [JsonPropertyName("timing")]
     public string Timing { get; set; } = "";
 
+    /// <summary>延迟效果（delayed）：true（缺省）= 每回合触发内嵌清单；false = 等 turns 回合后仅在最后一次时机触发一次。</summary>
+    [JsonPropertyName("every_turn")]
+    public bool EveryTurn { get; set; } = true;
+
     /// <summary>延迟效果（delayed）：逐回合执行的内嵌效果清单（语法与打出效果一致，
     /// 目标语义同钩子——self/random_enemy/all_enemies；可再嵌套 delayed）。</summary>
     [JsonPropertyName("effects")]

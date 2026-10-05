@@ -613,7 +613,9 @@ function EffectsTab({ card }: { card: CardDef }) {
         </div>
       )}
       {list.map((e, i) => {
-        const meta = EFFECT_META[e.kind];
+        // 未知 kind 兜底（手改 JSON / 新版本数据）：不兜底会整树崩溃黑屏
+        const meta = EFFECT_META[e.kind]
+          ?? { label: { zh: e.kind, en: e.kind }, varName: '', desc: { zh: '未知效果种类（可能来自更新版本的数据）', en: 'Unknown effect kind (data from a newer version?)' } };
         return (
           <div key={i} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
             <div className="mb-2 flex items-center justify-between">
@@ -631,10 +633,11 @@ function EffectsTab({ card }: { card: CardDef }) {
             {e.kind === 'delayed' ? (
               (() => {
                 const de = e as Extract<EffectDef, { kind: 'delayed' }>;
+                const innerList = de.effects ?? []; // 删空内嵌后 Rust 端不落 effects 字段，老卡包里就是没有
                 const setInner = (j: number, p: Partial<EffectDef>) =>
-                  patch(i, { effects: de.effects.map((x, idx) => (idx === j ? ({ ...x, ...p } as EffectDef) : x)) } as Partial<EffectDef>);
+                  patch(i, { effects: innerList.map((x, idx) => (idx === j ? ({ ...x, ...p } as EffectDef) : x)) } as Partial<EffectDef>);
                 const removeInner = (j: number) =>
-                  patch(i, { effects: de.effects.filter((_, idx) => idx !== j) } as Partial<EffectDef>);
+                  patch(i, { effects: innerList.filter((_, idx) => idx !== j) } as Partial<EffectDef>);
                 const addInner = (k: string) => {
                   const def: EffectDef | null =
                     k === 'damage' ? { kind: 'damage', amount: 6, props: ['Move'] }
@@ -646,7 +649,7 @@ function EffectsTab({ card }: { card: CardDef }) {
                     : k === 'lose_hp' ? { kind: 'lose_hp', amount: 3 }
                     : k === 'power' ? { kind: 'power', amount: 2, power: 'Vulnerable' }
                     : null;
-                  if (def) patch(i, { effects: [...de.effects, def] } as Partial<EffectDef>);
+                  if (def) patch(i, { effects: [...innerList, def] } as Partial<EffectDef>);
                 };
                 return (
                   <div className="mt-2 space-y-2">
@@ -666,13 +669,22 @@ function EffectsTab({ card }: { card: CardDef }) {
                         <option value="turn_end">{t('pp.delayedTurnEnd')}</option>
                         <option value="turn_start">{t('pp.delayedTurnStart')}</option>
                       </select>
+                      <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.delayedMode')}</span>
+                      <select
+                        className={selectCls + ' w-44'}
+                        value={de.every_turn === false ? 'final' : 'every'}
+                        onChange={(ev) => patch(i, { every_turn: ev.target.value === 'final' ? false : true } as Partial<EffectDef>)}
+                      >
+                        <option value="every">{t('pp.delayedEvery')}</option>
+                        <option value="final">{t('pp.delayedFinal')}</option>
+                      </select>
                     </div>
                     <div className="rounded-md border border-white/10 bg-black/20 p-2">
                       <div className="space-y-1.5">
-                        {de.effects.length === 0 && (
+                        {innerList.length === 0 && (
                           <div className="py-1 text-center text-[10px] text-slate-600">{t('pp.delayedEmpty')}</div>
                         )}
-                        {de.effects.map((inner, j) => (
+                        {innerList.map((inner, j) => (
                           <div key={j} className="flex flex-wrap items-center gap-2">
                             <span className="w-20 shrink-0 whitespace-nowrap text-[11px] text-slate-300">
                               {pick(EFFECT_META[inner.kind]?.label ?? { zh: inner.kind, en: inner.kind }, lang)}

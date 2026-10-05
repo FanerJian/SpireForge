@@ -299,7 +299,7 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": delayed has no combat state, skipped");
                     break;
                 }
-                await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing);
+                await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing, e.EveryTurn);
                 break;
             }
 
