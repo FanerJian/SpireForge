@@ -71,8 +71,25 @@ public abstract class SfCardBase : CardModel
 
     public override int MaxUpgradeLevel => TryDef()?.MaxUpgradeLevel ?? 1;
 
-    public override IEnumerable<CardKeyword> CanonicalKeywords =>
-        TryDef()?.KeywordEnums ?? Enumerable.Empty<CardKeyword>();
+    public override IEnumerable<CardKeyword> CanonicalKeywords
+    {
+        get
+        {
+            var def = TryDef();
+            if (def == null)
+            {
+                return Enumerable.Empty<CardKeyword>();
+            }
+            var kws = def.KeywordEnums;
+            // 负费用 = 不可打出（原版约定：Burn 等是 -1 费 + Unplayable 关键字，
+            // 只有费用游戏仍允许打出——这里按编辑器语义自动补关键字）
+            if (def.Cost < 0 && !kws.Contains(CardKeyword.Unplayable))
+            {
+                return kws.Concat([CardKeyword.Unplayable]);
+            }
+            return kws;
+        }
+    }
 
     public override CardMultiplayerConstraint MultiplayerConstraint =>
         (TryDef()?.Multiplayer) switch

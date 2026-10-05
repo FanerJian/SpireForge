@@ -44,6 +44,7 @@ export type EffectDef =
   | { kind: 'power'; amount: number; power: string; target?: string; upgrade_amount?: number }
   | { kind: 'spawn'; amount: number; card_entry: string; pile?: string; upgrade_amount?: number }
   | { kind: 'summon'; amount: number; monster: string; hp?: number; upgrade_amount?: number }
+  | { kind: 'delayed'; turns: number; timing?: 'turn_start' | 'turn_end'; effects: EffectDef[] }
   | { kind: 'custom'; handler: string; amount?: number; target?: string; params?: Record<string, unknown> };
 
 /** 生命周期钩子字段名（与 CardDef 上的可选 EffectDef[] 字段一致） */
@@ -273,11 +274,16 @@ export { POWER_ZH };
 
 const PILE_ZH: Record<string, string> = { draw: '抽牌堆', hand: '手牌', discard: '弃牌堆' };
 
-/** 参与升级数值编辑的打出效果种类（custom 的数值语义由处理器定义，不参与） */
+/** 参与升级数值编辑的打出效果种类（custom/delayed 的数值语义由内嵌效果或处理器定义，不参与） */
 export const AMOUNT_KINDS: EffectDef['kind'][] = [
   'damage', 'block', 'draw', 'energy', 'heal', 'discard', 'exhaust',
   'gold', 'lose_hp', 'max_hp', 'power', 'spawn', 'summon',
 ];
+
+/** 参与升级变量的旧五通道（effect.upgrade_amount 未设时回落；见 SfCardBase.OnUpgrade） */
+export const LEGACY_UPGRADE: Partial<Record<EffectDef['kind'], keyof Omit<UpgradeDef, 'keywords'>>> = {
+  damage: 'damage', block: 'block', draw: 'draw', energy: 'energy', heal: 'heal',
+};
 
 /** 打出效果 → 描述占位符变量基名（与 Runtime SfVarNaming.BaseName 一致；
  *  gold/spawn/summon 的描述带措辞不走占位符，但仍建变量可升级） */
@@ -294,6 +300,23 @@ function effectVarName(list: EffectDef[], i: number): string | null {
   let seen = 0;
   for (let j = 0; j <= i; j++) if (list[j].kind === list[i].kind) seen++;
   return seen === 1 ? base : base + seen;
+}
+
+/** 卡面预览的占位符变量表（CardPreview 用）：变量名 → 显示值。
+ *  勾选升级预览时显示「N+M」（M = per-effect upgrade_amount，未单独设置时回落旧五通道）。
+ *  之前只读 upgrades.* 旧通道——全种类升级改造后 per-effect 增量在预览里不生效（已修）。 */
+export function previewEffectVars(card: CardDef, upgraded: boolean): Record<string, string> {
+  const vars: Record<string, string> = {};
+  card.effects.forEach((e, i) => {
+    const name = effectVarName(card.effects, i);
+    if (!name) return;
+    const own = (e as { upgrade_amount?: number }).upgrade_amount;
+    const lk = LEGACY_UPGRADE[e.kind];
+    const up = own ?? (lk ? card.upgrades[lk] : 0);
+    const shown = String((e as { amount?: number }).amount ?? 0);
+    vars[name] = upgraded && up ? `${shown}+${up}` : shown;
+  });
+  return vars;
 }
 
 /** 单条效果的描述句。varName 非空时数值走 {占位符}（游戏内升级后自动更新），
@@ -376,6 +399,21 @@ function effectSentence(fx: EffectDef, varName: string | null): { zhs: string; e
     }
     case 'custom':
       return { zhs: `【${fx.handler || '自定义效果'}】`, eng: `[custom:${fx.handler || '?'}]` };
+    case 'delayed': {
+      // 内嵌效果走字面数值（变量属于打出效果，延迟执行不借用）
+      const n = Math.max(1, Math.round(fx.turns));
+      const timingZh = fx.timing === 'turn_start' ? '开始' : '结束';
+      const timingEn = fx.timing === 'turn_start' ? 'start' : 'end';
+      const inner = fx.effects.map((f) => effectSentence(f, null));
+      return {
+        zhs: inner.length
+          ? `打出后，接下来 ${n} 个回合的每回合${timingZh}时：\n${inner.map((s) => s.zhs).join('\n')}`
+          : `打出后，接下来 ${n} 个回合的每回合${timingZh}时触发延迟效果。`,
+        eng: inner.length
+          ? `After you play this, at the ${timingEn} of each of the next ${n} turn(s):\n${inner.map((s) => s.eng).join('\n')}`
+          : `After you play this, at the ${timingEn} of each of the next ${n} turn(s), trigger the delayed effect.`,
+      };
+    }
   }
 }
 

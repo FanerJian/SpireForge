@@ -383,33 +383,7 @@ pub fn preflight_with_pools(
             .chain(c.on_enter_combat.iter())
             .chain(c.on_turn_end_in_hand.iter());
         for fx in effect_lists {
-            match fx {
-                EffectDef::Custom { handler, .. } if handler.trim().is_empty() => {
-                    issues.push(format!(
-                        "卡 {} 的自定义效果未填处理器名（运行时会被跳过）",
-                        c.id
-                    ));
-                }
-                EffectDef::Power { power, .. } if power.trim().is_empty() => {
-                    issues.push(format!(
-                        "卡 {} 的施加效果未填力量名（运行时会跳过）",
-                        c.id
-                    ));
-                }
-                EffectDef::Spawn { card_entry, .. } if card_entry.trim().is_empty() => {
-                    issues.push(format!(
-                        "卡 {} 的生成效果未填卡牌 Entry（运行时会跳过）",
-                        c.id
-                    ));
-                }
-                EffectDef::Summon { monster, .. } if monster.trim().is_empty() => {
-                    issues.push(format!(
-                        "卡 {} 的召唤效果未填怪物名（运行时会跳过）",
-                        c.id
-                    ));
-                }
-                _ => {}
-            }
+            check_effect_refs(&c.id, fx, &mut issues);
         }
         if c.on_enter_combat
             .iter()
@@ -427,6 +401,44 @@ pub fn preflight_with_pools(
         }
     }
     issues
+}
+
+/// 单条效果的引用完整性（递归进 delayed 内嵌清单）；issues 由调用方收集
+fn check_effect_refs(card_id: &str, fx: &EffectDef, issues: &mut Vec<String>) {
+    match fx {
+        EffectDef::Custom { handler, .. } if handler.trim().is_empty() => {
+            issues.push(format!(
+                "卡 {card_id} 的自定义效果未填处理器名（运行时会被跳过）"
+            ));
+        }
+        EffectDef::Power { power, .. } if power.trim().is_empty() => {
+            issues.push(format!("卡 {card_id} 的施加效果未填力量名（运行时会跳过）"));
+        }
+        EffectDef::Spawn { card_entry, .. } if card_entry.trim().is_empty() => {
+            issues.push(format!(
+                "卡 {card_id} 的生成效果未填卡牌 Entry（运行时会跳过）"
+            ));
+        }
+        EffectDef::Summon { monster, .. } if monster.trim().is_empty() => {
+            issues.push(format!("卡 {card_id} 的召唤效果未填怪物名（运行时会跳过）"));
+        }
+        EffectDef::Delayed { turns, effects, .. } => {
+            if *turns < 1 {
+                issues.push(format!(
+                    "卡 {card_id} 的延迟效果持续回合数小于 1（不会触发）"
+                ));
+            }
+            if effects.is_empty() {
+                issues.push(format!(
+                    "卡 {card_id} 的延迟效果没有内嵌效果（不会触发）"
+                ));
+            }
+            for inner in effects {
+                check_effect_refs(card_id, inner, issues);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -661,6 +673,15 @@ mod tests {
                 hp: Some(13.0),
                 upgrade_amount: 0.0,
             },
+            EffectDef::Delayed {
+                turns: 2,
+                timing: Some("turn_end".into()),
+                effects: vec![EffectDef::Block {
+                    amount: 4.0,
+                    props: vec!["Move".into()],
+                    upgrade_amount: 0.0,
+                }],
+            },
         ];
         card.pools = vec!["ironclad".into(), "silent".into()];
         let v = serde_json::to_value(&card).unwrap();
@@ -680,6 +701,11 @@ mod tests {
         assert_eq!(v["effects"][7]["kind"], "summon");
         assert_eq!(v["effects"][7]["monster"], "DampCultist");
         assert_eq!(v["effects"][7]["hp"], json!(13.0));
+        // delayed：蛇形 kind + turns/timing/effects 透传（Runtime SfEffect 同名 JSON 字段）
+        assert_eq!(v["effects"][8]["kind"], "delayed");
+        assert_eq!(v["effects"][8]["turns"], json!(2));
+        assert_eq!(v["effects"][8]["timing"], "turn_end");
+        assert_eq!(v["effects"][8]["effects"][0]["kind"], "block");
         // 多池
         assert_eq!(v["pools"], json!(["ironclad", "silent"]));
         // 单池卡不序列化 pools（向后兼容）
@@ -701,6 +727,11 @@ mod tests {
         assert!(
             matches!(&back.effects[7], EffectDef::Summon { monster, hp: Some(h), .. } if monster == "DampCultist" && *h == 13.0)
         );
+        assert!(matches!(
+            &back.effects[8],
+            EffectDef::Delayed { turns: 2, timing: Some(t), effects }
+            if t == "turn_end" && effects.len() == 1
+        ));
     }
 
     #[test]

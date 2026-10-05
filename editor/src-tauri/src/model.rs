@@ -216,6 +216,21 @@ pub enum EffectDef {
         #[serde(default, skip_serializing_if = "is_zero_f64")]
         upgrade_amount: f64,
     },
+    /// 延迟效果：下 turns 回合的每回合开始/结束时执行内嵌 effects 清单
+    /// （Runtime 用 SfDelayedPower 承载；timing = turn_end（默认）/ turn_start；
+    /// 内嵌清单语法与打出效果一致，目标语义同钩子，可再嵌套 delayed）
+    Delayed {
+        #[serde(default = "default_turns")]
+        turns: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timing: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        effects: Vec<EffectDef>,
+    },
+}
+
+fn default_turns() -> i64 {
+    1
 }
 
 fn default_amount() -> f64 {

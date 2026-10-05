@@ -12,9 +12,9 @@ import {
 } from '../lib/i18n';
 import {
   cardEntry, composeDescription, composeHookDescription, effectsFromVanillaVars,
-  AMOUNT_KINDS,
+  AMOUNT_KINDS, LEGACY_UPGRADE,
   type CardDef, type CardType, type EffectDef, type HookField, type Pool,
-  type RuntimeCatalog, type TargetType, type UpgradeDef,
+  type RuntimeCatalog, type TargetType,
   type VanillaCatalog, type VanillaEntry,
 } from '../lib/types';
 import { POWERS } from '../lib/powers';
@@ -52,17 +52,49 @@ function useVanillaEntry(vanillaId: string | null | undefined): VanillaEntry | n
   return entry;
 }
 
-/** 参与升级变量的旧五通道（effect.upgrade_amount 未设时回落；见 SfCardBase.OnUpgrade） */
-const LEGACY_UPGRADE: Partial<Record<EffectDef['kind'], keyof Omit<UpgradeDef, 'keywords'>>> = {
-  damage: 'damage', block: 'block', draw: 'draw', energy: 'energy', heal: 'heal',
-};
-
 /** 需要玩家选择上下文的效果种类（on_enter_combat 不可用） */
 const NEEDS_CHOICE = ['damage', 'draw', 'lose_hp', 'power', 'discard', 'exhaust'];
 
 /** 效果目录分组：常用 / 进阶与扩展 */
 const CORE_KINDS = ['damage', 'block', 'draw', 'energy', 'heal'];
-const EXTRA_KINDS = ['power', 'discard', 'exhaust', 'gold', 'lose_hp', 'max_hp', 'spawn', 'summon', 'custom'];
+const EXTRA_KINDS = ['power', 'discard', 'exhaust', 'gold', 'lose_hp', 'max_hp', 'spawn', 'summon', 'delayed', 'custom'];
+
+/** 延迟效果内嵌清单允许的种类（不带目标指定的核心种类 + 钩子取敌的伤害/失去生命/施加） */
+const DELAYED_INNER_KINDS: EffectDef['kind'][] = [
+  'damage', 'block', 'draw', 'energy', 'heal', 'gold', 'lose_hp', 'power',
+];
+
+/** 数值输入：编辑期间是草稿态，允许清空/随意改写，输入合法数字即时提交；
+ *  空值失焦回落已提交值（allowEmpty 时提交 undefined）。之前"清空不提交"导致
+ *  占位数字删不掉，全选重输是唯一改法，不好用（用户反馈）。 */
+function NumInput({ value, onCommit, allowEmpty, width, className }: {
+  value: number | undefined;
+  onCommit: (v: number | undefined) => void;
+  allowEmpty?: boolean;
+  width?: string;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const committed = value == null ? '' : String(value);
+  return (
+    <input
+      type="number"
+      className={(className ?? inputCls) + ' ' + (width ?? 'w-24')}
+      value={draft ?? committed}
+      onChange={(ev) => {
+        const s = ev.target.value;
+        setDraft(s);
+        if (s.trim() === '') {
+          if (allowEmpty) onCommit(undefined);
+          return;
+        }
+        const n = Number(s);
+        if (!Number.isNaN(n)) onCommit(n);
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
 
 /** 「按效果生成描述」：composeDescription 的 UI 包装（有内容先确认） */
 function useGenDescription() {
@@ -526,6 +558,7 @@ function EffectsTab({ card }: { card: CardDef }) {
       : kind === 'power' ? { kind: 'power', amount: 2, power: 'Vulnerable' }
       : kind === 'spawn' ? { kind: 'spawn', amount: 1, card_entry: '' }
       : kind === 'summon' ? { kind: 'summon', amount: 1, monster: 'DampCultist', hp: 13 }
+      : kind === 'delayed' ? { kind: 'delayed', turns: 2, timing: 'turn_end', effects: [{ kind: 'block', amount: 4, props: ['Move'] }] }
       : kind === 'custom' ? { kind: 'custom', handler: '' }
       : null;
     if (def) setList([...list, def]);
@@ -595,7 +628,119 @@ function EffectsTab({ card }: { card: CardDef }) {
               {pick(meta.desc, lang)}{isPlay && meta.varName ? <> · {`{${meta.varName}}`}</> : null}
             </div>
 
-            {e.kind === 'custom' ? (
+            {e.kind === 'delayed' ? (
+              (() => {
+                const de = e as Extract<EffectDef, { kind: 'delayed' }>;
+                const setInner = (j: number, p: Partial<EffectDef>) =>
+                  patch(i, { effects: de.effects.map((x, idx) => (idx === j ? ({ ...x, ...p } as EffectDef) : x)) } as Partial<EffectDef>);
+                const removeInner = (j: number) =>
+                  patch(i, { effects: de.effects.filter((_, idx) => idx !== j) } as Partial<EffectDef>);
+                const addInner = (k: string) => {
+                  const def: EffectDef | null =
+                    k === 'damage' ? { kind: 'damage', amount: 6, props: ['Move'] }
+                    : k === 'block' ? { kind: 'block', amount: 5, props: ['Move'] }
+                    : k === 'draw' ? { kind: 'draw', amount: 1 }
+                    : k === 'energy' ? { kind: 'energy', amount: 1 }
+                    : k === 'heal' ? { kind: 'heal', amount: 3 }
+                    : k === 'gold' ? { kind: 'gold', amount: 10 }
+                    : k === 'lose_hp' ? { kind: 'lose_hp', amount: 3 }
+                    : k === 'power' ? { kind: 'power', amount: 2, power: 'Vulnerable' }
+                    : null;
+                  if (def) patch(i, { effects: [...de.effects, def] } as Partial<EffectDef>);
+                };
+                return (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTurns')}</span>
+                      <NumInput
+                        width="w-16"
+                        value={de.turns}
+                        onCommit={(n) => patch(i, { turns: Math.max(1, Math.round(n ?? 1)) } as Partial<EffectDef>)}
+                      />
+                      <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTiming')}</span>
+                      <select
+                        className={selectCls + ' w-28'}
+                        value={de.timing ?? 'turn_end'}
+                        onChange={(ev) => patch(i, { timing: ev.target.value } as Partial<EffectDef>)}
+                      >
+                        <option value="turn_end">{t('pp.delayedTurnEnd')}</option>
+                        <option value="turn_start">{t('pp.delayedTurnStart')}</option>
+                      </select>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-black/20 p-2">
+                      <div className="space-y-1.5">
+                        {de.effects.length === 0 && (
+                          <div className="py-1 text-center text-[10px] text-slate-600">{t('pp.delayedEmpty')}</div>
+                        )}
+                        {de.effects.map((inner, j) => (
+                          <div key={j} className="flex flex-wrap items-center gap-2">
+                            <span className="w-20 shrink-0 whitespace-nowrap text-[11px] text-slate-300">
+                              {pick(EFFECT_META[inner.kind]?.label ?? { zh: inner.kind, en: inner.kind }, lang)}
+                            </span>
+                            {inner.kind !== 'custom' && inner.kind !== 'delayed' && 'amount' in inner && (
+                              <NumInput
+                                width="w-16"
+                                value={(inner as { amount: number }).amount}
+                                onCommit={(n) => setInner(j, { amount: n ?? 0 } as Partial<EffectDef>)}
+                              />
+                            )}
+                            {inner.kind === 'power' && (
+                              <>
+                                <Combobox
+                                  value={(inner as { power: string }).power}
+                                  items={powerCombo}
+                                  onChange={(v) => setInner(j, { power: v } as Partial<EffectDef>)}
+                                  fallbackDisplay={(inner as { power: string }).power}
+                                  searchPlaceholder={t('pp.powerSearch')}
+                                  allowRaw
+                                  rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+                                />
+                                <select
+                                  className={selectCls + ' w-32'}
+                                  value={(inner as { target?: string }).target ?? 'random_enemy'}
+                                  onChange={(ev) => setInner(j, { target: ev.target.value } as Partial<EffectDef>)}
+                                >
+                                  {HOOK_TARGET_OPTIONS.map((o) => (
+                                    <option key={o.v} value={o.v}>{pick(o.label, lang)}</option>
+                                  ))}
+                                </select>
+                              </>
+                            )}
+                            {inner.kind === 'damage' && (
+                              <select
+                                className={selectCls + ' w-32'}
+                                value={(inner as { target?: string }).target ?? 'random_enemy'}
+                                onChange={(ev) => setInner(j, { target: ev.target.value } as Partial<EffectDef>)}
+                              >
+                                {HOOK_TARGET_OPTIONS.map((o) => (
+                                  <option key={o.v} value={o.v}>{pick(o.label, lang)}</option>
+                                ))}
+                              </select>
+                            )}
+                            <button
+                              onClick={() => removeInner(j)}
+                              className="rounded px-1.5 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300"
+                            >✕</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {DELAYED_INNER_KINDS.map((k) => (
+                          <button
+                            key={k}
+                            onClick={() => addInner(k)}
+                            className="whitespace-nowrap rounded border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300 transition hover:border-amber-400/50 hover:text-amber-300"
+                          >
+                            + {pick(EFFECT_META[k].label, lang)}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-1.5 text-[10px] leading-relaxed text-slate-600">{t('pp.delayedHint')}</div>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : e.kind === 'custom' ? (
               <div className="mt-2 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.handler')}</span>
@@ -687,17 +832,9 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
               <div className="mt-2 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.amount')}</span>
-                  <input
-                    type="number"
-                    className={inputCls + ' w-24'}
+                  <NumInput
                     value={(e as { amount: number }).amount}
-                    onChange={(ev) => {
-                      // 清空不提交：Number('')=0 会静默清零，而缺 amount 存盘会被 Rust 默认成 6；
-                      // 要替换数值直接全选输入即可
-                      if (ev.target.value === '') return;
-                      const n = Number(ev.target.value);
-                      if (!Number.isNaN(n)) patch(i, { amount: n } as Partial<EffectDef>);
-                    }}
+                    onCommit={(n) => { if (n != null) patch(i, { amount: n } as Partial<EffectDef>); }}
                   />
                   {e.kind === 'gold' && (
                     <span className="text-[10px] text-slate-600">{t('pp.goldNegative')}</span>
@@ -754,14 +891,11 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                           rawLabel={(raw) => t('pp.useRaw', { v: raw })}
                         />
                         <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.summonHp')}</span>
-                        <input
-                          type="number"
-                          className={inputCls + ' w-20'}
-                          value={me.hp ?? ''}
-                          onChange={(ev) => {
-                            const v = ev.target.value === '' ? undefined : Number(ev.target.value);
-                            patch(i, { hp: v } as Partial<EffectDef>);
-                          }}
+                        <NumInput
+                          width="w-20"
+                          allowEmpty
+                          value={me.hp}
+                          onCommit={(n) => patch(i, { hp: n } as Partial<EffectDef>)}
                         />
                         <span className="text-[10px] text-slate-600">{t('pp.summonHpOpt')}</span>
                       </>
@@ -814,16 +948,14 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
                 {isPlay && AMOUNT_KINDS.includes(e.kind) && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-500">{t('pp.upgradeDelta')}</span>
-                    <input
-                      type="number"
-                      className={inputCls + ' w-24'}
+                    <NumInput
                       value={(e as { upgrade_amount?: number }).upgrade_amount
                         ?? (LEGACY_UPGRADE[e.kind] != null ? u[LEGACY_UPGRADE[e.kind]!] : 0)}
-                      onChange={(ev) => {
-                        const v = Number(ev.target.value) || 0;
+                      onCommit={(n) => {
                         // 增量写在本效果上（升级时对绑定变量 UpgradeValueBy）；
                         // 旧五通道种类同时清零通道值，避免两处来源互相覆盖
-                        patch(i, { upgrade_amount: v } as Partial<EffectDef>);
+                        if (n == null) return;
+                        patch(i, { upgrade_amount: n } as Partial<EffectDef>);
                         const lk = LEGACY_UPGRADE[e.kind];
                         if (lk && u[lk] !== 0) updateCard({ upgrades: { ...u, [lk]: 0 } });
                       }}
@@ -871,8 +1003,11 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
       </div>
       {isPlay && (
         <Field label={t('pp.maxUpgrade')} hint={t('pp.maxUpgradeHint')}>
-          <input type="number" className={inputCls + ' w-24'} value={card.max_upgrade_level}
-            onChange={(e) => updateCard({ max_upgrade_level: Number(e.target.value) || 0 })} />
+          <NumInput
+            width="w-24"
+            value={card.max_upgrade_level}
+            onCommit={(n) => updateCard({ max_upgrade_level: Math.max(0, Math.round(n ?? 0)) })}
+          />
         </Field>
       )}
       {!isPlay && (
@@ -1248,8 +1383,19 @@ export default function PropertyPanel() {
 
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('pp.costLabel')} hint={isCurseLike ? t('pp.costHintCurse') : t('pp.costHint')}>
-                <input type="number" className={inputCls} value={card.cost}
-                  onChange={(e) => updateCard({ cost: Number(e.target.value) })} />
+                <NumInput
+                  value={card.cost}
+                  onCommit={(n) => {
+                    if (n == null) return;
+                    // 负费用 = 不可打出：自动补 Unplayable 关键字（原版语义：Burn 是 -1 费+关键字，
+                    // 只写费用游戏照样能打出——这里保证编辑器语义在游戏内成立）
+                    const patch: Partial<CardDef> = { cost: n };
+                    if (n < 0 && !card.keywords.includes('Unplayable')) {
+                      patch.keywords = [...card.keywords, 'Unplayable'];
+                    }
+                    updateCard(patch);
+                  }}
+                />
               </Field>
               <div className="flex items-end pb-1">
                 <label className="flex items-center gap-2 whitespace-nowrap text-xs text-slate-400">

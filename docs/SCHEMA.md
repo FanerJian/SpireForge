@@ -43,7 +43,8 @@
   "card_type": "Attack",          // Attack|Skill|Power|Status|Curse|Quest
   "rarity": "Common",             // Basic|Common|Uncommon|Rare|Ancient|Event|Token|Status|Curse|Quest
   "target": "AnyEnemy",           // None|Self|AnyEnemy|AllEnemies|RandomEnemy|AnyPlayer|AnyAlly|AllAllies|TargetedNoCreature|Osty
-  "cost": 1,                      // 能量费用；-1=不可打出（诅咒/状态惯例）
+  "cost": 1,                      // 能量费用；负数=不可打出（Runtime 自动补 Unplayable 关键字，
+                                  // 原版语义：Burn 等是 -1 费 + Unplayable，只有费用游戏仍能打出）
   "costs_x": false,               // X 费卡
   "keywords": [],                 // 游戏 CardKeyword 名：Innate|Exhaust|Unplayable|Retain|Ethereal|...
   "pool": "colorless",            // colorless|curse|status|ironclad|silent|regent|necrobinder|defect
@@ -133,6 +134,8 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 | `max_hp` | `amount: number` | `CreatureCmd.GainMaxHp` | 生命上限 +N（正数） |
 | `power` | `amount`, `power: string`, `target?` | `PowerCmd.Apply<T>`（反射解析） | 施加增益/减益，见下 |
 | `spawn` | `amount`, `card_entry: string`, `pile?` | `ICombatState.CreateCard` + `CardPileCmd.AddGeneratedCardToCombat` | 生成卡牌，见下 |
+| `summon` | `amount`, `monster: string`, `hp?` | `CreatureCmd.Add`（随机遭遇站位落位） | 召唤敌人，见下 |
+| `delayed` | `turns: number`, `timing?`, `effects: SfEffect[]` | `SfDelayedPower`（承载力量） | 延迟效果，见下 |
 | `custom` | `handler: string`, `amount?`, `target?`, `params?` | 由处理器定义 | 见下方「自定义效果」 |
 
 `damage.target` 只在钩子上下文生效（打出时永远以玩家指定目标为准）：
@@ -151,6 +154,24 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
   经 `ICombatState.CreateCard` 正规生成（登记 Owner 进战斗状态，与 ForgeCmd/DualWield 同配方）
 - `pile`：`draw`（默认）/ `hand` / `discard`
 - 不需要选择上下文（on_enter_combat 可用）
+
+**summon（召唤敌人）**：
+- `monster` = 怪物类名或 Entry（`DampCultist` / `DAMP_CULTIST`，含 mod 怪物）；`hp` = 指定生命
+  （缺省按怪物原生 HP 区间随机，受怪物 HP 缩放规则影响）
+- **落位**：从当前遭遇战的站位表（`Encounter.Slots`，场景 Marker2D 名单）里**随机挑一个
+  空位**（与游戏 Fabricator/LivingFog 召唤同源）；没有空位时随机复用既有站位，
+  连站位表都没有时落回游戏默认位置
+- 不需要选择上下文（on_enter_combat 可用）
+
+**delayed（延迟效果 —— 打出后下几回合）**：
+- `turns` = 持续回合数（>=1）；`timing` = `turn_end`（默认）/ `turn_start`；
+  `effects` = 内嵌效果清单（语法与打出效果一致，目标语义同钩子：`self`/`random_enemy`/`all_enemies`，
+  可再嵌套 delayed）
+- Runtime 把内嵌清单挂在隐藏承载力量 `SfDelayedPower` 上（玩家可见图标显示剩余回合数，
+  `InstanceType=Instanced` 重复打出各建各的实例互不叠加），每回合触发后减层、到 0 自动移除
+- **打出当回合不触发也不减层**（"下 N 回合"从下一回合起算，与卡面文案一致）
+- 内嵌效果走字面数值，不参与升级变量/描述占位符；战斗结束未消耗完的回合自动消失
+- 不需要选择上下文（调度时可无 ctx；触发时用回合钩子的上下文，因此内嵌 damage 可用）
 
 ### 自定义效果（custom —— 第三方扩展接口）
 

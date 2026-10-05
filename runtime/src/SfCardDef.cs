@@ -22,6 +22,7 @@ public enum SfEffectKind
     Power,
     Spawn,
     Summon,
+    Delayed,
     Custom,
 }
 
@@ -86,6 +87,19 @@ public sealed class SfEffect
     [JsonPropertyName("hp")]
     public decimal? Hp { get; set; }
 
+    /// <summary>延迟效果（delayed）：持续回合数（>=1）。</summary>
+    [JsonPropertyName("turns")]
+    public decimal? Turns { get; set; }
+
+    /// <summary>延迟效果（delayed）：触发时机 turn_end（默认）/ turn_start。</summary>
+    [JsonPropertyName("timing")]
+    public string Timing { get; set; } = "";
+
+    /// <summary>延迟效果（delayed）：逐回合执行的内嵌效果清单（语法与打出效果一致，
+    /// 目标语义同钩子——self/random_enemy/all_enemies；可再嵌套 delayed）。</summary>
+    [JsonPropertyName("effects")]
+    public List<SfEffect>? Effects { get; set; }
+
     /// <summary>custom 效果的透传参数（任意 JSON 对象，处理器自解释）。</summary>
     [JsonPropertyName("params")]
     public Dictionary<string, System.Text.Json.JsonElement>? Params { get; set; }
@@ -108,6 +122,7 @@ public sealed class SfEffect
         "power" => SfEffectKind.Power,
         "spawn" => SfEffectKind.Spawn,
         "summon" => SfEffectKind.Summon,
+        "delayed" => SfEffectKind.Delayed,
         _ => SfEffectKind.Custom,
     };
 
@@ -148,6 +163,7 @@ public sealed class SfEffect
         return key switch
         {
             "hp" => Hp,
+            "turns" => Turns,
             _ => null,
         };
     }

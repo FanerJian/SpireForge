@@ -28,9 +28,11 @@ public static class SfEffectEngine
         SfEffectKind.Power, SfEffectKind.Discard, SfEffectKind.Exhaust,
     ];
 
-    /// <summary>按清单顺序执行效果。ctx 为 null 的上下文（on_enter_combat）禁用需要选择的目标类效果。</summary>
+    /// <summary>按清单顺序执行效果。ctx 为 null 的上下文（on_enter_combat）禁用需要选择的目标类效果。
+    /// useVarBinding=false 时效果一律取字面数值（delayed 内嵌清单：变量属于打出效果，内嵌不该借用）。</summary>
     public static async Task RunAsync(
-        CardModel card, List<SfEffect> effects, PlayerChoiceContext? ctx, CardPlay? play, string trigger)
+        CardModel card, List<SfEffect> effects, PlayerChoiceContext? ctx, CardPlay? play, string trigger,
+        bool useVarBinding = true)
     {
         for (var i = 0; i < effects.Count; i++)
         {
@@ -43,7 +45,8 @@ public static class SfEffectEngine
             }
             try
             {
-                await RunOne(card, e, ctx, play, trigger, SfVarNaming.Name(effects, i));
+                await RunOne(card, e, ctx, play, trigger,
+                    useVarBinding ? SfVarNaming.Name(effects, i) : null);
             }
             catch (System.Exception ex)
             {
@@ -265,12 +268,38 @@ public static class SfEffectEngine
                 for (var i = 0; i < count; i++)
                 {
                     var model = template.ToMutable();
-                    var creature = await CreatureCmd.Add(model, combat);
+                    // 落位：当前遭遇的站位里随机挑空位（与 Fabricator/LivingFog 召唤同源），
+                    // 没有空位时随机复用既有站位，连站位表都没有时才落回默认位置
+                    var slot = PickSummonSlot(combat, card);
+                    var creature = slot != null
+                        ? await CreatureCmd.Add(model, combat, MegaCrit.Sts2.Core.Combat.CombatSide.Enemy, slot)
+                        : await CreatureCmd.Add(model, combat);
                     if (hp is > 0)
                     {
                         await CreatureCmd.SetMaxAndCurrentHp(creature, hp.Value);
                     }
                 }
+                break;
+            }
+
+            case SfEffectKind.Delayed:
+            {
+                // 延迟效果：下 N 回合的每回合开始/结束时执行内嵌效果清单（SfDelayedPower 承载）。
+                // turns 缺省回落 amount（编辑器把持续回合写进 amount 也认）
+                var turns = (int)(e.DecimalParam("turns") ?? e.Amount);
+                var inner = e.Effects;
+                if (turns < 1 || inner == null || inner.Count == 0)
+                {
+                    SfLog.Error("card " + card.Id + ": delayed effect needs turns>=1 and a non-empty effects list");
+                    break;
+                }
+                var combat = card.Owner.Creature.CombatState;
+                if (combat == null)
+                {
+                    SfLog.Error("card " + card.Id + ": delayed has no combat state, skipped");
+                    break;
+                }
+                await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing);
                 break;
             }
 
@@ -299,6 +328,38 @@ public static class SfEffectEngine
                 }
                 break;
             }
+        }
+    }
+
+    /// <summary>召唤落位：当前遭遇的站位表（Encounter.Slots，场景 Marker2D 名单）里
+    /// 随机挑一个未被占用的；全部占用时随机复用既有站位（视觉重叠可接受）；
+    /// 没有站位表时返回 null（游戏默认位置）。站位选择失败不阻断召唤。</summary>
+    private static string? PickSummonSlot(MegaCrit.Sts2.Core.Combat.ICombatState combat, CardModel card)
+    {
+        try
+        {
+            var slots = combat.Encounter?.Slots;
+            if (slots == null || slots.Count == 0)
+            {
+                return null;
+            }
+            var free = new List<string>();
+            foreach (var s in slots)
+            {
+                if (combat.Enemies.All(c => !string.Equals(c.SlotName, s, System.StringComparison.Ordinal)))
+                {
+                    free.Add(s);
+                }
+            }
+            var pool = free.Count > 0 ? free : slots.ToList();
+            var rng = card.Owner.RunState?.Rng.CombatTargets;
+            var pick = rng != null ? rng.NextItem(pool) : pool[0];
+            return string.IsNullOrEmpty(pick) ? null : pick;
+        }
+        catch (System.Exception ex)
+        {
+            SfLog.Warn("card " + card.Id + ": pick summon slot failed, using default position: " + ex.Message);
+            return null;
         }
     }
 

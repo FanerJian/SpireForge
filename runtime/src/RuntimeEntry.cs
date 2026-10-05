@@ -291,6 +291,19 @@ public static class RuntimeEntry
                     },
                 }],
             }),
+            // ---- 延迟效果回归：下 2 回合的每回合结束时获得 4 格挡 ----
+            ("SF_SPIKE_DELAYED", "SfSpikeDelayed", new SpikeSfCardDef
+            {
+                Cost = 1, Type = CardType.Skill, Rarity = CardRarity.Token, Target = TargetType.Self,
+                Pool = typeof(ColorlessCardPool),
+                Effects = [new SfEffect
+                {
+                    KindName = "delayed",
+                    Turns = 2m,
+                    Timing = "turn_end",
+                    Effects = [new SfEffect(SfEffectKind.Block, 4m)],
+                }],
+            }),
             ("SF_SPIKE_PYRE", "SfSpikePyre", new SpikeSfCardDef
             {
                 Cost = 0, Type = CardType.Skill, Rarity = CardRarity.Token, Target = TargetType.Self,

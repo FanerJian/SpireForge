@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CardDef } from '../lib/types';
-import { cardEntry, HOOK_FIELDS, pascalToSnake } from '../lib/types';
+import { cardEntry, HOOK_FIELDS, previewEffectVars, pascalToSnake } from '../lib/types';
 import { HOOK_LABEL, pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
 
 /** 卡牌类型 → 框体配色 */
@@ -114,15 +114,8 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
   const t = useT();
   const lang = useLang();
   const style = TYPE_STYLE[card.card_type] ?? TYPE_STYLE.Skill;
-  const vars: Record<string, string> = {};
-  for (const e of card.effects) {
-    const u = card.upgrades;
-    if (e.kind === 'damage') vars.Damage = upgraded && u.damage ? `${e.amount}+${u.damage}` : String(e.amount);
-    if (e.kind === 'block') vars.Block = upgraded && u.block ? `${e.amount}+${u.block}` : String(e.amount);
-    if (e.kind === 'draw') vars.Cards = String(e.amount);
-    if (e.kind === 'energy') vars.Energy = String(e.amount);
-    if (e.kind === 'heal') vars.Heal = upgraded && u.heal ? `${e.amount}+${u.heal}` : String(e.amount);
-  }
+  // 占位符变量：per-effect upgrade_amount 优先，未设置回落旧五通道（upgrades.*）
+  const vars = previewEffectVars(card, upgraded ?? false);
   const entry = cardEntry(packId, card.id);
   // 预览语言跟随界面语言（与游戏内所选语言一致时的显示效果）
   const name = (lang === 'en' ? card.name.eng || card.name.zhs : card.name.zhs || card.name.eng) || entry;
