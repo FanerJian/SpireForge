@@ -116,6 +116,21 @@ public static class SfCatalogExport
                 }
             }
 
+            // 自定义效果注册表快照：本会话所有 mod（含 Runtime 内置）注册的处理器名。
+            // 编辑器据此把"mod 的特效"列进自定义效果下拉（source 标徽章，Docs 补说明）。
+            var customs = new List<object>();
+            foreach (var kind in SfEffects.Kinds.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).Take(MaxPerKind))
+            {
+                var doc = SfBuiltinEffects.Docs.TryGetValue(kind, out var d) ? d : ("", "");
+                customs.Add(new
+                {
+                    name = kind,
+                    source = SfEffects.SourceOf(kind),
+                    desc_zh = doc.Item1,
+                    desc_en = doc.Item2,
+                });
+            }
+
             var catalog = new
             {
                 format_version = 1,
@@ -124,6 +139,7 @@ public static class SfCatalogExport
                 powers,
                 monsters,
                 cards,
+                custom_effects = customs,
             };
             var options = new System.Text.Json.JsonSerializerOptions
             {
@@ -137,7 +153,8 @@ public static class SfCatalogExport
             File.Move(tempPath, targetPath, true);
             tempPath = null;
             SfLog.Info("catalog: exported " + powers.Count + " power(s), " + monsters.Count +
-                       " monster(s), " + cards.Count + " card(s) to " + targetPath);
+                       " monster(s), " + cards.Count + " card(s), " + customs.Count +
+                       " custom effect(s) to " + targetPath);
         }
         catch (Exception e)
         {

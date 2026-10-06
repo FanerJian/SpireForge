@@ -81,6 +81,7 @@
 | `stats` | 按 `DynamicVar.Name` 改模板变量 BaseValue（名称不区分大小写，如 Damage/Block/Vulnerable） |
 | `upgrade_stats` | Harmony 前缀替换原版 `OnUpgrade`，按变量名做增量 |
 | `effects` 非空 | Harmony 前缀**整体替换**原版 `OnPlay`（解释器与新建卡共用；注意是替换不是追加——只改数值就留空） |
+| 钩子字段非空 | **覆盖卡也生效**（2026-10-06 起）：`on_draw`/`on_discard`/`on_exhaust`/`on_enter_combat`/`on_turn_end_in_hand` 非空时 Harmony 前缀拦截对应卡片事件（沿继承链补 most-derived 声明方法），**整体替换**原版同名行为；钩子效果一律字面数值（不绑变量）。`on_turn_end_in_hand` 同时把门控属性 `HasTurnEndInHandEffect` 后缀改为 true |
 | `name`/`description`/`flavor` | 打包时本地化键取 `{vanilla_id}.title/.description`，游戏 `LocTable.MergeWith` 覆盖原版文案 |
 | `portrait` | **覆盖卡也生效**（2026-10-03 起）：打包进 `images/cards/`，Runtime 以 `res://{包id}/{portrait}` Harmony 后缀改写原版模板的 `PortraitPath`/`BetaPortraitPath`（按 Entry 查表，先古卡同一加载路径；Beta 立绘一并替换为同一张图） |
 
@@ -192,6 +193,21 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 - `target`：钩子上下文的取敌方式（同 damage）；打出时处理器收到的 `ctx.Target` = 玩家指定目标
 - `params`：任意 JSON 对象，原样透传给处理器
 - **不参与升级变量与占位符**：数值写死在 JSON 与描述文本里（或由处理器自行处理升级）
+
+#### Runtime 内置处理器（无需写 mod）
+
+Runtime 常驻注册三个可组合处理器，编辑器的自定义效果下拉直接可选（`custom_effects` 目录段同步导出全部已注册名）：
+
+| handler | 行为 | params |
+|---|---|---|
+| `sf_repeat` | 内嵌清单重复执行 `amount` 次（缺省 1） | `{ "effects": [效果…] }` |
+| `sf_random` | 内嵌清单随机挑 `pick` 条执行（缺省 1，互不重复） | `{ "pick": 2, "effects": [效果…] }` |
+| `sf_cond` | `when` 条件全部成立才执行内嵌清单（缺省无条件） | `{ "when": [{…}], "effects": [效果…] }` |
+
+`when` 条件对象（数组 = AND）：`hp_below`/`hp_above`（绝对生命）、`hp_pct_below`/`hp_pct_above`（0-100）、
+`hand_at_least`/`hand_at_most`（手牌数）、`enemies_at_least`（可攻击敌人数）；
+未知/非法条件按不成立处理。内嵌清单一律**字面数值**（不绑卡牌变量，与 delayed 内嵌同规则），
+目标语义同钩子（`self`/`random_enemy`/`all_enemies`）。
 
 ### 生命周期钩子（自作用触发效果清单）
 

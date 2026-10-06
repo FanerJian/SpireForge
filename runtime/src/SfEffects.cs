@@ -68,6 +68,12 @@ public static class SfEffects
     /// <summary>查询某个自定义效果名是否已注册。</summary>
     public static bool IsRegistered(string kind) => Handlers.ContainsKey(kind);
 
+    /// <summary>处理器的来源程序集名（目录导出用：编辑器据此标 MOD 徽章；未知返回空串）。</summary>
+    public static string SourceOf(string kind) =>
+        Handlers.TryGetValue(kind, out var h)
+            ? h.Method.DeclaringType?.Assembly.GetName().Name ?? ""
+            : "";
+
     /// <summary>执行自定义效果。返回 false 表示该名字未注册（调用方负责报错）。
     /// 前后触发 SfEvents.BeforeEffect / AfterEffect（插件监听点）。</summary>
     public static async Task<bool> TryInvoke(SfEffectContext ctx)

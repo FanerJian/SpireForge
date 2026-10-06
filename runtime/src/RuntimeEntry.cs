@@ -48,6 +48,8 @@ public static class RuntimeEntry
         SfPngLoader.Instance = new SfPngLoader();
         Godot.ResourceLoader.AddResourceFormatLoader(SfPngLoader.Instance, true);
         RegisterDemoEffects();
+        // 内置可组合自定义效果（sf_repeat/sf_random/sf_cond）：编辑器无需写 mod 即可用
+        SfBuiltinEffects.RegisterAll();
 
         var harmony = new Harmony(HarmonyId);
         harmony.Patch(

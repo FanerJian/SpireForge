@@ -140,6 +140,7 @@ public static class SfVanillaOverride
                 harmony.Patch(onUpgrade, prefix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(UpgradePrefix)));
             }
         }
+        HookCardEvents(harmony, template, def);
         if (!string.IsNullOrEmpty(def.Portrait))
         {
             HookPortrait(harmony, template);
@@ -208,6 +209,144 @@ public static class SfVanillaOverride
             && PackOfVanilla.TryGetValue(entry, out var modId))
         {
             __result = "res://" + modId + "/" + def.Portrait;
+        }
+    }
+
+    /// <summary>已补丁过的卡片事件方法（多张覆盖卡常共享 AbstractModel 的基类声明，只补一次）。</summary>
+    private static readonly HashSet<MethodBase> EventPatched = new();
+
+    /// <summary>给覆盖卡安装生命周期钩子（on_draw/on_discard/on_exhaust/on_enter_combat/on_turn_end_in_hand）。
+    /// 游戏的卡片事件经 Hook.* 扇出给所有 AbstractModel，再虚分派到各卡牌类：新建卡在 SfCardBase
+    /// 重写即可，原版卡（覆盖卡）的类里没有我们的逻辑——用 Harmony 前缀拦截声明方法。与立绘 getter
+    /// 同一策略：沿继承链取 most-derived 的声明实现去重后补丁（纯虚基类声明被派生类覆盖时基类补丁
+    /// 不会触发）；前缀只对"本 mod 覆盖且该钩子非空"的实例生效，其余一律放行原实现。
+    /// 语义与 OnPlay 一致 = 整体替换：钩子非空时跳过原版同名行为。</summary>
+    private static void HookCardEvents(Harmony harmony, CardModel template, SfCardDef def)
+    {
+        // (钩子效果清单, 声明方法名, 前缀方法名)；清单为空时不补（放行原版行为）
+        TryPatchCardEvent(harmony, template, def.OnDraw, "AfterCardDrawn", nameof(EventDrawPrefix));
+        TryPatchCardEvent(harmony, template, def.OnDiscard, "AfterCardDiscarded", nameof(EventDiscardPrefix));
+        TryPatchCardEvent(harmony, template, def.OnExhaust, "AfterCardExhausted", nameof(EventExhaustPrefix));
+        TryPatchCardEvent(harmony, template, def.OnEnterCombat, "AfterCardEnteredCombat", nameof(EventEnterCombatPrefix));
+        if (def.OnTurnEndInHand is { Count: > 0 })
+        {
+            // OnTurnEndInHand 由 HasTurnEndInHandEffect 属性门控（基类恒 false），两个都要补：
+            // 属性后缀放行游戏调用，OnTurnEndInHand 前缀执行效果清单
+            var flag = DeclaredInChain(template.GetType(), "HasTurnEndInHandEffect", findGetter: true);
+            if (flag != null && EventPatched.Add(flag))
+            {
+                harmony.Patch(flag, postfix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(TurnEndFlagPostfix)));
+            }
+            var onTurnEnd = DeclaredInChain(template.GetType(), "OnTurnEndInHand", findGetter: false);
+            if (onTurnEnd != null && EventPatched.Add(onTurnEnd))
+            {
+                harmony.Patch(onTurnEnd, prefix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(EventTurnEndPrefix)));
+            }
+        }
+    }
+
+    private static void TryPatchCardEvent(
+        Harmony harmony, CardModel template, List<SfEffect>? effects, string methodName, string prefixName)
+    {
+        if (effects is not { Count: > 0 })
+        {
+            return;
+        }
+        var declared = DeclaredInChain(template.GetType(), methodName, findGetter: false);
+        if (declared == null)
+        {
+            SfLog.Error("vanilla override: declared method " + methodName + " not found on " + template.GetType().Name);
+            return;
+        }
+        if (!EventPatched.Add(declared))
+        {
+            return; // 共享声明已被前面的覆盖卡补过，前缀按实例查表自会区分
+        }
+        harmony.Patch(declared, prefix: new HarmonyMethod(typeof(SfVanillaOverride), prefixName));
+    }
+
+    /// <summary>沿继承链找方法的**声明**实现（Harmony 只接受声明处方法）；getters=true 找属性 getter。</summary>
+    private static MethodInfo? DeclaredInChain(Type type, string name, bool findGetter)
+    {
+        for (var cur = type; cur != null && typeof(CardModel).IsAssignableFrom(cur); cur = cur.BaseType)
+        {
+            if (findGetter)
+            {
+                var p = cur.GetProperty(name,
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                var g = p?.GetGetMethod(true);
+                if (g != null)
+                {
+                    return g;
+                }
+            }
+            else
+            {
+                var m = cur.GetMethod(name,
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                if (m != null)
+                {
+                    return m;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>钩子前缀公共体：仅当实例是"本 mod 覆盖且该钩子非空"的卡牌时替换原实现，
+    /// 效果清单转交 SfEffectEngine（字面数值，不绑卡牌变量）。</summary>
+    private static bool CardEventPrefix(
+        AbstractModel __instance, ref Task __result, PlayerChoiceContext? ctx,
+        Func<SfCardDef, List<SfEffect>?> pick, string trigger, CardModel? eventCard = null)
+    {
+        if (__instance is not CardModel model
+            || (eventCard != null && !ReferenceEquals(eventCard, model))
+            || model.Id?.Entry is not string entry
+            || !Active.TryGetValue(entry, out var def))
+        {
+            return true;
+        }
+        var effects = pick(def);
+        if (effects == null || effects.Count == 0)
+        {
+            return true;
+        }
+        __result = SfEffectEngine.RunAsync(model, effects, ctx, null, trigger, useVarBinding: false);
+        return false;
+    }
+
+    // 签名对应 AbstractModel 的虚方法声明（卡片事件经 Hook.* 扇出，eventCard 是当事卡）
+
+    private static bool EventDrawPrefix(
+        AbstractModel __instance, PlayerChoiceContext choiceContext, CardModel card, bool fromHandDraw, ref Task __result)
+        => CardEventPrefix(__instance, ref __result, choiceContext, d => d.OnDraw, "on_draw", card);
+
+    private static bool EventDiscardPrefix(
+        AbstractModel __instance, PlayerChoiceContext choiceContext, CardModel card, ref Task __result)
+        => CardEventPrefix(__instance, ref __result, choiceContext, d => d.OnDiscard, "on_discard", card);
+
+    private static bool EventExhaustPrefix(
+        AbstractModel __instance, PlayerChoiceContext choiceContext, CardModel card, bool causedByEthereal, ref Task __result)
+        => CardEventPrefix(__instance, ref __result, choiceContext, d => d.OnExhaust, "on_exhaust", card);
+
+    private static bool EventEnterCombatPrefix(
+        AbstractModel __instance, CardModel card, ref Task __result)
+        => CardEventPrefix(__instance, ref __result, null, d => d.OnEnterCombat, "on_enter_combat", card);
+
+    private static bool EventTurnEndPrefix(
+        AbstractModel __instance, PlayerChoiceContext choiceContext, ref Task __result)
+        => CardEventPrefix(__instance, ref __result, choiceContext, d => d.OnTurnEndInHand, "on_turn_end_in_hand");
+
+    /// <summary>HasTurnEndInHandEffect 后缀：覆盖卡带 on_turn_end_in_hand 时让游戏真的来调用该钩子。</summary>
+    private static void TurnEndFlagPostfix(ref bool __result, AbstractModel __instance)
+    {
+        if (__result || __instance is not CardModel model || model.Id?.Entry is not string entry)
+        {
+            return;
+        }
+        if (Active.TryGetValue(entry, out var def) && def.OnTurnEndInHand is { Count: > 0 })
+        {
+            __result = true;
         }
     }
 

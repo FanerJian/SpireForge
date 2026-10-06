@@ -203,7 +203,10 @@ public abstract class SfCardBase : CardModel
             return;
         }
         Log.Info($"SPIREFORGE: hook {trigger} -> {Id}");
-        await SfEffectEngine.RunAsync(this, effects, ctx, null, trigger);
+        // useVarBinding=false：钩子效果一律取字面数值。钩子清单不建 DynamicVar，
+        // 若按同名规则查变量会错拿打出效果的变量（如 on_exhaust damage 20 会错绑
+        // 打出效果的 Damage=6 变量）——与 delayed 内嵌清单同规则。
+        await SfEffectEngine.RunAsync(this, effects, ctx, null, trigger, useVarBinding: false);
     }
 
     // ---- 效果解释器：见 SfEffectEngine（与原版卡覆盖共用） ----

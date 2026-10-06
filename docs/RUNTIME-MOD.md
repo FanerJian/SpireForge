@@ -29,7 +29,8 @@ Godot 源生成器缺失 → 引擎回调（`ResourceFormatLoader._Load` 等 GDV
 | `SfCardDef.cs` | 卡牌定义（JSON 反序列化 + 游戏枚举解析） |
 | `SfCardBase.cs` | 解释器基类：`CanonicalVars`（数值变量）/`OnPlay`（效果分派）/生命周期钩子/`OnUpgrade`/`PortraitPath` |
 | `SfEffectEngine.cs` | 静态效果解释器：SfCardBase 与原版卡覆盖（Harmony 前缀）共用同一执行逻辑 |
-| `SfVanillaOverride.cs` | 原版卡覆盖：改模板费用/类型/稀有度/目标/数值 + Harmony 替换 OnPlay/OnUpgrade |
+| `SfVanillaOverride.cs` | 原版卡覆盖：改模板费用/类型/稀有度/目标/数值 + Harmony 替换 OnPlay/OnUpgrade + 生命周期钩子（on_draw 等，沿继承链补声明方法） |
+| `SfBuiltinEffects.cs` | 内置可组合自定义效果：sf_repeat/sf_random/sf_cond（无需写 mod 的"自定义特效"，Docs 表供目录导出） |
 | `SfEffects.cs` | 对外扩展 API（`SpireForge.Api`）：自定义效果注册表、卡包查询、日志 |
 | `SfEvents.cs` | 对外扩展 API：生命周期事件总线（BeforeEffect/AfterEffect/CardGranted，订阅者异常隔离） |
 | `SfGrant.cs` | 「添加至卡组」文件桥：sf_grant.json 排队、Runtime 每帧轮询即时消费（战斗外入组 / 战斗中额外塞手牌；启动时清上个会话的遗留清单，登记不跨会话） |
@@ -167,6 +168,11 @@ public static class MyMod
 
 要点：
 - **注册时机宽松**：效果在打出/触发时才查表，其他 mod 晚于卡包加载注册也生效
+- **注册即进编辑器目录**（2026-10-06 起）：`SfEffects` 注册表会随 `SfCatalogExport` 导出到
+  `spireforge-catalog.json` 的 `custom_effects` 段（name/source + 内置处理器双语文档），
+  编辑器自定义效果下拉按来源标徽章列出——mod 装好、游戏重启后，玩家无需知道处理器名即可选用
+- Runtime 内置 `sf_repeat` / `sf_random` / `sf_cond` 三个可组合处理器（见 SCHEMA.md「Runtime 内置处理器」），
+  内嵌清单按字面数值结算（`useVarBinding:false`），第三方处理器实现内嵌清单时建议同样处理
 - `Trigger` 取值：`play` / `on_draw` / `on_discard` / `on_exhaust` / `on_enter_combat` / `on_turn_end_in_hand`
 - 处理器抛异常会被捕获并记 `[ERROR] SPIREFORGE`，不会炸战斗流程；事件订阅者同理
 - `SfGrant.GrantAsync` 的发放是**本局永久的**：`RunState.CreateCard` + `CardPileCmd.Add(Deck)`
