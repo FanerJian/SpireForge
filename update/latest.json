@@ -1,17 +1,17 @@
 {
-  "version": "0.2.1",
+  "version": "0.2.2",
   "notes": {
-    "zhs": "界面文案全面改为官方正式表述（术语对齐游戏内置简体中文本地化），移除全部悬停提示与大部分界面提示文字，界面更简洁。",
-    "eng": "UI copy rewritten in the game's official tone; all hover tooltips and most inline hints removed for a cleaner interface."
+    "zhs": "修复召唤「女王」等怪物卡死战斗；新增充能球效果（故障机器人）；「战斗开始时」钩子放开全部效果种类。",
+    "eng": "Fixed summons freezing combat (Queen and other encounter-dependent monsters); new orb effects for the Defect; the combat-start hook now supports every built-in effect kind."
   },
-  "pub_date": "2026-10-06T10:40:23.559Z",
+  "pub_date": "2026-10-06T13:47:35.904Z",
   "exe": {
-    "sha256": "747105d86df1ef07548af6d99889c2e96e191b47cd9fecc00b62c4327f81a404",
-    "size": 27286016,
+    "sha256": "c6d8dc71b1c44e746fbb47f08c369c20fb845149ffc0cd8952dcbb94d040e4a9",
+    "size": 27302400,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.1/SpireForge-editor-v0.2.1.exe",
-      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.1/SpireForge-editor-v0.2.1.exe",
-      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.1/SpireForge-editor-v0.2.1.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.2/SpireForge-editor-v0.2.2.exe",
+      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.2/SpireForge-editor-v0.2.2.exe",
+      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.2/SpireForge-editor-v0.2.2.exe"
     ]
   }
 }
