@@ -119,3 +119,25 @@ grep -a "SPIREFORGE" "$APPDATA/SlayTheSpire2/logs/godot.log"
 - [ ] 更新 `RUNTIME-MOD.md` 的版本兼容性记录表
 - [ ] Runtime 版本号（`SpireForgeRuntime.json` 的 version + csproj）
 - [ ] （若发布 runtime 到工坊）用 ModUploader 更新条目
+
+## 五、自动更新（应用内检查 + 多源下载）
+
+编辑器内置更新器：启动 24h 一次静默检查 + 项目设置里手动「检查更新」。
+清单 = 仓库内 `update/latest.json`（GitHub raw 直读，另附两个社区加速镜像源 ghfast.top /
+gh-proxy.com 逐个回落）；载荷 = GitHub Release 上的裸 exe 资产，应用内下载后 SHA256
+校验、原地换文件（旧文件落 `editor.exe.old`，下次启动清理）并自动重启。
+
+**发新版时**（在发布清单之外多做两步）：
+
+```bash
+# 1. 用新编的 exe 重新生成清单（写入真实 sha256/大小/双语更新说明）
+node tools/write-update-manifest.mjs editor/src-tauri/target/release/editor.exe <版本> "中文说明" "English notes"
+# 2. GitHub Release 上除常规 zip 外，额外上传裸 exe 资产 SpireForge-editor-v<版本>.exe
+#    （清单里的下载 URL 指向它），然后提交并推送 update/latest.json
+```
+
+要点：
+- 清单里的 `urls` 是逐个回落的下载源（直链 + 镜像），改镜像站时重跑生成脚本即可
+- exe 哈希写死在清单里做完整性校验；镜像只做转发，篡改会校验失败
+- 发布构建必须带 `RUSTFLAGS='--remap-path-prefix=...'`（隐私要求见发布清单），
+  清单生成脚本读的是 target 下的 exe，哈希以实际发布的那个文件为准

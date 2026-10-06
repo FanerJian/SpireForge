@@ -53,7 +53,26 @@ export const api = {
   prepareWorkshop: (outDir: string, version: string, visibility: string, changeNote: string) =>
     invoke<string>('prepare_workshop', { outDir, version, visibility, changeNote }),
   publishWorkshop: (workspace: string) => invoke<string>('publish_workshop', { workspace }),
+
+  /** 自动更新：清单多源检查 / 逐源下载+SHA256 校验 / 原地换 exe 并重启 */
+  checkUpdate: () => invoke<UpdateCheckInfo | null>('check_update'),
+  downloadUpdate: (c: { urls: string[]; sha256: string; size: number }) =>
+    invoke<string>('download_update', { urls: c.urls, sha256: c.sha256, size: c.size }),
+  applyUpdate: (path: string) => invoke<boolean>('apply_update', { path }),
+  openReleasePage: () => invoke<void>('open_release_page'),
 };
+
+/** 更新检查结果（无新版本为 null） */
+export interface UpdateCheckInfo {
+  current: string;
+  latest: string;
+  pub_date: string;
+  notes_zhs: string;
+  notes_eng: string;
+  sha256: string;
+  size: number;
+  urls: string[];
+}
 
 /** 外来卡牌导入结果（含字段映射说明） */
 export interface ImportReport {

@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "notes": {
+    "zhs": "修复 8 个效果系统问题：全体敌人伤害、召唤奥斯提、音效可清空、召唤站位不溢出屏幕、金币/生成/召唤的升级预览、一键描述（对象/段数/全部触发时机）、X 费卡按能量重复效果、覆盖卡立绘与数值；新增应用内自动更新（国内多源加速）。",
+    "eng": "Fixed 8 effect-system issues: AoE damage, Osty summon, clearable SFX, summon layout overflow, gold/spawn/summon upgrade preview, description generation (target/hit count/all triggers), X-cost scaling, vanilla-override portrait & literal amounts; added in-app auto-update with China-friendly mirrors."
+  },
+  "pub_date": "2026-10-06T08:48:41.849Z",
+  "exe": {
+    "sha256": "e2f1a95efb2d4e32d8e1b4d6b5c8f38ef01ab52971fae5e73a34cd598e0824f1",
+    "size": 21849088,
+    "urls": [
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.0/SpireForge-editor-v0.2.0.exe",
+      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.0/SpireForge-editor-v0.2.0.exe",
+      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.0/SpireForge-editor-v0.2.0.exe"
+    ]
+  }
+}

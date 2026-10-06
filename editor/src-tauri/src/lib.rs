@@ -6,6 +6,7 @@ mod import;
 mod model;
 mod project;
 mod publish;
+mod update;
 mod vanilla;
 mod workshop;
 
@@ -465,8 +466,7 @@ fn prepare_workshop(
 
 /// 调用官方 ModUploader 上传；成功后把 mod_id.txt 回写进项目 meta
 #[tauri::command]
-fn publish_workshop(state: State<AppState>, workspace: String) -> Result<String, String> {
-    let uploader = state
+fn publish_workshop(state: State<AppState>, workspace: String) -> Result<String, String> {    let uploader = state
         .settings
         .lock()
         .unwrap()
@@ -487,6 +487,33 @@ fn publish_workshop(state: State<AppState>, workspace: String) -> Result<String,
     Ok(log)
 }
 
+// ---- 自动更新（实现在 update.rs；此处为命令薄包装，与项目惯例一致）----
+
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<Option<update::UpdateCheck>, String> {
+    update::check_update(app).await
+}
+
+#[tauri::command]
+async fn download_update(
+    app: tauri::AppHandle,
+    urls: Vec<String>,
+    sha256: String,
+    size: u64,
+) -> Result<String, String> {
+    update::download_update(app, urls, sha256, size).await
+}
+
+#[tauri::command]
+fn apply_update(app: tauri::AppHandle, path: String) -> Result<bool, String> {
+    update::apply_update(app, path)
+}
+
+#[tauri::command]
+fn open_release_page(app: tauri::AppHandle) -> Result<(), String> {
+    update::open_release_page(app)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -496,10 +523,19 @@ pub fn run() {
             project_root: Mutex::new(None),
             settings: Mutex::new(game::load_settings()),
         })
+        .setup(|_app| {
+            // 上一轮自动更新的 editor.exe.old 残留清理（删不掉留给下次启动）
+            update::cleanup_old_update();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             detect_game_dir,
             get_settings,
             set_game_dir,
+            check_update,
+            download_update,
+            apply_update,
+            open_release_page,
             ensure_runtime,
             queue_card_grant,
             create_demo_project,

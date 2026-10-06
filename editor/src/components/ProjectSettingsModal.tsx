@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
+import { checkUpdateNow } from '../lib/update';
 import { inputCls } from './ui';
 
 /** 项目设置：包名 / 作者 / 简介。这三项此前只能手改 project.json；
@@ -11,6 +13,12 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
   const [name, setName] = useState(meta?.name ?? '');
   const [author, setAuthor] = useState(meta?.author ?? '');
   const [description, setDescription] = useState(meta?.description ?? '');
+  const [version, setVersion] = useState('');
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+  }, []);
 
   // Esc 关闭
   useEffect(() => {
@@ -61,7 +69,29 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
             />
           </label>
         </div>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex items-center justify-between gap-2 border-t border-white/10 pt-4">
+          <span className="font-mono text-[11px] text-slate-600">
+            SpireForge {version}
+          </span>
+          <button
+            onClick={async () => {
+              setChecking(true);
+              try {
+                const r = await checkUpdateNow(true);
+                showToast(r ? t('upd.found', { v: r.latest }) : t('upd.upToDate'));
+              } catch {
+                showToast(t('upd.checkFailed'));
+              } finally {
+                setChecking(false);
+              }
+            }}
+            disabled={checking}
+            className="whitespace-nowrap rounded-lg border border-white/15 px-3 py-1.5 text-xs text-slate-400 transition hover:border-white/30 hover:text-slate-200 disabled:opacity-40"
+          >
+            {t('upd.check')}
+          </button>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onClose}
             className="rounded-lg border border-white/15 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:border-white/30"

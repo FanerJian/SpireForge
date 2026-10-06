@@ -4,12 +4,14 @@ import CardPreview from './components/CardPreview';
 import PropertyPanel from './components/PropertyPanel';
 import PublishPanel from './components/PublishPanel';
 import ProjectSettingsModal from './components/ProjectSettingsModal';
+import UpdateModal from './components/UpdateModal';
 import Welcome from './components/Welcome';
 import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
 import { setLang, useLang, useT } from './lib/i18n';
 import { grantEntry } from './lib/entry';
 import { bytesToDataUrl, extOf } from './lib/img';
+import { useAutoUpdateCheck, useUpdateInfo } from './lib/update';
 
 function Toast({ msg }: { msg: string }) {
   return (
@@ -174,6 +176,8 @@ export default function App() {
   const { projectRoot, meta, toast, openProject } = useStore();
   const [publishing, setPublishing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const updateInfo = useUpdateInfo();
+  useAutoUpdateCheck();
 
   useEffect(() => {
     const saved = localStorage.getItem('spireforge.lastProject');
@@ -221,6 +225,7 @@ export default function App() {
     return (
       <div className="h-screen text-slate-200">
         <Welcome />
+        {updateInfo && <UpdateModal info={updateInfo} />}
         {toast && <Toast msg={toast} />}
       </div>
     );
@@ -242,6 +247,7 @@ export default function App() {
       </div>
       {publishing && <PublishPanel onClose={() => setPublishing(false)} />}
       {settingsOpen && <ProjectSettingsModal onClose={() => setSettingsOpen(false)} />}
+      {updateInfo && <UpdateModal info={updateInfo} />}
       {toast && <Toast msg={toast} />}
     </div>
   );
