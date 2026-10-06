@@ -7,7 +7,7 @@
 
 SpireForge 是一个**独立桌面 GUI 卡牌编辑器**，用于为《杀戮尖塔 2》制作自定义卡牌 mod 并发布到 Steam 创意工坊。
 
-与现有方案的关键差异（调研结论见 [RESEARCH.md](./RESEARCH.md)）：
+与现有方案的关键差异：
 
 | 现有方案 | 局限 | SpireForge |
 |---|---|---|

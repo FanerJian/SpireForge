@@ -17,7 +17,7 @@
 
 | 排除项 | 原因 | 恢复 |
 |---|---|---|
-| `tools/sts2-decompiled/` | sts2.dll 反编译产物（版权物，禁止分发） | ILSpy 反编译对应版本 sts2.dll，见 RESEARCH.md |
+| `tools/sts2-decompiled/` | sts2.dll 反编译产物（版权物，禁止分发） | ILSpy 打开游戏目录 sts2_Data/Sts2.dll 反编译为完整程序集（电脑上需装游戏） |
 | `tools/spire-codex/` | 社区数据仓库（本身是嵌套 git） | `git clone https://github.com/ptrlrd/spire-codex tools/spire-codex`（提取产物 `schema/vanilla-catalog.json` 已入库，不重跑脚本则不必 clone） |
 | `**/target/`、`**/node_modules/` | 构建产物 | `pnpm install` / `cargo build` |
 | `runtime/.godot/`、`editor/src-tauri/gen/` | Godot/Tauri 自动生成 | 构建时生成 |

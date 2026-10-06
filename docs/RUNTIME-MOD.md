@@ -197,7 +197,7 @@ on_discard / on_draw / on_exhaust 钩子与自定义效果全链路（看日志 
 dotnet tool install -g ilspycmd    # 若未安装
 ilspycmd -p -o tools/sts2-decompiled "<游戏>/data_sts2_windows_x86_64/sts2.dll"
 
-# 2. 比对本手册与 docs/api-notes-v0.111.0.md 中的关键 API：
+# 2. 比对本手册与反编译源码中的关键 API：
 #    - 枚举成员（CardType/CardRarity/TargetType/ValueProp/CardKeyword）
 #    - CardModel 虚成员签名（CanonicalVars/OnPlay/OnUpgrade/PortraitPath）
 #    - Cmd 方法签名（CreatureCmd.Damage/GainBlock、CardPileCmd.Draw、PlayerCmd.GainEnergy）

@@ -2,7 +2,9 @@
 
 > 《杀戮尖塔 2》现代化卡牌编辑器 — 独立 GUI 建卡、实时预览、一键打包安装、Steam 工坊发布
 
-![状态](https://img.shields.io/badge/游戏版本-v0.111.0-blue) ![Runtime](https://img.shields.io/badge/Runtime-0.1.0-green)
+中文 | [English](README_EN.md)
+
+![状态](https://img.shields.io/badge/游戏版本-v0.111.0-blue) ![Runtime](https://img.shields.io/badge/Runtime-0.1.9-green)
 
 ![编辑器主界面](docs/screenshot.png)
 
@@ -37,6 +39,9 @@ cd runtime && dotnet build -c Release
 - **全类型卡牌**：攻击 / 技能 / 能力 / 诅咒 / 状态 / 任务
 - **自定义费用**：含 X 费、0 费、-1（不可打出）
 - **游戏内置效果**：造成伤害、获得格挡、抽牌、获得能量、回复生命（数据驱动，可持续扩展）
+- **动画特效与音效**：打出伤害自带攻击编排（前扑动画 + 打击特效 + 音效），另有「播放特效」；
+  特效/音效目录标注原版出处（哪张卡、哪只怪在用），可直接按怪名/卡名搜索
+- **进阶效果**：召唤敌人（自动落位）、生成卡牌、延迟效果（可选我方/敌方/双方回合触发）等
 - **修改原版卡牌**：内置 577 张原版卡目录，一键导入为覆盖卡——改费用/数值/文案/行为
 - **生命周期钩子**：抽到时 / 被弃时 / 被消耗时 / 战斗开始时 / 回合末在手——复用同一效果系统
 - **自定义效果接口**：`custom` 效果 + `SfEffects` 注册表，其他 mod 引用 Runtime.dll 即可扩展任意行为
@@ -65,8 +70,6 @@ cd runtime && dotnet build -c Release
 - [CUSTOM-POOLS.md](docs/CUSTOM-POOLS.md) — 第三方角色卡池导入、依赖与兼容边界
 - [RUNTIME-MOD.md](docs/RUNTIME-MOD.md) — Runtime 设计 + 游戏版本升级适配流程
 - [BUILD.md](docs/BUILD.md) — 环境要求、构建、测试矩阵
-- [RESEARCH.md](docs/RESEARCH.md) — 竞品调研与设计决策依据
-- [api-notes-v0.111.0.md](docs/api-notes-v0.111.0.md) — 反编译 API 速查（枚举/CardModel/Cmd/时序）
 
 ## 工作原理
 
