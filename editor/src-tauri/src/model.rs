@@ -264,6 +264,7 @@ pub enum EffectDef {
     /// 延迟效果：下 turns 回合的每回合开始/结束时执行内嵌 effects 清单
     /// （every_turn=false 改为等 turns 回合后仅在最后一次时机触发一次；
     /// Runtime 用 SfDelayedPower 承载；timing = turn_end（默认）/ turn_start；
+    /// icon = 力量图标（游戏内力量名或包内路径 images/powers/*.png，发布时改写）；
     /// 内嵌清单语法与打出效果一致，目标语义同钩子，可再嵌套 delayed）
     Delayed {
         #[serde(default = "default_turns")]
@@ -276,6 +277,10 @@ pub enum EffectDef {
         /// true（缺省）= 每回合触发；false = 仅最后一回合触发一次（显式 false 才落盘）
         #[serde(default = "default_true", skip_serializing_if = "is_true")]
         every_turn: bool,
+        /// 承载力量的图标：游戏内力量名（Vulnerable 等）或包内图片路径
+        /// （项目 assets/powers/*.png，发布进 PCK 时改写为 images/powers/*）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         effects: Vec<EffectDef>,
     },

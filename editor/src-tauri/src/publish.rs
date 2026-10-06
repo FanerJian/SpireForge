@@ -122,6 +122,41 @@ pub fn card_entry(pack_id: &str, card_id: &str) -> String {
 /// 语言代码（与游戏本地化目录一致）
 const LANGS: [&str; 2] = ["eng", "zhs"];
 
+/// 递归改写 delayed 效果的图标路径：项目相对 `assets/powers/<file>` → PCK 内
+/// `images/powers/<file>`（与立绘 images/cards 同款约定），图片字节入 files；
+/// 力量名形态（不含 assets/ 前缀）原样保留；文件缺失时清空回落空白图标。
+fn pack_effect_icons(
+    effects: &mut [EffectDef],
+    root: &str,
+    pack_id: &str,
+    files: &mut BTreeMap<String, Vec<u8>>,
+) {
+    for e in effects {
+        if let EffectDef::Delayed { icon, effects: inner, .. } = e {
+            if let Some(spec) = icon.as_mut() {
+                let s = spec.trim().to_string();
+                if s.starts_with("assets/") {
+                    let src = PathBuf::from(root).join(&s);
+                    match fs::read(&src) {
+                        Ok(bytes) => {
+                            let fname = src
+                                .file_name()
+                                .map(|f| f.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| "icon.png".to_string());
+                            *spec = format!("images/powers/{fname}");
+                            files.insert(format!("res://{pack_id}/images/powers/{fname}"), bytes);
+                        }
+                        Err(_) => {
+                            *spec = String::new();
+                        }
+                    }
+                }
+            }
+            pack_effect_icons(inner, root, pack_id, files);
+        }
+    }
+}
+
 /// 构建卡包文件集合：res://<PackId>/{cards,images,localization}
 pub fn build_pack_files(
     root: &str,
@@ -153,6 +188,9 @@ pub fn build_pack_files(
         let mut packed_card = card.clone();
         // 未裁剪原图只在编辑器项目里有意义，不进卡包
         packed_card.portrait_original = None;
+        // 延迟效果图标：项目 assets/powers/*.png → PCK images/powers/*（递归内嵌清单），
+        // 力量名形态原样保留；文件缺失时清空（运行时回落空白图标）
+        pack_effect_icons(&mut packed_card.effects, root, pack_id, &mut files);
         if !card.portrait.is_empty() {
             let src = PathBuf::from(root).join(&card.portrait);
             if src.exists() {
@@ -558,6 +596,73 @@ mod tests {
     }
 
     #[test]
+    fn delayed_icon_assets_pack_and_power_name_passthrough() {
+        use crate::model::{CardDef, EffectDef, LocText};
+
+        let dir = std::env::temp_dir().join("sf_icon_test_proj");
+        let assets = dir.join("assets/powers");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join("burst.png"), b"\x89PNG-fake").unwrap();
+
+        let mut card = CardDef {
+            id: "iconic".into(),
+            name: LocText {
+                eng: "Iconic".into(),
+                zhs: "图标卡".into(),
+            },
+            ..CardDef::default()
+        };
+        card.effects = vec![
+            // 项目路径形态：发布时改写为 images/powers/burst.png 并入包
+            EffectDef::Delayed {
+                turns: 1,
+                timing: None,
+                side: None,
+                every_turn: true,
+                icon: Some("assets/powers/burst.png".into()),
+                effects: vec![EffectDef::Block {
+                    amount: 4.0,
+                    props: vec![],
+                    upgrade_amount: 0.0,
+                }],
+            },
+            // 力量名形态：原样保留
+            EffectDef::Delayed {
+                turns: 2,
+                timing: None,
+                side: None,
+                every_turn: true,
+                icon: Some("Vulnerable".into()),
+                effects: vec![],
+            },
+        ];
+
+        let files = build_pack_files(dir.to_str().unwrap(), "IconPack", &[card.clone()]).unwrap();
+        assert_eq!(
+            files.get("res://IconPack/images/powers/burst.png").map(|b| b.as_slice()),
+            Some(b"\x89PNG-fake".as_slice())
+        );
+        let v: serde_json::Value =
+            serde_json::from_slice(&files["res://IconPack/cards/iconic.json"]).unwrap();
+        assert_eq!(v["effects"][0]["icon"], "images/powers/burst.png");
+        assert_eq!(v["effects"][1]["icon"], "Vulnerable");
+
+        // 缺失文件：图标清空回落空白（不阻断发布）
+        card.effects[0] = EffectDef::Delayed {
+            turns: 1,
+            timing: None,
+            side: None,
+            every_turn: true,
+            icon: Some("assets/powers/missing.png".into()),
+            effects: vec![],
+        };
+        let files2 = build_pack_files(dir.to_str().unwrap(), "IconPack", &[card]).unwrap();
+        let v2: serde_json::Value =
+            serde_json::from_slice(&files2["res://IconPack/cards/iconic.json"]).unwrap();
+        assert_eq!(v2["effects"][0]["icon"], "");
+    }
+
+    #[test]
     fn vanilla_override_card_serializes_and_localizes() {
         use crate::model::{CardDef, LocText};
         use std::collections::BTreeMap;
@@ -702,6 +807,7 @@ mod tests {
                 timing: Some("turn_end".into()),
                 side: Some("enemy".into()),
                 every_turn: false,
+                icon: Some("Vulnerable".into()),
                 effects: vec![EffectDef::Block {
                     amount: 4.0,
                     props: vec!["Move".into()],
@@ -788,10 +894,10 @@ mod tests {
         );
         assert!(matches!(
             &back.effects[10],
-            EffectDef::Delayed { turns: 2, timing: Some(t), side: Some(s), every_turn: false, effects }
-            if t == "turn_end" && s == "enemy" && effects.len() == 1
+            EffectDef::Delayed { turns: 2, timing: Some(t), side: Some(s), every_turn: false, icon: Some(i), effects }
+            if t == "turn_end" && s == "enemy" && i == "Vulnerable" && effects.len() == 1
         ));
-        // 兼容旧卡包：every_turn/effects 全缺省（黑屏卡 card_1 的形态）必须照常解析
+        // 兼容旧卡包：every_turn/effects/icon 全缺省（黑屏卡 card_1 的形态）必须照常解析
         let legacy_delayed: EffectDef =
             serde_json::from_value(json!({"kind": "delayed", "turns": 2, "timing": "turn_end"})).unwrap();
         assert!(matches!(

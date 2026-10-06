@@ -40,8 +40,14 @@ public static class SfVanillaOverride
     /// <summary>entry → 生效中的覆盖定义（Harmony 前缀查表）。</summary>
     private static readonly Dictionary<string, SfCardDef> Active = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>entry → 所属包 id（仅记录带自定义立绘的覆盖，PortraitPostfix 与自检用）。</summary>
+    /// <summary>entry → 所属包 id（覆盖定义登记，立绘/力量图标等包内路径拼接用）。</summary>
     private static readonly Dictionary<string, string> PackOfVanilla = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>覆盖卡 Entry → 包命名空间 只读口（delayed 力量图标等需要按卡定位包）。</summary>
+    public static bool TryPackOfEntry(string entry, out string modId)
+    {
+        return PackOfVanilla.TryGetValue(entry ?? "", out modId!);
+    }
 
     /// <summary>已生效的覆盖定义（vanillaId → 定义 + 所属包 id），供启动期立绘自检枚举。</summary>
     public static IEnumerable<(string VanillaId, SfCardDef Def, string ModId)> Applied =>
@@ -111,10 +117,7 @@ public static class SfVanillaOverride
 
         // 查表先于补丁填充：getter 后缀一挂就可能被游戏代码读到，届时表必须已就绪
         Active[vid] = def;
-        if (!string.IsNullOrEmpty(def.Portrait))
-        {
-            PackOfVanilla[vid] = modId;
-        }
+        PackOfVanilla[vid] = modId;
 
         if (def.Effects is { Count: > 0 })
         {

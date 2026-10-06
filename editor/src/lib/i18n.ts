@@ -304,6 +304,13 @@ const STRINGS: Record<string, L> = {
   'pp.delayedMode': { zh: '触发方式', en: 'Trigger mode' },
   'pp.delayedEvery': { zh: '每回合触发', en: 'Every turn' },
   'pp.delayedFinal': { zh: '仅最后一回合', en: 'Once, on the final turn' },
+  'pp.iconLabel': { zh: '图标', en: 'Icon' },
+  'pp.iconUpload': { zh: '上传图片', en: 'Upload image' },
+  'pp.iconUploadFail': { zh: '图标保存失败：{e}', en: 'Failed to save icon: {e}' },
+  'pp.turnEndInHandNote': {
+    zh: '按官方机制，带「回合末在手」效果的卡会在你的回合结束时自动打出（结算后进弃牌堆，原版灼烧/衰变同款），不会留在手里。',
+    en: 'Per the official mechanic, a card with a turn-end-in-hand effect plays itself at the end of your turn (then goes to the discard pile, like Burn/Decay). It does not stay in hand.',
+  },
   'pp.delayedEmpty': { zh: '尚无内嵌效果', en: 'No nested effects yet' },
   'pp.coreKinds': { zh: '常用', en: 'Common' },
   'pp.extraKinds': { zh: '扩展', en: 'Advanced' },

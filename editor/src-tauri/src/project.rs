@@ -233,6 +233,25 @@ pub fn save_portrait(root: &str, id: &str, ext: &str, bytes: &[u8]) -> Result<St
     Ok(rel)
 }
 
+/// 保存延迟效果图标到 assets/powers/<name>.<ext>，返回相对路径
+/// （name 由前端给卡 id + 时间戳拼出，避免嵌套延迟互覆；发布时改写为
+/// PCK 内 images/powers/<文件名>，运行时经 SfPngLoader 加载）
+pub fn save_effect_icon(root: &str, name: &str, ext: &str, bytes: &[u8]) -> Result<String, String> {
+    validate_card_id(name)?;
+    let ext = match ext.to_ascii_lowercase().as_str() {
+        "png" => "png",
+        "jpg" | "jpeg" => "jpg",
+        "webp" => "webp",
+        _ => "png",
+    };
+    let rel = format!("assets/powers/{name}.{ext}");
+    validate_rel_path(&rel)?;
+    let p = PathBuf::from(root).join(&rel);
+    fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
+    fs::write(&p, bytes).map_err(|e| e.to_string())?;
+    Ok(rel)
+}
+
 pub fn read_portrait_bytes(root: &str, rel: &str) -> Result<Vec<u8>, String> {
     validate_rel_path(rel)?;
     fs::read(PathBuf::from(root).join(rel)).map_err(|e| e.to_string())

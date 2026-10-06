@@ -231,6 +231,17 @@ fn save_portrait(
 }
 
 #[tauri::command]
+fn save_effect_icon(
+    state: State<AppState>,
+    name: String,
+    ext: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let root = require_root(&state)?;
+    project::save_effect_icon(&root, &name, &ext, &bytes)
+}
+
+#[tauri::command]
 fn read_portrait(state: State<AppState>, rel: String, project_root: Option<String>) -> Result<Vec<u8>, String> {
     let root = require_root(&state)?;
     if project_root.as_deref().is_some_and(|expected| expected != root) {
@@ -634,6 +645,7 @@ pub fn run() {
             import_custom_pools,
             read_game_catalog,
             save_portrait,
+            save_effect_icon,
             read_portrait,
             import_card_json,
             export_card_json,

@@ -72,6 +72,8 @@ export type EffectDef =
       /** 触发哪一方：player（缺省，我方回合时机）/ enemy（敌方）/ both（双方） */
       side?: 'player' | 'enemy' | 'both';
       every_turn?: boolean;
+      /** 承载力量图标：游戏内力量名（如 Vulnerable）或包内路径 images/powers/*.png */
+      icon?: string;
       effects?: EffectDef[];
     }
   | {

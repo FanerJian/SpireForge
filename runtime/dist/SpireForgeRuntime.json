@@ -3,7 +3,7 @@
   "name": "SpireForge Runtime",
   "author": "SpireForge",
   "description": "SpireForge 卡牌编辑器的运行时支持 mod。加载用 SpireForge 编辑器制作的卡包（纯 JSON+PNG，无需编译）并动态创建卡牌。",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "has_pck": false,
   "has_dll": true,
   "dependencies": [],

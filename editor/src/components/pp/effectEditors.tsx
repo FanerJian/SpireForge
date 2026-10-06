@@ -1,11 +1,14 @@
 // 效果行的编辑器主体，按种类分发：delayed / custom / 其余标准种类。
 // 从 EffectsTab 的巨型 JSX 中拆出——每种效果一个组件，行头（标签/排序/删除）仍在 EffectsTab。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Combobox, type ComboItem } from '../Combobox';
 import { NumInput, inputCls, selectCls } from '../ui';
 import { EFFECT_META, HOOK_TARGET_OPTIONS, ORB_OPTIONS, pick, useLang, useT } from '../../lib/i18n';
 import { AMOUNT_KINDS, DELAYED_INNER_KINDS, defaultEffect, LEGACY_UPGRADE } from '../../lib/effects';
 import { buildHandlerCombo, starterParamsFor, useRuntimeCatalog } from './catalogs';
+import { api } from '../../lib/tauri';
+import { bytesToDataUrl, extOf } from '../../lib/img';
+import { useStore } from '../../lib/store';
 import type { CardDef, EffectDef, UpgradeDef } from '../../lib/types';
 
 type DelayedDef = Extract<EffectDef, { kind: 'delayed' }>;
@@ -72,12 +75,16 @@ function HookTargetSelect({ value, onChange, width = 'w-36' }: {
   );
 }
 
-/** 延迟效果编辑器：回合数/触发时机/触发方式 + 内嵌效果清单 */
-export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, path }: {
-  e: DelayedDef; patch: RowPatch; powerCombo: ComboItem[]; vfxCombo: ComboItem[]; path?: string;
+/** 延迟效果编辑器：回合数/触发时机/触发方式/力量图标 + 内嵌效果清单 */
+export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path }: {
+  e: DelayedDef; patch: RowPatch; powerCombo: ComboItem[]; vfxCombo: ComboItem[]; cardId: string; path?: string;
 }) {
   const t = useT();
   const lang = useLang();
+  const { showToast } = useStore();
+  const iconFileRef = useRef<HTMLInputElement>(null);
+  const [iconUrl, setIconUrl] = useState('');
+  const isIconPath = !!e.icon && e.icon.includes('/');
   const innerList = e.effects ?? []; // 删空内嵌后 Rust 端不落 effects 字段，老卡包里就是没有
   const setInner = (j: number, p: Partial<EffectDef>) =>
     patch({ effects: innerList.map((x, idx) => (idx === j ? ({ ...x, ...p } as EffectDef) : x)) } as Partial<EffectDef>);
@@ -86,6 +93,44 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, path }: {
   const addInner = (k: string) => {
     const def = defaultEffect(k as EffectDef['kind']);
     if (def) patch({ effects: [...innerList, def] } as Partial<EffectDef>);
+  };
+
+  // 图标下拉 = （空白）+ 全部游戏力量图标（复用 powerCombo：value=解析名，item 自带图标预览）
+  const iconCombo = useMemo(() => ([
+    {
+      value: '',
+      primary: lang === 'en' ? '(blank)' : '（空白）',
+      secondary: lang === 'en' ? 'No icon' : '不设置图标',
+      keywords: lang === 'en' ? '无 none blank clear 空' : 'none blank 无 空白 清除',
+    },
+    ...powerCombo,
+  ]), [powerCombo, lang]);
+
+  // 自定义图标路径 → 预览（项目资产经 readPortrait 读取，与立绘同一条链）
+  useEffect(() => {
+    if (!e.icon || !e.icon.includes('/')) {
+      setIconUrl('');
+      return;
+    }
+    let cancelled = false;
+    api.readPortrait(e.icon).then((bytes) => {
+      if (!cancelled) setIconUrl(bytesToDataUrl(new Uint8Array(bytes), extOf(e.icon!)));
+    }).catch(() => {
+      if (!cancelled) setIconUrl('');
+    });
+    return () => { cancelled = true; };
+  }, [e.icon]);
+
+  const onIconFile = async (f: File) => {
+    try {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      const dot = f.name.lastIndexOf('.');
+      const ext = dot >= 0 ? f.name.slice(dot + 1).toLowerCase() : 'png';
+      const rel = await api.saveEffectIcon(`${cardId}_${Date.now()}`, ext, buf);
+      patch({ icon: rel } as Partial<EffectDef>);
+    } catch (err) {
+      showToast(t('pp.iconUploadFail', { e: String(err) }));
+    }
   };
 
   return (
@@ -132,6 +177,41 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, path }: {
             <option value="every">{t('pp.delayedEvery')}</option>
             <option value="final">{t('pp.delayedFinal')}</option>
           </select>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <label className="flex items-center gap-2">
+          <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.iconLabel')}</span>
+          <Combobox
+            field="icon"
+            value={e.icon ?? ''}
+            items={iconCombo}
+            widthClass="w-44"
+            onChange={(v) => patch({ icon: v || undefined } as Partial<EffectDef>)}
+            fallbackDisplay={isIconPath ? e.icon : undefined}
+            searchPlaceholder={t('pp.powerSearch')}
+            allowRaw
+            rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+          />
+        </label>
+        {isIconPath && iconUrl && (
+          <img src={iconUrl} alt="" className="h-6 w-6 rounded align-middle" />
+        )}
+        <label className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => iconFileRef.current?.click()}
+            className="whitespace-nowrap rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 transition hover:bg-white/10"
+          >
+            {t('pp.iconUpload')}
+          </button>
+          <input
+            ref={iconFileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(ev) => { const f = ev.target.files?.[0]; if (f) void onIconFile(f); ev.target.value = ''; }}
+          />
         </label>
       </div>
       <p className="text-[11px] leading-relaxed text-slate-500">{t('pp.delayedCountHint')}</p>

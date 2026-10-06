@@ -131,6 +131,13 @@ public sealed class SfEffect
     [JsonPropertyName("timing")]
     public string Timing { get; set; } = "";
 
+    /// <summary>延迟效果（delayed）：承载力量的图标。两种写法：
+    /// ①游戏内力量名（如 Vulnerable/易伤）——直接用该力量的原版图标；
+    /// ②包内图片路径（如 images/powers/icon.png）——含 / 即视为路径，经 SfPngLoader 加载。
+    /// 缺省为空白图标（官方 NPower 对无图力量同样显示空白，不崩溃）。</summary>
+    [JsonPropertyName("icon")]
+    public string Icon { get; set; } = "";
+
     /// <summary>延迟效果（delayed）：true（缺省）= 每回合触发内嵌清单；false = 等 turns 回合后仅在最后一次时机触发一次。</summary>
     [JsonPropertyName("every_turn")]
     public bool EveryTurn { get; set; } = true;
@@ -189,6 +196,7 @@ public sealed class SfEffect
             "sfx" => Sfx,
             "attacker_vfx" => AttackerVfx,
             "source" => Source,
+            "icon" => Icon,
             _ => "",
         };
     }

@@ -37,6 +37,9 @@ export const api = {
 
   savePortrait: (id: string, ext: string, bytes: Uint8Array) =>
     invoke<string>('save_portrait', { id, ext, bytes: Array.from(bytes) }),
+  /** 延迟效果图标：name = 卡 id + 时间戳拼名，落 assets/powers/<name>.<ext> */
+  saveEffectIcon: (name: string, ext: string, bytes: Uint8Array) =>
+    invoke<string>('save_effect_icon', { name, ext, bytes: Array.from(bytes) }),
   readPortrait: (rel: string, projectRoot?: string) =>
     invoke<number[]>('read_portrait', { rel, projectRoot }),
 

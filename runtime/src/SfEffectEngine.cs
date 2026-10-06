@@ -403,7 +403,8 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": delayed has no combat state, skipped");
                     break;
                 }
-                await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing, e.EveryTurn, e.Side);
+                await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing, e.EveryTurn, e.Side,
+                    e.StringParam("icon"));
                 break;
             }
 
@@ -747,11 +748,20 @@ internal static class SfVarNaming
 }
 
 /// <summary>
-/// 怪物名 → MonsterModel 解析（summon 效果用）。遍历 ModelDb.Monsters（全部已注册怪物），
-/// 同时匹配类名（DampCultist）与 Id.Entry（DAMP_CULTIST），不区分大小写。
+/// 怪物名 → MonsterModel 解析（summon 效果用）。
+/// ①遍历 ModelDb.Monsters（遭遇+事件遭遇注册的怪物）按类名/Id.Entry 匹配；
+/// ②反射兜底：扫描全部程序集的具体 MonsterModel 子类，命中后用 ModelDb 私有
+///   Get(Type) 取规范实例（DebugOrb 同款）。需要兜底的原因：ModelDb.EventEncounters
+///   是硬编码 5 元素数组（假商人/神秘骑士/训练假人×3），TheArchitectEventEncounter
+///   等事件遭遇不在其中 → 建筑师这类事件道具怪永远进不了 ModelDb.Monsters。
+/// 名字匹配不区分大小写，同时接受类名（DampCultist）与 Entry（DAMP_CULTIST）。
 /// </summary>
 internal static class SfMonsterResolver
 {
+    private static readonly Dictionary<string, System.Type> ExtraCache =
+        new(System.StringComparer.OrdinalIgnoreCase);
+    private static bool _scanned;
+
     public static MonsterModel? Find(string name)
     {
         var n = (name ?? "").Trim();
@@ -767,7 +777,53 @@ internal static class SfMonsterResolver
                 return m;
             }
         }
-        return null;
+        EnsureScan();
+        return ExtraCache.TryGetValue(n, out var t) ? Instance(t) : null;
+    }
+
+    private static void EnsureScan()
+    {
+        if (_scanned)
+        {
+            return;
+        }
+        _scanned = true;
+        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            System.Type[] types;
+            try
+            {
+                types = asm.GetTypes();
+            }
+            catch (System.Exception)
+            {
+                continue; // 动态/受限程序集跳过
+            }
+            foreach (var t in types)
+            {
+                if (t.IsAbstract || !typeof(MonsterModel).IsAssignableFrom(t))
+                {
+                    continue;
+                }
+                ExtraCache[t.Name] = t;
+                ExtraCache[MegaCrit.Sts2.Core.Helpers.StringHelper.Slugify(t.Name)] = t;
+            }
+        }
+    }
+
+    private static MonsterModel? Instance(System.Type t)
+    {
+        try
+        {
+            var get = typeof(ModelDb).GetMethod("Get",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
+                null, new[] { typeof(System.Type) }, null);
+            return get?.Invoke(null, new object[] { t }) as MonsterModel;
+        }
+        catch (System.Exception)
+        {
+            return null;
+        }
     }
 }
 

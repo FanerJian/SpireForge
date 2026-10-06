@@ -88,6 +88,9 @@ export default function EffectsTab({ card }: { card: CardDef }) {
           {t('pp.noEffects')}
         </div>
       )}
+      {!isPlay && trigger === 'on_turn_end_in_hand' && list.length > 0 && (
+        <p className="text-[11px] leading-relaxed text-slate-500">{t('pp.turnEndInHandNote')}</p>
+      )}
       {list.map((e, i) => {
         const meta = effectMetaOf(e.kind);
         const rowPatch = (p: Partial<EffectDef>) => patch(i, p);
@@ -112,6 +115,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
                 patch={rowPatch}
                 powerCombo={powerCombo}
                 vfxCombo={vfxCombo}
+                cardId={card.id}
               />
             ) : e.kind === 'custom' ? (
               <CustomEffectBody

@@ -85,6 +85,8 @@ public static class RuntimeEntry
             postfix: new HarmonyMethod(typeof(RuntimeEntry), nameof(AfterBeforeCombatStart)));
         // 示例卡包「咔咔」：生成邪教徒时把显示名改成咔咔（Title getter 后缀 + loc 词条注入）
         SfKaka.Install(harmony);
+        // 延迟效果力量图标：PowerModel.Icon/BigIcon 非虚属性，后缀改写（仅 SfDelayedPower 实例生效）
+        SfDelayedPower.InstallIconHook(harmony);
         // 拿卡登记只在同一次游戏会话内有效：清掉上个会话遗留的清单
         SfGrant.ClearStaleQueue();
 
