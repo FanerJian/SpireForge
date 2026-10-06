@@ -8,10 +8,10 @@ import type { CardDef } from '../../lib/types';
 import { useGenDescription } from './useDescription';
 
 export default function LocTab({ card }: { card: CardDef }) {
-  const { meta, updateCard } = useStore();
+  const { meta, updateCard, fieldFocus } = useStore();
   const t = useT();
   const genDesc = useGenDescription();
-  const [loc, setLoc] = useState<'zhs' | 'eng'>('zhs');
+  const [loc, setLoc] = useState<'zhs' | 'eng'>(() => fieldFocus?.field.endsWith('.eng') ? 'eng' : 'zhs');
   const insert = (s: string) => {
     const cur = card.description[loc] ?? '';
     updateCard({ description: { ...card.description, [loc]: cur + s } });
@@ -23,7 +23,7 @@ export default function LocTab({ card }: { card: CardDef }) {
         options={[{ v: 'zhs' as const, label: '简体中文' }, { v: 'eng' as const, label: 'English' }]}
         onChange={setLoc}
       />
-      <Field label={t('pp.locName')} hint={`${cardEntry(meta?.pack_id ?? '', card.id)}.title`}>
+      <Field label={t('pp.locName')} field={`name.${loc}`} hint={`${cardEntry(meta?.pack_id ?? '', card.id)}.title`}>
         <input className={inputCls} value={card.name[loc]}
           onChange={(e) => updateCard({ name: { ...card.name, [loc]: e.target.value } })} />
       </Field>

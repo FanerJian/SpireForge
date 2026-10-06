@@ -73,8 +73,8 @@ function HookTargetSelect({ value, onChange, width = 'w-36' }: {
 }
 
 /** 延迟效果编辑器：回合数/触发时机/触发方式 + 内嵌效果清单 */
-export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
-  e: DelayedDef; patch: RowPatch; powerCombo: ComboItem[]; vfxCombo: ComboItem[];
+export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, path }: {
+  e: DelayedDef; patch: RowPatch; powerCombo: ComboItem[]; vfxCombo: ComboItem[]; path?: string;
 }) {
   const t = useT();
   const lang = useLang();
@@ -91,7 +91,7 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
   return (
     <div className="mt-2 space-y-2">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <label className="flex items-center gap-2">
+        <label data-effect-field="turns" className="flex items-center gap-2">
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTurns')}</span>
           <NumInput
             width="w-16"
@@ -134,13 +134,14 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
           </select>
         </label>
       </div>
-      <div className="rounded-md border border-white/10 bg-black/20 p-2">
+      <p className="text-[11px] leading-relaxed text-slate-500">{t('pp.delayedCountHint')}</p>
+      <div data-effect-field="effects" className="rounded-md border border-white/10 bg-black/20 p-2">
         <div className="space-y-1.5">
           {innerList.length === 0 && (
             <div className="py-1 text-center text-[10px] text-slate-600">{t('pp.delayedEmpty')}</div>
           )}
           {innerList.map((inner, j) => (
-            <div key={j} className="flex flex-wrap items-center gap-2">
+            <div key={j} data-field={path && `${path}.effects.${j}`} className="flex flex-wrap items-center gap-2">
               <span className="w-20 shrink-0 whitespace-nowrap text-[11px] text-slate-300">
                 {pick(EFFECT_META[inner.kind]?.label ?? { zh: inner.kind, en: inner.kind }, lang)}
               </span>
@@ -154,6 +155,7 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
               {inner.kind === 'power' && (
                 <>
                   <Combobox
+                    field="power"
                     value={(inner as { power: string }).power}
                     items={powerCombo}
                     onChange={(v) => setInner(j, { power: v } as Partial<EffectDef>)}
@@ -169,6 +171,16 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
                   />
                 </>
               )}
+              {inner.kind === 'orb' && (
+                <select
+                  aria-label={t('pp.orbType')}
+                  className={selectCls + ' w-24'}
+                  value={inner.orb ?? 'random'}
+                  onChange={(ev) => setInner(j, { orb: ev.target.value } as Partial<EffectDef>)}
+                >
+                  {ORB_OPTIONS.map((o) => <option key={o.v} value={o.v}>{pick(o.label, lang)}</option>)}
+                </select>
+              )}
               {inner.kind === 'damage' && (
                 <HookTargetSelect
                   value={(inner as { target?: string }).target ?? 'random_enemy'}
@@ -178,6 +190,7 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
               )}
               {inner.kind === 'vfx' && (
                 <Combobox
+                  field="vfx"
                   value={(inner as { vfx: string }).vfx}
                   items={vfxCombo}
                   onChange={(v) => setInner(j, { vfx: v } as Partial<EffectDef>)}
@@ -238,6 +251,7 @@ export function CustomEffectBody({ e, patch, hookCtx }: {
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.handler')}</span>
         <Combobox
+          field="handler"
           value={e.handler}
           items={handlerCombo}
           onChange={pickHandler}
@@ -357,6 +371,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
           <>
             <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.powerLabel')}</span>
             <Combobox
+              field="power"
               value={(e as { power: string }).power}
               items={powerCombo}
               onChange={(v) => patch({ power: v } as Partial<EffectDef>)}
@@ -371,6 +386,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
           <>
             <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.spawnEntry')}</span>
             <Combobox
+              field="card_entry"
               value={(e as { card_entry: string }).card_entry}
               items={spawnCombo}
               onChange={(v) => patch({ card_entry: v } as Partial<EffectDef>)}
@@ -410,6 +426,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
             <>
               <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.monster')}</span>
               <Combobox
+                field="monster"
                 value={me.monster}
                 items={monsterCombo}
                 onChange={(v) => patch({ monster: v } as Partial<EffectDef>)}
@@ -456,6 +473,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               <label className={unit}>
                 <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxLabel')}</span>
                 <Combobox
+                  field="vfx"
                   value={vf.vfx}
                   items={vfxCombo}
                   onChange={(v) => patch({ vfx: v } as Partial<EffectDef>)}
@@ -545,6 +563,8 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
                   onChange={(ev) => patch({ target: ev.target.value || undefined } as Partial<EffectDef>)}
                 >
                   <option value="">{t('pp.damageTargetDefault')}</option>
+                  <option value="self">{t('pp.targetSelf')}</option>
+                  <option value="random_enemy">{t('pp.vfxTargetRandom')}</option>
                   <option value="all_enemies">{t('pp.targetAllEnemies')}</option>
                 </select>
               </label>
@@ -584,7 +604,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
           </div>
         </>
       )}
-      {e.kind === 'power' && (
+      {e.kind === 'power' && !hookCtx && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
           <select
@@ -594,11 +614,12 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
           >
             <option value="">{t('pp.playTargetDefault')}</option>
             <option value="self">{t('pp.targetSelf')}</option>
+            <option value="random_enemy">{t('pp.vfxTargetRandom')}</option>
             <option value="all_enemies">{t('pp.targetAllEnemies')}</option>
           </select>
         </div>
       )}
-      {hookCtx && e.kind === 'damage' && (
+      {hookCtx && (e.kind === 'damage' || e.kind === 'power') && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
           <HookTargetSelect

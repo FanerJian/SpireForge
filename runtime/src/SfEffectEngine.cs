@@ -85,6 +85,17 @@ public static class SfEffectEngine
                         await SfAttacks.RunTargetsAttack(card, [card.Owner.Creature], Amount(card, e, varName), e, ctx);
                         break;
                     }
+                    if (fxTarget.Equals("random_enemy", System.StringComparison.OrdinalIgnoreCase)
+                        || (fxTarget.Length == 0 && card.TargetType == TargetType.RandomEnemy))
+                    {
+                        await SfAttacks.RunTargetsAttack(card, ResolveTargets(card, e), Amount(card, e, varName), e, ctx);
+                        break;
+                    }
+                    if (fxTarget.Length == 0 && card.TargetType == TargetType.Self)
+                    {
+                        await SfAttacks.RunTargetsAttack(card, [card.Owner.Creature], Amount(card, e, varName), e, ctx);
+                        break;
+                    }
                     if (fxTarget.Equals("all_enemies", System.StringComparison.OrdinalIgnoreCase)
                         || play.Target == null)
                     {
@@ -557,9 +568,19 @@ public static class SfEffectEngine
         {
             return [card.Owner.Creature];
         }
+        if (t.Equals("random_enemy", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveTargets(card, e);
+        }
         if (play != null && play.Target != null)
         {
             return [play.Target];
+        }
+        if (play != null && t.Length == 0)
+        {
+            if (card.TargetType == TargetType.Self) return [card.Owner.Creature];
+            if (card.TargetType == TargetType.AllEnemies && card.Owner.Creature.CombatState != null)
+                return card.Owner.Creature.CombatState.HittableEnemies;
         }
         return ResolveTargets(card, e);
     }
@@ -691,6 +712,7 @@ internal static class SfVarNaming
         SfEffectKind.Draw => "Cards",
         SfEffectKind.Energy => "Energy",
         SfEffectKind.Heal => "Heal",
+        SfEffectKind.Power => "Power",
         SfEffectKind.LoseHp => "LoseHp",
         SfEffectKind.Gold => "Gold",
         SfEffectKind.MaxHp => "MaxHp",

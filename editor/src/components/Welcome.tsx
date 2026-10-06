@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, pickDirectory } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { setLang, useLang, useT } from '../lib/i18n';
+import ProjectLibrary from './ProjectLibrary';
+import BackupRecoveryModal from './BackupRecoveryModal';
 
 // 与后端 project::validate_pack_id 一致：字母开头，字母/数字/下划线，2–64 位
 const PACK_ID_RE = /^[A-Za-z][A-Za-z0-9_]{1,63}$/;
@@ -16,15 +18,19 @@ export default function Welcome() {
   const [author, setAuthor] = useState('');
   const [busy, setBusy] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [recoveryPath, setRecoveryPath] = useState<string | null>(null);
   const [projectsRoot, setProjectsRoot] = useState('');
   const [gameDirHint, setGameDirHint] = useState(settings.game_dir ? '' : t('w.gameMissing'));
   const [rtNote, setRtNote] = useState('');
-  const packIdOk = PACK_ID_RE.test(packId.trim());
+  const packIdOk = PACK_ID_RE.test(packId.trim()) && !/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(packId.trim());
+  const working = busy || demoBusy;
 
   /** 游戏目录就绪后自动安装内置 Runtime 前置 mod（幂等；结果以小字提示） */
   const ensureRt = async () => {
     try {
       const r = await api.ensureRuntime();
+      if (r.action !== 'locked') await refreshSettings();
       setRtNote(
         r.action === 'installed' ? t('w.rtInstalled')
         : r.action === 'updated' ? t('w.rtUpdated', { v: r.version })
@@ -50,9 +56,12 @@ export default function Welcome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // 挂载时自动检测一次游戏目录（首次运行的关键体验）
+  // 已配置目录也检查内置 Runtime；编辑器升级后无需重新检测目录即可部署修复。
   useEffect(() => {
-    if (settings.game_dir) return;
+    if (settings.game_dir) {
+      void ensureRt();
+      return;
+    }
     (async () => {
       const found = await api.detectGameDir();
       if (found) {
@@ -65,7 +74,7 @@ export default function Welcome() {
           /* 检测到但校验失败：保留手动配置路径 */
         }
       }
-    })();
+    })().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -95,24 +104,26 @@ export default function Welcome() {
 
   const doCreate = async () => {
     setBusy(true);
+    setError('');
     try {
       // 不再选目录：后端自动放到编辑器 projects\ 下（与包 id 同名，重名自动加后缀）
       await newProject(packId.trim(), name.trim(), author.trim());
     } catch (e) {
-      alert(String(e));
+      setError(String(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const doOpen = async () => {
-    const dir = await pickDirectory();
-    if (!dir) return;
+  const doOpen = async (path?: string) => {
     setBusy(true);
+    setError('');
     try {
+      const dir = path ?? await pickDirectory();
+      if (!dir) return;
       await openProject(dir);
     } catch (e) {
-      alert(t('w.openFailed', { e: String(e) }));
+      setError(t('w.openFailed', { e: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -121,19 +132,21 @@ export default function Welcome() {
   /** 创建内置示例卡包并直接打开（新人推荐路径）；目录同样自动分配 */
   const doDemo = async () => {
     setDemoBusy(true);
+    setError('');
     try {
       const dir = await api.createDemoProject();
       await openProject(dir);
     } catch (e) {
-      alert(t('w.demoFailed', { e: String(e) }));
+      setError(t('w.demoFailed', { e: String(e) }));
     } finally {
       setDemoBusy(false);
     }
   };
 
   return (
-    <div className="flex h-full items-center justify-center bg-gradient-to-b from-[#12121c] to-[#0a0a10]">
-      <div className="w-[440px] rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl">
+    <div className="h-full overflow-y-auto bg-gradient-to-b from-[#12121c] to-[#0a0a10] px-6 py-8">
+      <div className="mx-auto grid w-full max-w-[1100px] items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-2xl">
         <div className="flex items-start justify-between">
           <div>
             <div className="text-2xl font-black tracking-wide text-amber-300">SpireForge 尖塔锻炉</div>
@@ -149,6 +162,7 @@ export default function Welcome() {
         <div className="mb-5 mt-3 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
           {t('w.guide')}
         </div>
+        {error && <p role="alert" className="mb-4 break-words rounded-lg border border-rose-400/20 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200">{error}</p>}
 
         <button
           onClick={detectGame}
@@ -170,20 +184,21 @@ export default function Welcome() {
           <div className="space-y-3">
             <button
               onClick={() => setMode('create')}
+              disabled={working}
               className="w-full rounded-lg bg-amber-500/90 py-3 text-sm font-bold text-black transition hover:bg-amber-400"
             >
               {t('w.newProject')}
             </button>
             <button
               onClick={doDemo}
-              disabled={demoBusy}
+              disabled={working}
               className="w-full rounded-lg border border-emerald-400/30 bg-emerald-500/10 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-40"
             >
               {t('w.demo')}
             </button>
             <button
-              onClick={doOpen}
-              disabled={busy}
+              onClick={() => void doOpen()}
+              disabled={working}
               className="w-full rounded-lg border border-white/15 bg-white/[0.04] py-3 text-sm font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/[0.08]"
             >
               {t('w.openProject')}
@@ -213,7 +228,7 @@ export default function Welcome() {
             </label>
             <button
               onClick={doCreate}
-              disabled={busy || !packIdOk}
+              disabled={working || !packIdOk || !name.trim()}
               className="w-full rounded-lg bg-amber-500/90 py-3 text-sm font-bold text-black transition hover:bg-amber-400 disabled:opacity-40"
             >
               {t('w.create')}
@@ -226,12 +241,15 @@ export default function Welcome() {
                 </div>
               </div>
             )}
-            <button onClick={() => setMode('none')} className="w-full text-xs text-slate-500 hover:text-slate-300">
+            <button onClick={() => setMode('none')} disabled={working} className="w-full text-xs text-slate-500 hover:text-slate-300">
               {t('w.back')}
             </button>
           </div>
         )}
       </div>
+      <ProjectLibrary busy={working} onOpen={(path) => doOpen(path)} onRecover={setRecoveryPath} />
+      </div>
+      {recoveryPath && <BackupRecoveryModal projectPath={recoveryPath} onClose={() => setRecoveryPath(null)} />}
     </div>
   );
 }

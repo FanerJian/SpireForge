@@ -33,7 +33,16 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), String> {
     if path.exists() {
         fs::rename(path, &bak).map_err(|e| format!("备份 {} 失败: {e}", path.display()))?;
     }
-    fs::rename(&tmp, path).map_err(|e| format!("提交 {} 失败: {e}", path.display()))
+    if let Err(e) = fs::rename(&tmp, path) {
+        // Windows 提交失败时把原文件放回，保证项目仍可读取。
+        if !path.exists() && bak.exists() {
+            fs::copy(&bak, path).map_err(|restore| {
+                format!("提交 {} 失败: {e}；还原失败: {restore}（原内容保留在 {}）", path.display(), bak.display())
+            })?;
+        }
+        return Err(format!("提交 {} 失败: {e}", path.display()));
+    }
+    Ok(())
 }
 
 /// pack_id 校验：`^[A-Za-z][A-Za-z0-9_]{1,63}$`，且不是 Windows 保留设备名。
@@ -253,14 +262,35 @@ pub fn add_card(root: &str, card: &CardDef) -> Result<(), String> {
 /// 删除卡：先改 meta（项目索引），再删文件。
 /// 第二步失败只留下孤儿文件，不会出现 meta 引用缺失文件导致项目打不开。
 pub fn remove_card(root: &str, id: &str) -> Result<(), String> {
+    validate_card_id(id)?;
     let mut meta = read_meta(root)?;
     if !meta.cards.contains(&id.to_string()) {
         return Ok(()); // 幂等
+    }
+    // 删除快照独立于自动保存的 .bak，关闭编辑器后仍可恢复；立绘不删除。
+    let path = card_path(root, id);
+    if path.exists() {
+        // 原样保存：即便文件损坏，也不丢弃用户可手工修复的原内容。
+        let snapshot = fs::read(&path).map_err(|e| e.to_string())?;
+        atomic_write(&path.with_extension("json.deleted"), &snapshot)?;
     }
     meta.cards.retain(|c| c != id);
     write_meta(root, &meta)?;
     let _ = fs::remove_file(card_path(root, id)); // 失败仅留孤儿文件
     Ok(())
+}
+
+/// 恢复误删卡牌，保留原顺序。标识被新卡占用时拒绝覆盖。
+pub fn restore_deleted_card(root: &str, card: &CardDef, index: usize) -> Result<(), String> {
+    validate_card_id(&card.id)?;
+    check_card_version(card.format_version)?;
+    let mut meta = read_meta(root)?;
+    if meta.cards.contains(&card.id) {
+        return Err(format!("卡牌 id {} 已被占用，无法撤销删除", card.id));
+    }
+    write_card(root, card)?;
+    meta.cards.insert(index.min(meta.cards.len()), card.id.clone());
+    write_meta(root, &meta)
 }
 
 /// 重命名卡（事务）：新文件写入 → meta 原位替换（保持顺序）→ 删旧文件；
@@ -289,7 +319,8 @@ pub fn rename_card(root: &str, old_id: &str, new_id: &str) -> Result<(), String>
             let from = PathBuf::from(root).join(&card.portrait);
             let to = PathBuf::from(root).join(&new_rel);
             if from.exists() && !to.exists() {
-                fs::rename(&from, &to).map_err(|e| format!("立绘改名失败: {e}"))?;
+                // 保留旧路径，已有撤销快照、备份和共用立绘的其他卡仍可读取。
+                fs::copy(&from, &to).map_err(|e| format!("立绘改名失败: {e}"))?;
                 card.portrait = new_rel;
             }
         }
@@ -303,7 +334,7 @@ pub fn rename_card(root: &str, old_id: &str, new_id: &str) -> Result<(), String>
             let from = PathBuf::from(root).join(&orig_rel);
             let to = PathBuf::from(root).join(&new_rel);
             if from.exists() && !to.exists() {
-                fs::rename(&from, &to).map_err(|e| format!("立绘原图改名失败: {e}"))?;
+                fs::copy(&from, &to).map_err(|e| format!("立绘原图改名失败: {e}"))?;
                 card.portrait_original = Some(new_rel);
             }
         }
@@ -452,9 +483,9 @@ mod tests {
         assert!(PathBuf::from(&root)
             .join("assets/cards/new_id.png")
             .exists());
-        assert!(!PathBuf::from(&root)
+        assert!(PathBuf::from(&root)
             .join("assets/cards/old_id.png")
-            .exists());
+            .exists()); // 旧备份与共用立绘的卡牌仍可读取
 
         // 改名到已占用 id 必须拒绝
         add_card(&root, &sample_card("taken")).unwrap();

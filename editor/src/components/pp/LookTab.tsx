@@ -9,7 +9,7 @@ import { useT } from '../../lib/i18n';
 import type { CardDef } from '../../lib/types';
 
 export default function LookTab({ card }: { card: CardDef }) {
-  const { projectRoot } = useStore();
+  const { projectRoot, portraitRevision } = useStore();
   const { updateCard, showToast } = useStore();
   const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -30,7 +30,7 @@ export default function LookTab({ card }: { card: CardDef }) {
       img.src = url;
     }).catch(() => { if (!cancelled) setDim(''); });
     return () => { cancelled = true; };
-  }, [card.portrait]);
+  }, [card.portrait, projectRoot, portraitRevision]);
 
   const onFile = async (f: File) => {
     const buf = new Uint8Array(await f.arrayBuffer());

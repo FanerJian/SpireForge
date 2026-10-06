@@ -14,6 +14,8 @@ export const api = {
     invoke<string>('new_project', { packId, name, author }),
   /** 新建项目默认根目录（编辑器目录下 projects\；不可写时回落 Documents） */
   defaultProjectsRoot: () => invoke<string>('default_projects_root'),
+  listProjects: (legacyPath: string | null = null) =>
+    invoke<ProjectLibrary>('list_projects', { legacyPath }),
   /** 创建内置示例卡包（5 张演示卡：基础模板/力量/自定义效果咔咔/钩子 + 占位立绘），同样自动定位 */
   createDemoProject: () => invoke<string>('create_demo_project'),
   openProject: (path: string) =>
@@ -21,8 +23,11 @@ export const api = {
 
   saveCard: (card: CardDef) => invoke<void>('save_card', { card }),
   renameCard: (oldId: string, newId: string) =>
-    invoke<void>('rename_card', { oldId, newId }),
+    invoke<CardDef>('rename_card', { oldId, newId }),
   deleteCard: (id: string) => invoke<void>('delete_card', { id }),
+  restoreDeletedCard: (card: CardDef, index: number) => invoke<void>('restore_deleted_card', { card, index }),
+  listBackups: (path?: string) => invoke<BackupEntry[]>('list_backups', { path }),
+  restoreBackup: (key: string, path?: string) => invoke<[ProjectMeta, CardDef[]]>('restore_backup', { key, path }),
   updateProjectMeta: (meta: ProjectMeta) => invoke<void>('update_project_meta', { meta }),
   getProjectMeta: () => invoke<ProjectMeta>('get_project_meta'),
   readGamePools: () => invoke<CustomPoolDef[]>('read_game_pools'),
@@ -32,8 +37,8 @@ export const api = {
 
   savePortrait: (id: string, ext: string, bytes: Uint8Array) =>
     invoke<string>('save_portrait', { id, ext, bytes: Array.from(bytes) }),
-  readPortrait: (rel: string) =>
-    invoke<number[]>('read_portrait', { rel }),
+  readPortrait: (rel: string, projectRoot?: string) =>
+    invoke<number[]>('read_portrait', { rel, projectRoot }),
 
   importCardJson: (raw: string) => invoke<CardDef>('import_card_json', { raw }),
   importCardAny: (raw: string) => invoke<ImportReport>('import_card_any', { raw }),
@@ -48,11 +53,12 @@ export const api = {
   /** 登记到 Runtime 拿卡清单：游戏内即时把卡永久加入本局卡组（战斗中额外塞一张到手牌）。游戏未运行时拒绝（GAME_NOT_RUNNING），登记不跨会话 */
   queueCardGrant: (entries: string[]) => invoke<GrantQueueResult>('queue_card_grant', { entries }),
   /** 发布预检：Entry 冲突 / vanilla_id 重复 / 空 handler / 缺失文案等问题清单 */
-  validateProject: () => invoke<string[]>('validate_project'),
+  validateProject: () => invoke<ValidationIssue[]>('validate_project'),
   setUploaderPath: (path: string) => invoke<void>('set_uploader_path', { path }),
   prepareWorkshop: (outDir: string, version: string, visibility: string, changeNote: string) =>
     invoke<string>('prepare_workshop', { outDir, version, visibility, changeNote }),
-  publishWorkshop: (workspace: string) => invoke<string>('publish_workshop', { workspace }),
+  publishWorkshop: (workspace: string, version: string, visibility: string, changeNote: string, runtimeDependency: number | null) =>
+    invoke<string>('publish_workshop', { workspace, version, visibility, changeNote, runtimeDependency }),
 
   /** 自动更新：清单多源检查 / 逐源下载+SHA256 校验 / 原地换 exe 并重启 */
   checkUpdate: () => invoke<UpdateCheckInfo | null>('check_update'),
@@ -61,6 +67,30 @@ export const api = {
   applyUpdate: (path: string) => invoke<boolean>('apply_update', { path }),
   openReleasePage: () => invoke<void>('open_release_page'),
 };
+
+export type PropertyTab = 'basic' | 'effects' | 'look' | 'loc';
+export interface ValidationIssue { message: string; card_id: string; tab: PropertyTab; field: string }
+export interface BackupEntry {
+  key: string; kind: 'project' | 'card' | 'deleted'; card_id: string | null;
+  name: string; modified_at: number | null; error: string | null;
+}
+
+export interface ProjectSummary {
+  path: string;
+  name: string;
+  pack_id: string;
+  author: string;
+  card_count: number;
+  modified_at: number | null;
+  last_opened_at: number | null;
+  error: string | null;
+}
+
+export interface ProjectLibrary {
+  root: string;
+  projects: ProjectSummary[];
+  warnings: string[];
+}
 
 /** 更新检查结果（无新版本为 null） */
 export interface UpdateCheckInfo {

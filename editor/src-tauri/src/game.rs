@@ -164,7 +164,7 @@ fn version_ge(a: &str, b: &str) -> bool {
 /// 检测/安装入口：幂等 + 记录版本标记到设置
 pub fn ensure_bundled_runtime(game_dir: &str) -> Result<RuntimeEnsure, String> {
     let r = ensure_bundled_runtime_into(game_dir)?;
-    if matches!(r.action.as_str(), "installed" | "updated") {
+    if matches!(r.action.as_str(), "current" | "installed" | "updated") {
         mark_runtime_version(&r.version);
     }
     Ok(r)

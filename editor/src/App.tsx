@@ -5,7 +5,9 @@ import PropertyPanel from './components/PropertyPanel';
 import PublishPanel from './components/PublishPanel';
 import ProjectSettingsModal from './components/ProjectSettingsModal';
 import UpdateModal from './components/UpdateModal';
+import BackupRecoveryModal from './components/BackupRecoveryModal';
 import Welcome from './components/Welcome';
+import ConfirmationDialog from './components/ConfirmationDialog';
 import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
 import { setLang, useLang, useT } from './lib/i18n';
@@ -21,11 +23,13 @@ function Toast({ msg }: { msg: string }) {
   );
 }
 
-function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings: () => void }) {
-  const { meta, dirtyIds, persistAll, closeProject, showToast, undoStack, redoStack, undo, redo } = useStore();
+function Toolbar({ onPublish, onSettings, onRecovery }: { onPublish: () => void; onSettings: () => void; onRecovery: () => void }) {
+  const { meta, dirtyIds, persistAll, closeProject, showToast, undoStack, redoStack, undo, redo, historyBusy } = useStore();
   const t = useT();
   const lang = useLang();
   const dirty = dirtyIds.length > 0;
+  const [saving, setSaving] = useState(false);
+  const [switching, setSwitching] = useState(false);
   return (
     <div className="flex h-12 items-center gap-2 border-b border-white/10 bg-black/30 px-4">
       <div className="flex items-baseline gap-2">
@@ -34,22 +38,27 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
       </div>
       <div className="flex-1" />
       <button
-        onClick={undo}
-        disabled={undoStack.length === 0}
+        onClick={() => void undo()}
+        disabled={historyBusy || undoStack.length === 0}
         className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
       >
         {t('app.undo')}
       </button>
       <button
-        onClick={redo}
-        disabled={redoStack.length === 0}
+        onClick={() => void redo()}
+        disabled={historyBusy || redoStack.length === 0}
         className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
       >
         {t('app.redo')}
       </button>
       <button
-        onClick={async () => { await persistAll(); showToast(t('app.saved')); }}
-        disabled={!dirty}
+        onClick={async () => {
+          setSaving(true);
+          try { await persistAll(); showToast(t('app.saved')); }
+          catch { /* persistAll 保留修改并显示失败提示 */ }
+          finally { setSaving(false); }
+        }}
+        disabled={!dirty || saving || switching}
         className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition ${
           dirty ? 'bg-white/10 text-amber-300 hover:bg-white/15' : 'bg-white/5 text-slate-600'
         }`}
@@ -68,8 +77,18 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
       >
         {t('app.settings')}
       </button>
+      <button onClick={async () => { try { await persistAll(); onRecovery(); } catch { /* 保存失败时留在编辑器 */ } }} disabled={historyBusy}
+        className="whitespace-nowrap rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-400 hover:border-white/25 disabled:opacity-30">
+        {t('recovery.title')}
+      </button>
       <button
-        onClick={() => { void closeProject(); }}
+        onClick={async () => {
+          setSwitching(true);
+          try { await closeProject(); }
+          catch { /* 保存失败时留在当前项目 */ }
+          finally { setSwitching(false); }
+        }}
+        disabled={switching || saving || historyBusy}
         className="whitespace-nowrap rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
       >
         {t('app.switchProject')}
@@ -168,19 +187,19 @@ function PreviewPane() {
 }
 
 export default function App() {
-  const { projectRoot, meta, toast, openProject } = useStore();
+  const { projectRoot, meta, toast, refreshSettings } = useStore();
   const [publishing, setPublishing] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const t = useT();
   const updateInfo = useUpdateInfo();
   useAutoUpdateCheck();
 
   useEffect(() => {
-    const saved = localStorage.getItem('spireforge.lastProject');
-    if (saved && !projectRoot) {
-      openProject(saved).catch(() => localStorage.removeItem('spireforge.lastProject'));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // 启动进入卡包列表，让用户选择；旧版 lastProject 由列表兼容发现。
+    void refreshSettings().catch(() => {}).finally(() => setSettingsReady(true));
+  }, [refreshSettings]);
 
   useEffect(() => {
     if (projectRoot) localStorage.setItem('spireforge.lastProject', projectRoot);
@@ -204,6 +223,7 @@ export default function App() {
       if (!(e.ctrlKey || e.metaKey)) return;
       const key = e.key.toLowerCase();
       if (key !== 'z' && key !== 'y') return;
+      if (document.querySelector('[data-editor-modal]')) return;
       const el = e.target as HTMLElement | null;
       const inText = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
       if (inText) return;
@@ -216,19 +236,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  if (!settingsReady) {
+    return <div className="flex h-screen items-center justify-center bg-[#0c0c12] text-sm text-slate-400">{t('projects.loading')}</div>;
+  }
+
   if (!projectRoot || !meta) {
     return (
       <div className="h-screen text-slate-200">
         <Welcome />
         {updateInfo && <UpdateModal info={updateInfo} />}
         {toast && <Toast msg={toast} />}
+        <ConfirmationDialog />
       </div>
     );
   }
 
   return (
     <div className="flex h-screen flex-col bg-[#0c0c12] text-slate-200">
-      <Toolbar onPublish={() => setPublishing(true)} onSettings={() => setSettingsOpen(true)} />
+      <Toolbar onPublish={() => setPublishing(true)} onSettings={() => setSettingsOpen(true)} onRecovery={() => setRecovering(true)} />
       <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr_400px] overflow-hidden">
         <div className="min-h-0 border-r border-white/10 bg-black/20">
           <CardLibrary />
@@ -241,9 +266,11 @@ export default function App() {
         </div>
       </div>
       {publishing && <PublishPanel onClose={() => setPublishing(false)} />}
+      {recovering && <BackupRecoveryModal onClose={() => setRecovering(false)} />}
       {settingsOpen && <ProjectSettingsModal onClose={() => setSettingsOpen(false)} />}
       {updateInfo && <UpdateModal info={updateInfo} />}
       {toast && <Toast msg={toast} />}
+      <ConfirmationDialog />
     </div>
   );
 }

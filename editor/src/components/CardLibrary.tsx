@@ -5,6 +5,7 @@ import type { CardDef, CardType } from '../lib/types';
 import { CARD_TEMPLATES } from '../lib/templates';
 import { pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
 import VanillaImportModal from './VanillaImportModal';
+import { createThumbnailCache, thumbnailKey } from '../lib/thumbnails';
 
 const TYPE_DOT: Record<string, string> = {
   Attack: 'bg-red-500', Skill: 'bg-emerald-500', Power: 'bg-sky-500',
@@ -12,12 +13,8 @@ const TYPE_DOT: Record<string, string> = {
 };
 
 // 立绘缩略图：downscale 到 96px 的 dataURL 模块级缓存（避免高清原图常驻内存）
-const thumbCache = new Map<string, string>();
-
-async function loadThumb(rel: string): Promise<string> {
-  const hit = thumbCache.get(rel);
-  if (hit) return hit;
-  const bytes = await api.readPortrait(rel);
+const thumbCache = createThumbnailCache(async (projectRoot, rel) => {
+  const bytes = await api.readPortrait(rel, projectRoot);
   const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)]));
   const scale = Math.min(1, 96 / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
@@ -28,28 +25,23 @@ async function loadThumb(rel: string): Promise<string> {
   canvas.getContext('2d')?.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
   const url = canvas.toDataURL('image/webp', 0.75);
-  thumbCache.set(rel, url);
   return url;
-}
+});
 
 function CardThumb({ portrait }: { portrait: string }) {
-  const [url, setUrl] = useState<string | null>(() => thumbCache.get(portrait) ?? null);
+  const { projectRoot, portraitRevision } = useStore();
+  const key = thumbnailKey(projectRoot ?? '', portrait, portraitRevision);
+  const [image, setImage] = useState<{ key: string; url: string } | null>(null);
   useEffect(() => {
-    if (!portrait) {
-      setUrl(null);
-      return;
-    }
-    const cached = thumbCache.get(portrait);
-    if (cached) {
-      setUrl(cached);
-      return;
-    }
+    if (!portrait || !projectRoot) return;
     let cancelled = false;
-    loadThumb(portrait).then((u) => { if (!cancelled) setUrl(u); }).catch(() => undefined);
+    thumbCache.load(projectRoot, portrait, portraitRevision).then((url) => {
+      if (!cancelled) setImage({ key, url });
+    }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [portrait]);
-  if (!url) return <div className="h-9 w-12 shrink-0 rounded bg-white/5" />;
-  return <img src={url} alt="" draggable={false} className="h-9 w-12 shrink-0 rounded object-cover" />;
+  }, [key, portrait, projectRoot, portraitRevision]);
+  if (image?.key !== key) return <div className="h-9 w-12 shrink-0 rounded bg-white/5" />;
+  return <img src={image.url} alt="" draggable={false} className="h-9 w-12 shrink-0 rounded object-cover" />;
 }
 
 function CardTile({ card, active, onClick }: { card: CardDef; active: boolean; onClick: () => void }) {
@@ -57,6 +49,7 @@ function CardTile({ card, active, onClick }: { card: CardDef; active: boolean; o
   const lang = useLang();
   return (
     <button
+      data-card-id={card.id}
       onClick={onClick}
       className={`group flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-all ${
         active
@@ -91,13 +84,16 @@ function CardTile({ card, active, onClick }: { card: CardDef; active: boolean; o
 const TYPE_FILTERS: (CardType | 'all')[] = ['all', 'Attack', 'Skill', 'Power', 'Curse', 'Status'];
 
 export default function CardLibrary() {
-  const { cards, selectedId, select, createCard, openProject, projectRoot, showToast } = useStore();
+  const { cards, selectedId, select, createCard, openProject, projectRoot, showToast, fieldFocus } = useStore();
   const t = useT();
   const lang = useLang();
   const [showVanilla, setShowVanilla] = useState(false);
   const [showTpl, setShowTpl] = useState(false);
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<CardType | 'all'>('all');
+  useEffect(() => {
+    if (fieldFocus) { setQuery(''); setTypeFilter('all'); }
+  }, [fieldFocus]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -157,7 +153,7 @@ export default function CardLibrary() {
 
   const newFromTpl = (tplId: string) => {
     setShowTpl(false);
-    void createCard(tplId === 'blank' ? undefined : tplId);
+    void createCard(tplId === 'blank' ? undefined : tplId).catch((e) => showToast(String(e)));
   };
 
   return (

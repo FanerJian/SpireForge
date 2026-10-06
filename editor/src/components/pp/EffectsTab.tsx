@@ -9,16 +9,19 @@ import {
   CORE_KINDS, EXTRA_KINDS, defaultEffect,
 } from '../../lib/effects';
 import { buildMonsterCombo, buildPowerCombo, buildHitVfxCombo, buildSfxCombo, buildSpawnCombo, buildVfxCombo, modMonsters, modPowers, useRuntimeCatalog, useVanillaCatalog } from './catalogs';
-import { useAppendHookDescription, useGenDescription } from './useDescription';
+import { useGenDescription } from './useDescription';
+import { effectVarName } from '../../lib/description';
 import { CustomEffectBody, DelayedEffectBody, StandardEffectBody, effectMetaOf } from './effectEditors';
 
 export default function EffectsTab({ card }: { card: CardDef }) {
-  const { updateCard, cards, meta } = useStore();
+  const { updateCard, cards, meta, fieldFocus } = useStore();
   const t = useT();
   const lang = useLang();
   const genDesc = useGenDescription();
-  const appendHookDesc = useAppendHookDescription();
-  const [trigger, setTrigger] = useState<TriggerKey>('play');
+  const [trigger, setTrigger] = useState<TriggerKey>(() => {
+    const key = fieldFocus?.field.split('.')[0];
+    return TRIGGER_OPTIONS.find((o) => o.v === key)?.v ?? 'play';
+  });
   const vanilla = useVanillaCatalog();
   const runtime = useRuntimeCatalog();
   const u = card.upgrades;
@@ -71,10 +74,11 @@ export default function EffectsTab({ card }: { card: CardDef }) {
         />
         <div className="mt-1 flex justify-end">
           <button
-            onClick={() => (isPlay ? genDesc(card) : appendHookDesc(card, trigger, list))}
+            onClick={() => genDesc(card)}
+            title={t('pp.genDescAllHint')}
             className="shrink-0 whitespace-nowrap text-[11px] text-sky-300/80 underline hover:text-sky-200"
           >
-            {t(isPlay ? 'pp.genDescBtn' : 'pp.genDescBtnHook')}
+            {t('pp.genDescBtn')}
           </button>
         </div>
       </Field>
@@ -88,21 +92,22 @@ export default function EffectsTab({ card }: { card: CardDef }) {
         const meta = effectMetaOf(e.kind);
         const rowPatch = (p: Partial<EffectDef>) => patch(i, p);
         return (
-          <div key={i} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+          <div key={i} data-field={`${isPlay ? 'effects' : trigger}.${i}`} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-semibold text-slate-200">{pick(meta.label, lang)}</span>
               <div className="flex items-center gap-1">
-                <button onClick={() => move(i, -1)} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200">↑</button>
-                <button onClick={() => move(i, 1)} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200">↓</button>
-                <button onClick={() => remove(i)} className="rounded px-1.5 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300">✕</button>
+                <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={t('pp.moveEffectUp')} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200 disabled:opacity-25">↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label={t('pp.moveEffectDown')} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200 disabled:opacity-25">↓</button>
+                <button onClick={() => remove(i)} aria-label={t('pp.removeEffect')} className="rounded px-1.5 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300">✕</button>
               </div>
             </div>
             <div className="text-[11px] text-slate-600">
-              {pick(meta.desc, lang)}{isPlay && meta.varName ? <> · {`{${meta.varName}}`}</> : null}
+              {pick(meta.desc, lang)}{isPlay && !card.vanilla_id && effectVarName(list, i) ? <> · {`{${effectVarName(list, i)}}`}</> : null}
             </div>
 
             {e.kind === 'delayed' ? (
               <DelayedEffectBody
+                path={`${isPlay ? 'effects' : trigger}.${i}`}
                 e={e as Extract<EffectDef, { kind: 'delayed' }>}
                 patch={rowPatch}
                 powerCombo={powerCombo}

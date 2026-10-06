@@ -32,6 +32,7 @@ public sealed class SfDelayedPower : PowerModel
         public required List<SfEffect> Effects;
         public required bool EveryTurn;
         public required string Side;
+        public required string Timing;
     }
 
     private static readonly ConditionalWeakTable<PowerModel, Payload> Payloads = new();
@@ -96,7 +97,11 @@ public sealed class SfDelayedPower : PowerModel
         List<SfEffect> effects, int turns, string timing, bool everyTurn, string side)
     {
         var template = ModelDb.Power<SfDelayedPower>().ToMutable();
-        Payloads.Add(template, new Payload { Card = source, Effects = effects, EveryTurn = everyTurn, Side = side });
+        Payloads.Add(template, new Payload
+        {
+            Card = source, Effects = effects, EveryTurn = everyTurn, Side = side,
+            Timing = string.Equals(timing?.Trim(), "turn_start", System.StringComparison.OrdinalIgnoreCase) ? "turn_start" : "turn_end",
+        });
         EnsureLoc();
         await PowerCmd.Apply(
             ctx ?? new ThrowingPlayerChoiceContext(), template, source.Owner.Creature,
@@ -112,7 +117,7 @@ public sealed class SfDelayedPower : PowerModel
         {
             return;
         }
-        if (!SideMatches(payload.Side, side))
+        if (payload.Timing != "turn_start" || !SideMatches(payload.Side, side))
         {
             return;
         }
@@ -132,7 +137,7 @@ public sealed class SfDelayedPower : PowerModel
         {
             return;
         }
-        if (!SideMatches(payload.Side, side))
+        if (payload.Timing != "turn_end" || !SideMatches(payload.Side, side))
         {
             return;
         }

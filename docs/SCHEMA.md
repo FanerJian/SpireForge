@@ -142,8 +142,10 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 | `vfx` | `vfx: string`, `target?`, `source?`, `sfx?` | `VfxCmd`（内置）或直接实例化（res:// 场景） | 播放视觉特效/音效（纯演出），见下 |
 | `custom` | `handler: string`, `amount?`, `target?`, `params?` | 由处理器定义 | 见下方「自定义效果」 |
 
-`damage.target` 只在钩子上下文生效（打出时永远以玩家指定目标为准）：
-`random_enemy`（默认，游戏 CombatTargets RNG 与 Tingsha 同款）/ `self` / `all_enemies`。
+`damage.target` 与 `power.target` 可覆盖卡牌目标：`random_enemy`（游戏 CombatTargets RNG）/
+`self` / `all_enemies`。钩子与延迟内层缺省取随机敌人；打出时缺省跟随卡牌目标。
+无目标伤害保留全体敌人的历史行为；需要随机或自身时应明确设置目标。
+数值型 `power` 绑定独立的 `{Power}`、`{Power2}` 等变量，支持 `upgrade_amount`。
 
 **damage 动画演出（2026-10-06 起）**：可选 `vfx`（打击特效）/ `sfx`（打击音效）/
 `attacker_vfx`（攻击者侧特效，如投掷物）/ `hit_count`（多段）。打出时整体走游戏原生
@@ -203,15 +205,15 @@ props 自动回落直结 + 特效另补。`sfx` 以 `event:` 开头走 FMOD 事�
 - `amount` 正数 = `OrbCmd.AddSlots` 获得栏位（上限 10，扩容 Capacitor 同款）；
   负数 = `OrbCmd.RemoveSlots` 移除（从队尾连球一起移除）
 
-**delayed（延迟效果 —— 打出后下几回合）**：
-- `turns` = 持续回合数（>=1）；`timing` = `turn_end`（默认）/ `turn_start`；
+**delayed（延迟效果）**：
+- `turns` = 选定回合时机的计数（>=1）；`timing` = `turn_end`（默认）/ `turn_start`；
   `side`（2026-10-06 起）= 触发哪一方的回合时机：`player`（缺省，我方——历史行为）/
-  `enemy`（敌方）/ `both`（双方都触发）；`every_turn` = `true`（缺省，每回合触发）/
-  `false`（等 N 回合后仅在最后一次时机触发一次）；
+  `enemy`（敌方）/ `both`（双方都触发，每方各计一次）；`every_turn` = `true`（缺省，每次时机触发）/
+  `false`（倒计时至最后一次选定时机时仅触发一次）；
   `effects` = 内嵌效果清单（语法与打出效果一致，目标语义同钩子：`self`/`random_enemy`/`all_enemies`，
   可再嵌套 delayed）
 - Runtime 把内嵌清单挂在隐藏承载力量 `SfDelayedPower` 上（玩家可见图标显示剩余回合数，
-  `InstanceType=Instanced` 重复打出各建各的实例互不叠加），每回合触发后减层、到 0 自动移除；
+  `InstanceType=Instanced` 重复打出各建各的实例互不叠加），每次选定时机后减层、到 0 自动移除；
   `every_turn=false` 时其余回合只静默减层，最后一层（Amount==1）的那次时机才执行内嵌清单
 - **打出当回合不触发也不减层**（"下 N 回合"从下一回合起算，与卡面文案一致）
 - 内嵌效果走字面数值，不参与升级变量/描述占位符；战斗结束未消耗完的回合自动消失

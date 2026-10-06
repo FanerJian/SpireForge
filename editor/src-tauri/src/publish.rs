@@ -291,7 +291,19 @@ pub fn build_pack(
 /// 发布前预检：返回问题清单（空 = 通过）。只提示不阻断——
 /// 重复 Entry / 重复 vanilla_id 这类问题 Runtime 端是"先到先得"，
 /// 不该等进游戏后才从日志里发现。
-pub fn preflight(pack_id: &str, cards: &[CardDef]) -> Vec<String> {
+#[derive(serde::Serialize, Debug)]
+pub struct ValidationIssue {
+    pub message: String,
+    pub card_id: String,
+    pub tab: String,
+    pub field: String,
+}
+
+fn issue(card_id: &str, tab: &str, field: &str, message: String) -> ValidationIssue {
+    ValidationIssue { message, card_id: card_id.into(), tab: tab.into(), field: field.into() }
+}
+
+pub fn preflight(pack_id: &str, cards: &[CardDef]) -> Vec<ValidationIssue> {
     preflight_with_pools(pack_id, cards, &[])
 }
 
@@ -299,32 +311,26 @@ pub fn preflight_with_pools(
     pack_id: &str,
     cards: &[CardDef],
     pools: &[crate::custom_pools::CustomPoolDef],
-) -> Vec<String> {
+) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
 
     let declared: HashMap<&str, &crate::custom_pools::CustomPoolDef> =
         pools.iter().map(|p| (p.key.as_str(), p)).collect();
-    let mut used = std::collections::BTreeSet::new();
     for card in cards {
         for pool in crate::custom_pools::active_pool_keys(card) {
             if pool.starts_with("mod:") {
-                used.insert(pool);
                 if !declared.contains_key(pool) {
-                    issues.push(format!(
+                    issues.push(issue(&card.id, "basic", "pools", format!(
                         "卡牌 {} 使用了未声明的自定义卡池：{}",
                         card.id, pool
-                    ));
+                    )));
+                } else if let Some(def) = declared.get(pool) {
+                    if def.workshop_id.as_deref().unwrap_or("").is_empty() {
+                        issues.push(issue(&card.id, "basic", "pools", format!(
+                            "自定义卡池 {} 未填写工坊 ID；请手动添加准确的依赖 ID", def.label
+                        )));
+                    }
                 }
-            }
-        }
-    }
-    for key in used {
-        if let Some(pool) = declared.get(key) {
-            if pool.workshop_id.as_deref().unwrap_or("").is_empty() {
-                issues.push(format!(
-                    "自定义卡池 {} 未填写工坊 ID；请手动添加准确的依赖 ID",
-                    pool.label
-                ));
             }
         }
     }
@@ -332,7 +338,7 @@ pub fn preflight_with_pools(
     let mut ids: HashSet<&str> = HashSet::new();
     for c in cards {
         if !ids.insert(c.id.as_str()) {
-            issues.push(format!("卡牌 id 重复: {}", c.id));
+            issues.push(issue(&c.id, "basic", "id", format!("卡牌 id 重复: {}", c.id)));
         }
     }
 
@@ -348,10 +354,10 @@ pub fn preflight_with_pools(
         }
         let e = card_entry(pack_id, &c.id);
         if let Some(prev) = entries.insert(e.clone(), c.id.as_str()) {
-            issues.push(format!(
+            issues.push(issue(&c.id, "basic", "id", format!(
                 "Entry 冲突 {e}：「{prev}」与「{}」派生相同 Entry，游戏内只会保留一个",
                 c.id
-            ));
+            )));
         }
     }
 
@@ -364,71 +370,67 @@ pub fn preflight_with_pools(
                 continue;
             }
             if let Some(prev) = vanilla.insert(v.clone(), c.id.as_str()) {
-                issues.push(format!(
+                issues.push(issue(&c.id, "basic", "vanilla_id", format!(
                     "原版覆盖重复 {v}：「{prev}」与「{}」都覆盖同一张原版卡，只有第一个生效",
                     c.id
-                ));
+                )));
             }
         }
     }
 
     for c in cards {
         // 效果引用完整性：主效果与全部钩子列表一起查（空引用运行时只会静默跳过）
-        let effect_lists = c
-            .effects
-            .iter()
-            .chain(c.on_draw.iter())
-            .chain(c.on_discard.iter())
-            .chain(c.on_exhaust.iter())
-            .chain(c.on_enter_combat.iter())
-            .chain(c.on_turn_end_in_hand.iter());
-        for fx in effect_lists {
-            check_effect_refs(&c.id, fx, &mut issues);
+        for (key, list) in [("effects", &c.effects), ("on_draw", &c.on_draw), ("on_discard", &c.on_discard),
+            ("on_exhaust", &c.on_exhaust), ("on_enter_combat", &c.on_enter_combat), ("on_turn_end_in_hand", &c.on_turn_end_in_hand)] {
+            for (index, fx) in list.iter().enumerate() {
+                check_effect_refs(&c.id, fx, &format!("{key}.{index}"), &mut issues);
+            }
         }
         if c.name.zhs.is_empty() && c.name.eng.is_empty() {
-            issues.push(format!("卡 {} 没有任何名称文本", c.id));
+            issues.push(issue(&c.id, "loc", "name.zhs", format!("卡 {} 没有任何名称文本", c.id)));
         } else if c.name.zhs.is_empty() {
-            issues.push(format!("卡 {} 缺少中文名称（中文玩家会看到空标题）", c.id));
+            issues.push(issue(&c.id, "loc", "name.zhs", format!("卡 {} 缺少中文名称（中文玩家会看到空标题）", c.id)));
         }
     }
     issues
 }
 
 /// 单条效果的引用完整性（递归进 delayed 内嵌清单）；issues 由调用方收集
-fn check_effect_refs(card_id: &str, fx: &EffectDef, issues: &mut Vec<String>) {
+fn check_effect_refs(card_id: &str, fx: &EffectDef, path: &str, issues: &mut Vec<ValidationIssue>) {
+    let mut add = |field: &str, message: String| issues.push(issue(card_id, "effects", &format!("{path}.{field}"), message));
     match fx {
         EffectDef::Custom { handler, .. } if handler.trim().is_empty() => {
-            issues.push(format!(
+            add("handler", format!(
                 "卡 {card_id} 的自定义效果未填处理器名（运行时会被跳过）"
             ));
         }
         EffectDef::Power { power, .. } if power.trim().is_empty() => {
-            issues.push(format!("卡 {card_id} 的施加效果未填力量名（运行时会跳过）"));
+            add("power", format!("卡 {card_id} 的施加效果未填力量名（运行时会跳过）"));
         }
         EffectDef::Spawn { card_entry, .. } if card_entry.trim().is_empty() => {
-            issues.push(format!(
+            add("card_entry", format!(
                 "卡 {card_id} 的生成效果未填卡牌 Entry（运行时会跳过）"
             ));
         }
         EffectDef::Summon { monster, .. } if monster.trim().is_empty() => {
-            issues.push(format!("卡 {card_id} 的召唤效果未填怪物名（运行时会跳过）"));
+            add("monster", format!("卡 {card_id} 的召唤效果未填怪物名（运行时会跳过）"));
         }
         EffectDef::Vfx { vfx, .. } if vfx.trim().is_empty() => {
-            issues.push(format!("卡 {card_id} 的播放特效未填特效名（运行时会跳过）"));
+            add("vfx", format!("卡 {card_id} 的播放特效未填特效名（运行时会跳过）"));
         }
         EffectDef::Delayed { turns, effects, .. } => {
             if *turns < 1 {
-                issues.push(format!(
+                add("turns", format!(
                     "卡 {card_id} 的延迟效果持续回合数小于 1（不会触发）"
                 ));
             }
             if effects.is_empty() {
-                issues.push(format!(
+                add("effects", format!(
                     "卡 {card_id} 的延迟效果没有内嵌效果（不会触发）"
                 ));
             }
-            for inner in effects {
-                check_effect_refs(card_id, inner, issues);
+            for (index, inner) in effects.iter().enumerate() {
+                check_effect_refs(card_id, inner, &format!("{path}.effects.{index}"), issues);
             }
         }
         _ => {}
@@ -438,6 +440,18 @@ fn check_effect_refs(card_id: &str, fx: &EffectDef, issues: &mut Vec<String>) {
 #[cfg(test)]
 mod custom_pool_tests {
     use super::*;
+    #[test]
+    fn issues_locate_hook_and_nested_effect_fields_without_parsing_messages() {
+        let card = CardDef { id: "a".into(), on_draw: vec![serde_json::from_value(json!({ "kind": "custom", "handler": "" })).unwrap()], ..Default::default() };
+        let issues = preflight("TestPack", &[card]);
+        assert!(issues.iter().any(|i| i.card_id == "a" && i.tab == "effects" && i.field == "on_draw.0.handler"));
+        assert!(issues.iter().any(|i| i.card_id == "a" && i.tab == "loc" && i.field == "name.zhs"));
+        let effect: EffectDef = serde_json::from_value(json!({ "kind": "delayed", "turns": 0, "effects": [{ "kind": "power", "power": "", "amount": 1 }] })).unwrap();
+        let mut issues = vec![];
+        check_effect_refs("a", &effect, "on_exhaust.3", &mut issues);
+        assert!(issues.iter().any(|i| i.field == "on_exhaust.3.turns"));
+        assert!(issues.iter().any(|i| i.field == "on_exhaust.3.effects.0.power"));
+    }
     #[test]
     fn manifest_declares_only_used_custom_mods_and_deduplicates_runtime() {
         let mut card = CardDef::default();

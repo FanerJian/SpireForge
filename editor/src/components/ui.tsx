@@ -7,9 +7,9 @@ export const inputCls =
 
 export const selectCls = inputCls + ' appearance-none';
 
-export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+export function Field({ label, children, hint, field }: { label: string; children: React.ReactNode; hint?: string; field?: string }) {
   return (
-    <label className="block min-w-0">
+    <label data-field={field} className="block min-w-0">
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <span className="shrink-0 whitespace-nowrap text-xs font-medium text-slate-400">{label}</span>
         {hint && <span className="truncate text-right text-[10px] text-slate-600">{hint}</span>}

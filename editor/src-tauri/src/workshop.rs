@@ -13,6 +13,7 @@
 //! 由 duct 在后台线程收集；run_uploader 带 15 分钟超时，超时 kill 子进程。
 
 use crate::model::{CardDef, ProjectMeta};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 pub fn dependencies_for_cards(meta: &ProjectMeta, cards: &[CardDef]) -> Vec<String> {
@@ -148,9 +149,8 @@ pub fn prepare_workspace(
         version,
         cards,
     )?;
-    for entry in fs::read_dir(&pack_dir).map_err(|e| e.to_string())? {
-        let e = entry.map_err(|er| er.to_string())?;
-        fs::copy(e.path(), content.join(e.file_name())).map_err(|er| er.to_string())?;
+    for name in [format!("{pack_id}.json"), format!("{pack_id}.pck")] {
+        fs::copy(pack_dir.join(&name), content.join(&name)).map_err(|er| er.to_string())?;
     }
 
     // workshop.json（字段名对齐官方 template）
@@ -212,6 +212,106 @@ pub fn prepare_workspace(
     }
 
     Ok(ws.to_string_lossy().into_owned())
+}
+
+#[derive(Clone)]
+pub struct PreparedWorkspace {
+    pub root: String,
+    pub workspace: String,
+    pub version: String,
+    pub visibility: String,
+    pub change_note: String,
+    pub runtime_dependency: Option<u64>,
+    pub source_signature: String,
+    pub content_signature: String,
+}
+
+pub fn source_signature(root: &str, meta: &ProjectMeta, cards: &[CardDef]) -> Result<String, String> {
+    let mut meta = meta.clone();
+    // 构建只回写默认版本，不应把刚生成的工作区判成过期。
+    meta.last_version = None;
+    let mut hash = Sha256::new();
+    hash.update(serde_json::to_vec(&(&meta, cards)).map_err(|e| e.to_string())?);
+    let paths: std::collections::BTreeSet<&str> = cards.iter().map(|c| c.portrait.as_str())
+        .filter(|p| !p.is_empty()).collect();
+    for rel in paths {
+        crate::project::validate_rel_path(rel)?;
+        hash.update(rel.as_bytes());
+        hash.update(fs::read(Path::new(root).join(rel)).map_err(|e| format!("读取立绘 {rel} 失败: {e}"))?);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+// 预览图允许用户自行替换；上传配置和实际卡包必须与生成时一致。
+pub fn content_signature(workspace: &str) -> Result<String, String> {
+    let ws = Path::new(workspace);
+    let mut hash = Sha256::new();
+    hash.update(fs::read(ws.join("workshop.json")).map_err(|e| e.to_string())?);
+    let mut files = fs::read_dir(ws.join("content")).map_err(|e| e.to_string())?
+        .map(|entry| entry.map(|e| e.path()).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+    files.sort();
+    for file in files {
+        if !file.is_file() { return Err("上传内容目录包含非预期子目录，请重新生成工作区".into()); }
+        hash.update(file.file_name().unwrap().to_string_lossy().as_bytes());
+        hash.update(fs::read(file).map_err(|e| e.to_string())?);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+impl PreparedWorkspace {
+    #[allow(clippy::too_many_arguments)]
+    pub fn verify(&self, root: &str, workspace: &str, version: &str, visibility: &str,
+        change_note: &str, runtime_dependency: Option<u64>, meta: &ProjectMeta, cards: &[CardDef]) -> Result<(), String> {
+        if self.root != root || self.workspace != workspace || self.version != version || self.visibility != visibility
+            || self.change_note != change_note || self.runtime_dependency != runtime_dependency
+            || self.source_signature != source_signature(root, meta, cards)?
+            || self.content_signature != content_signature(workspace)? {
+            return Err("项目内容或发布配置已变化，请重新生成工坊工作区后上传".into());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod consistency_tests {
+    use super::*;
+    #[test]
+    fn upload_guard_rejects_changed_settings_sources_images_and_generated_content() {
+        let base = std::env::temp_dir().join("sf_workshop_consistency");
+        let _ = fs::remove_dir_all(&base);
+        let root = base.join("project").to_string_lossy().into_owned();
+        let out = base.join("output").to_string_lossy().into_owned();
+        crate::project::create_project(&root, "TestPack", "Test", "").unwrap();
+        let card = CardDef { id: "a".into(), portrait: "assets/cards/a.png".into(), ..Default::default() };
+        crate::project::save_portrait(&root, "a", "png", TINY_PNG).unwrap();
+        crate::project::add_card(&root, &card).unwrap();
+        let (meta, cards) = crate::project::load_project(&root).unwrap();
+        let ws = prepare_workspace(&out, &root, &meta, "1", "private", "first", &cards).unwrap();
+        let prepared = PreparedWorkspace { root: root.clone(), workspace: ws.clone(), version: "1".into(), visibility: "private".into(), change_note: "first".into(),
+            runtime_dependency: meta.runtime_workshop_id, source_signature: source_signature(&root, &meta, &cards).unwrap(), content_signature: content_signature(&ws).unwrap() };
+        let verify = |m: &ProjectMeta, c: &[CardDef], v: &str, visibility: &str, note: &str, dep| prepared.verify(&root, &ws, v, visibility, note, dep, m, c);
+        assert!(verify(&meta, &cards, "1", "private", "first", meta.runtime_workshop_id).is_ok());
+        assert!(verify(&meta, &cards, "2", "private", "first", meta.runtime_workshop_id).is_err());
+        assert!(verify(&meta, &cards, "1", "public", "first", meta.runtime_workshop_id).is_err());
+        assert!(verify(&meta, &cards, "1", "private", "second", meta.runtime_workshop_id).is_err());
+        assert!(verify(&meta, &cards, "1", "private", "first", Some(42)).is_err());
+        let mut changed_meta = meta.clone(); changed_meta.last_version = Some("1".into());
+        assert!(verify(&changed_meta, &cards, "1", "private", "first", meta.runtime_workshop_id).is_ok());
+        changed_meta.name = "changed".into();
+        assert!(verify(&changed_meta, &cards, "1", "private", "first", meta.runtime_workshop_id).is_err());
+        let mut changed_cards = cards.clone(); changed_cards[0].cost = 8;
+        assert!(verify(&meta, &changed_cards, "1", "private", "first", meta.runtime_workshop_id).is_err());
+        crate::project::save_portrait(&root, "a", "png", b"changed image").unwrap();
+        assert!(verify(&meta, &cards, "1", "private", "first", meta.runtime_workshop_id).is_err());
+        crate::project::save_portrait(&root, "a", "png", TINY_PNG).unwrap();
+        fs::write(Path::new(&ws).join("content/TestPack.pck"), b"changed pack").unwrap();
+        assert!(verify(&meta, &cards, "1", "private", "first", meta.runtime_workshop_id).is_err());
+        // 重新生成得到当前版本与配置，正常通过；不复制构建目录中的 .bak。
+        let ws = prepare_workspace(&out, &root, &meta, "2", "public", "second", &cards).unwrap();
+        assert!(!Path::new(&ws).join("content/TestPack.pck.bak").exists());
+        let config: serde_json::Value = serde_json::from_slice(&fs::read(Path::new(&ws).join("workshop.json")).unwrap()).unwrap();
+        assert_eq!(config["visibility"], "public"); assert_eq!(config["changeNote"], "second");
+    }
 }
 
 /// 调用官方 ModUploader 上传工作区。返回上传器输出。

@@ -19,6 +19,7 @@ export interface ComboItem {
 }
 
 interface Props {
+  field?: string;
   /** 当前保存值（规范值，不是显示名） */
   value: string;
   items: ComboItem[];
@@ -34,7 +35,7 @@ interface Props {
 
 /** 可搜索下拉（替代原生 datalist）：界面语言只显示对应语言的名称，
  *  列表带官方描述与图标，顶部搜索框中英文均可检索。 */
-export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceholder, allowRaw, rawLabel, widthClass = 'w-40' }: Props) {
+export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceholder, allowRaw, rawLabel, widthClass = 'w-40', field }: Props) {
   const lang = useLang();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -100,7 +101,7 @@ export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceh
     : 'bg-white/10 text-slate-400';
 
   return (
-    <div ref={rootRef} className={`relative ${widthClass}`}>
+    <div ref={rootRef} data-effect-field={field} className={`relative ${widthClass}`}>
       <button
         type="button"
         className="flex w-full items-center justify-between gap-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-left text-sm text-slate-200 hover:border-white/20"

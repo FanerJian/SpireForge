@@ -186,7 +186,7 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
         </div>
 
         {/* 描述 */}
-        <div className="absolute bottom-9 left-5 right-5 min-h-[64px] rounded-md border border-white/10 bg-black/55 px-3 py-2 text-center text-[17px] leading-relaxed text-slate-100">
+        <div data-card-description className="absolute bottom-9 left-5 right-5 max-h-[65%] min-h-[64px] overflow-y-auto whitespace-pre-line rounded-md border border-white/10 bg-black/55 px-3 py-2 text-center text-[17px] leading-relaxed text-slate-100">
           {parseRich(desc, vars)}
           {HOOK_FIELDS.some((f) => (card[f]?.length ?? 0) > 0) && (
             <div className="mt-1 flex flex-wrap justify-center gap-1">

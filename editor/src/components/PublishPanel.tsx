@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { api, pickDirectory, pickUploaderExe } from '../lib/tauri';
+import { useEffect, useRef, useState } from 'react';
+import { api, pickDirectory, pickUploaderExe, type ValidationIssue } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
 import { OFFICIAL_RUNTIME_WORKSHOP_ID } from '../lib/types';
 import { grantEntry } from '../lib/entry';
 import { inputCls } from './ui';
+import { workshopSnapshot } from '../lib/workshopSnapshot';
 
 function SectionTitle({ text }: { text: string }) {
   return (
@@ -18,7 +19,7 @@ function SectionTitle({ text }: { text: string }) {
 /** 发布面板：导出卡包 / 一键安装到游戏 / Steam 工坊发布。
  *  常用路径（装进游戏试玩）在最上面；工坊发布整块折叠，避免一打开就是满屏表单。 */
 export default function PublishPanel({ onClose }: { onClose: () => void }) {
-  const { meta, cards, settings, showToast, refreshSettings, persistAll, updateMeta, reloadMeta } = useStore();
+  const { meta, cards, settings, projectRoot, portraitRevision, showToast, refreshSettings, persistAll, updateMeta, reloadMeta, locateIssue } = useStore();
   const t = useT();
   const [version, setVersion] = useState(meta?.last_version ?? '0.1.0');
   // Runtime 依赖 id：官方前置自动预填（新项目在创建时已写入 meta；旧项目回落官方值），
@@ -26,18 +27,26 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
   const [runtimeDep, setRuntimeDep] = useState(
     meta?.runtime_workshop_id?.toString() ?? String(OFFICIAL_RUNTIME_WORKSHOP_ID),
   );
-  const [issues, setIssues] = useState<string[]>([]);
+  const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string>('');
   const [visibility, setVisibility] = useState('private');
   const [changeNote, setChangeNote] = useState('');
   const [workspace, setWorkspace] = useState('');
+  const [preparedSignature, setPreparedSignature] = useState('');
+  const operation = useRef(false);
 
   const runtimeDepId = /^\d+$/.test(runtimeDep.trim()) ? Number(runtimeDep.trim()) : null;
+  const signature = workshopSnapshot(projectRoot, meta, cards, version, visibility, changeNote, runtimeDepId) + portraitRevision;
+  const stale = !!workspace && signature !== preparedSignature;
+  const currentSignature = () => {
+    const state = useStore.getState();
+    return workshopSnapshot(state.projectRoot, state.meta, state.cards, version, visibility, changeNote, runtimeDepId) + state.portraitRevision;
+  };
 
   // Esc 关闭
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !operation.current) onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
@@ -48,7 +57,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
       try {
         await persistAll();
         setIssues(await api.validateProject());
-      } catch { /* 预检失败不阻塞面板 */ }
+      } catch (e) { setLog(t('pub.checkFailed', { e: String(e) })); }
       api.ensureBundledUploader().then(() => refreshSettings()).catch(() => undefined);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,10 +97,13 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
   };
 
   const doPrepareWorkshop = async () => {
-    const out = await pickDirectory();
-    if (!out) return;
+    if (operation.current) return;
+    operation.current = true;
     setBusy(true);
     try {
+      const out = await pickDirectory();
+      if (!out) return;
+      setWorkspace(''); setPreparedSignature('');
       await persistAll();
       // Runtime 依赖 id 持久化进项目（workshop.json dependencies 从 meta 读取）
       if (meta && meta.runtime_workshop_id !== runtimeDepId) {
@@ -100,6 +112,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
       const ws = await api.prepareWorkshop(out, version, visibility, changeNote);
       await reloadMeta();
       setWorkspace(ws);
+      setPreparedSignature(currentSignature());
       setLog(t('pub.wsGenerated', {
         ws,
         next: settings.uploader_path ? t('pub.wsNextReady') : t('pub.wsNextConfig'),
@@ -108,24 +121,31 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
     } catch (e) {
       setLog(t('pub.wsFailed', { e: String(e) }));
     } finally {
+      operation.current = false;
       setBusy(false);
     }
   };
 
   const doUpload = async () => {
+    if (operation.current) return;
     if (!workspace) {
       setLog(t('pub.wsNeed'));
       return;
     }
+    if (stale) { setLog(t('pub.wsStale')); return; }
+    operation.current = true;
     setBusy(true);
     try {
-      const out = await api.publishWorkshop(workspace);
+      await persistAll();
+      if (currentSignature() !== preparedSignature) throw new Error(t('pub.wsStale'));
+      const out = await api.publishWorkshop(workspace, version, visibility, changeNote, runtimeDepId);
       await reloadMeta();
       setLog(t('pub.uploaded', { out }));
       showToast(t('pub.uploadDone'));
     } catch (e) {
       setLog(t('pub.uploadFailed', { e: String(e) }));
     } finally {
+      operation.current = false;
       setBusy(false);
     }
   };
@@ -162,7 +182,8 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div data-editor-modal role="dialog" aria-modal="true" aria-label={t('pub.title')}
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { if (!busy) onClose(); }}>
       <div
         className="max-h-[88vh] w-[600px] overflow-y-auto rounded-2xl border border-white/10 bg-[#14141c] p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -175,7 +196,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
               {t('pub.workshopId', { id: meta?.workshop_id ?? t('pub.unpublished') })}
             </div>
           </div>
-          <button onClick={onClose} className="rounded-md px-2 py-1 text-slate-500 hover:bg-white/10 hover:text-slate-200">
+          <button disabled={busy} onClick={onClose} className="rounded-md px-2 py-1 text-slate-500 hover:bg-white/10 hover:text-slate-200">
             ✕
           </button>
         </div>
@@ -184,11 +205,13 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
           <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
             <div className="mb-1 text-xs font-semibold text-amber-300">{t('pub.issues', { n: issues.length })}</div>
             <ul className="list-inside list-disc space-y-0.5 text-[11px] leading-relaxed text-amber-200/80">
-              {issues.map((s, i) => <li key={i}>{s}</li>)}
+              {issues.map((s, i) => <li key={i}><button disabled={busy} onClick={() => { locateIssue(s); onClose(); }}
+                className="text-left underline decoration-amber-300/30 underline-offset-2 hover:text-amber-100">{s.message}</button></li>)}
             </ul>
           </div>
         )}
 
+        <fieldset disabled={busy} className="min-w-0">
         {/* ---- 本地使用：最常用，放最上面 ---- */}
         <SectionTitle text={t('pub.local')} />
         <div className="mb-4">
@@ -305,12 +328,13 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
               </button>
               <button
                 onClick={doUpload}
-                disabled={busy || !workspace || !settings.uploader_path}
+                disabled={busy || stale || !workspace || !settings.uploader_path}
                 className="whitespace-nowrap rounded-lg border border-sky-400/30 bg-sky-500/10 py-2.5 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:opacity-40"
               >
                 {t('pub.upload')}
               </button>
             </div>
+            {stale && <p role="status" className="text-xs text-amber-300">{t('pub.wsStale')}</p>}
             <div className="text-[11px] leading-relaxed text-slate-500">
               {t('pub.uploaderLine', {
                 up: settings.uploader_path ? t('pub.uploaderReady') : t('pub.upExtracting'),
@@ -323,6 +347,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </details>
+        </fieldset>
 
         {log && (
           <pre className="mt-4 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/40 p-3 text-[11px] leading-relaxed text-emerald-300/90">

@@ -1,6 +1,6 @@
 // 属性面板壳：页签分发（基础/效果/立绘/文案）+ 基础页签（覆盖/身份/卡池/类型/费用/关键词）
 // + 复制/删除操作条。各页签实现在 components/pp/ 下。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import CustomPoolSection from './CustomPoolSection';
 import { Field, NumInput, Segmented, inputCls, selectCls } from './ui';
@@ -14,6 +14,7 @@ import EffectsTab from './pp/EffectsTab';
 import LookTab from './pp/LookTab';
 import LocTab from './pp/LocTab';
 import VanillaSection from './pp/VanillaSection';
+import { confirmAction } from '../lib/confirmation';
 
 /** 卡牌 id 编辑：失去焦点/回车才提交改名（走后端事务：meta 原位替换 + 立绘跟随）。
  *  改名会改变游戏内 Entry——已发布/安装过的卡会破坏玩家存档引用，必须确认。 */
@@ -30,7 +31,7 @@ function IdField({ card }: { card: CardDef }) {
       setDraft(card.id);
       return;
     }
-    const ok = confirm(t('pp.idRenameConfirm', { a: card.id, b: v }));
+    const ok = await confirmAction(t('pp.idRenameConfirm', { a: card.id, b: v }));
     if (!ok) {
       setDraft(card.id);
       return;
@@ -51,7 +52,10 @@ function IdField({ card }: { card: CardDef }) {
       onChange={(e) => setDraft(e.target.value.replace(/[^a-z0-9_]/g, ''))}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
       }}
     />
   );
@@ -78,11 +82,11 @@ function BasicTab({ card }: { card: CardDef }) {
     <div className="space-y-3">
       <VanillaSection card={card} />
 
-      <Field label={t('pp.idLabel')}>
+      <Field label={t('pp.idLabel')} field="id">
         <IdField card={card} />
       </Field>
 
-      <div className="block min-w-0">
+      <div className="block min-w-0" data-field="pools">
         <div className="mb-1 flex items-baseline justify-between gap-2">
           <span className="shrink-0 whitespace-nowrap text-xs font-medium text-slate-400">{t('pp.poolLabel')}</span>
         </div>
@@ -137,15 +141,18 @@ function BasicTab({ card }: { card: CardDef }) {
         <Field label={t('pp.targetLabel')}>
           <select className={selectCls} value={card.target}
             onChange={(e) => updateCard({ target: e.target.value as TargetType })}>
-            {(Object.keys(TARGET_LABEL) as TargetType[]).map((v) => (
+            {(Object.keys(TARGET_LABEL) as TargetType[]).filter((v) => v !== 'TargetedNoCreature' || card.target === v).map((v) => (
               <option key={v} value={v}>{pick(TARGET_LABEL[v], lang)}</option>
             ))}
           </select>
         </Field>
       </div>
+      <p className="text-[11px] leading-relaxed text-slate-500">
+        {t(card.target === 'TargetedNoCreature' ? 'pp.targetLegacyHint' : 'pp.targetHint')}
+      </p>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t('pp.costLabel')}>
+        <Field label={t('pp.costLabel')} field="cost">
           <NumInput
             value={card.cost}
             onCommit={(n) => {
@@ -210,11 +217,35 @@ function BasicTab({ card }: { card: CardDef }) {
 }
 
 export default function PropertyPanel() {
-  const { cards, selectedId, removeCard, duplicateCard, dirtyIds, showToast } = useStore();
+  const { cards, selectedId, removeCard, duplicateCard, dirtyIds, showToast, historyBusy, propertyTab: tab, setPropertyTab: setTab, fieldFocus } = useStore();
   const t = useT();
-  const [tab, setTab] = useState<'basic' | 'effects' | 'look' | 'loc'>('basic');
+  const panelRef = useRef<HTMLDivElement>(null);
   const card = cards.find((c) => c.id === selectedId);
   const dirty = dirtyIds.length > 0;
+
+  useEffect(() => {
+    if (!fieldFocus || fieldFocus.cardId !== card?.id) return;
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const parts = fieldFocus.field.split('.');
+      let element: HTMLElement | null = null;
+      while (parts.length && !element) {
+        element = panel.querySelector(`[data-field="${CSS.escape(parts.join('.'))}"]`);
+        if (!element) parts.pop();
+      }
+      if (!element) return;
+      element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const field = fieldFocus.field.split('.').pop()!;
+      const exact = element.querySelector<HTMLElement>(`[data-effect-field="${CSS.escape(field)}"]`);
+      const scope = exact ?? element;
+      const control = scope.matches('input,textarea,select,button') ? scope : scope.querySelector<HTMLElement>('input,textarea,select,button');
+      control?.focus({ preventScroll: true });
+      element.classList.add('ring-2', 'ring-amber-400/70', 'rounded-md');
+      setTimeout(() => element?.classList.remove('ring-2', 'ring-amber-400/70'), 2400);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fieldFocus, card?.id, tab]);
 
   if (!card) {
     return (
@@ -225,7 +256,7 @@ export default function PropertyPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <fieldset disabled={historyBusy} className="flex h-full min-w-0 flex-col">
       <div className="flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-white/10 px-3 py-2">
         {([['basic', t('pp.tabBasic')], ['effects', t('pp.tabEffects')], ['look', t('pp.tabLook')], ['loc', t('pp.tabLoc')]] as [typeof tab, string][]).map(([k, l]) => (
           <button
@@ -246,8 +277,10 @@ export default function PropertyPanel() {
         <div className="flex-1" />
         <button
           onClick={async () => {
-            await duplicateCard(card.id);
-            showToast(t('pp.copied'));
+            try {
+              await duplicateCard(card.id);
+              showToast(t('pp.copied'));
+            } catch (e) { showToast(String(e)); }
           }}
           className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200"
         >
@@ -256,9 +289,9 @@ export default function PropertyPanel() {
         <button
           onClick={async () => {
             const label = card.name.zhs || card.name.eng || card.id;
-            if (!confirm(t('pp.deleteConfirm', { name: label }))) return;
-            await removeCard(card.id);
-            showToast(t('pp.deleted'));
+            if (!await confirmAction(t('pp.deleteConfirm', { name: label }))) return;
+            try { await removeCard(card.id); showToast(t('pp.deleted')); }
+            catch (e) { showToast(t('pp.deleteFailed', { e: String(e) })); }
           }}
           className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-rose-400/70 transition hover:bg-rose-500/15 hover:text-rose-300"
         >
@@ -266,12 +299,12 @@ export default function PropertyPanel() {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div ref={panelRef} className="min-h-0 flex-1 overflow-y-auto p-4">
         {tab === 'basic' && <BasicTab card={card} />}
-        {tab === 'effects' && <EffectsTab card={card} />}
+        {tab === 'effects' && <EffectsTab key={`${card.id}:${fieldFocus?.sequence ?? 0}`} card={card} />}
         {tab === 'look' && <LookTab card={card} />}
-        {tab === 'loc' && <LocTab card={card} />}
+        {tab === 'loc' && <LocTab key={`${card.id}:${fieldFocus?.sequence ?? 0}`} card={card} />}
       </div>
-    </div>
+    </fieldset>
   );
 }

@@ -15,6 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
     <!-- Godot 渲染库等由游戏运行时提供（与 GodotSharp 同源），只引用游戏私有程序集 -->
     <Reference Include="sts2">
       <HintPath>$(GameDir)\data_sts2_windows_x86_64\sts2.dll</HintPath>

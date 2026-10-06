@@ -1,17 +1,17 @@
 {
-  "version": "0.2.2",
+  "version": "0.2.4",
   "notes": {
-    "zhs": "修复召唤「女王」等怪物卡死战斗；新增充能球效果（故障机器人）；「战斗开始时」钩子放开全部效果种类。",
-    "eng": "Fixed summons freezing combat (Queen and other encounter-dependent monsters); new orb effects for the Defect; the combat-start hook now supports every built-in effect kind."
+    "zhs": "修复「战斗开始时」钩子不触发与延迟效果重复触发；操作确认改为应用内窗口并等待结果；生成描述覆盖全部触发时机；多项效果系统修复。",
+    "eng": "Fixed the combat-start hook never firing and delayed effects double-firing; confirmations now wait for in-app dialogs; description generation covers every trigger; multiple effect-system fixes."
   },
-  "pub_date": "2026-10-06T13:47:35.904Z",
+  "pub_date": "2026-10-06T17:01:33.040Z",
   "exe": {
-    "sha256": "c6d8dc71b1c44e746fbb47f08c369c20fb845149ffc0cd8952dcbb94d040e4a9",
-    "size": 27302400,
+    "sha256": "e66e846890923dca908f0edfd20a4eb67a7a1ce80f93152f0d269c2d3e755cd2",
+    "size": 27499520,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.2/SpireForge-editor-v0.2.2.exe",
-      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.2/SpireForge-editor-v0.2.2.exe",
-      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.2/SpireForge-editor-v0.2.2.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.4/SpireForge-editor-v0.2.4.exe",
+      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.4/SpireForge-editor-v0.2.4.exe",
+      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.4/SpireForge-editor-v0.2.4.exe"
     ]
   }
 }

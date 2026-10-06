@@ -5,7 +5,9 @@ mod game_catalog;
 mod import;
 mod model;
 mod project;
+mod project_library;
 mod publish;
+mod recovery;
 mod update;
 mod vanilla;
 mod workshop;
@@ -21,6 +23,30 @@ use tauri::State;
 pub struct AppState {
     pub project_root: Mutex<Option<String>>,
     pub settings: Mutex<EditorSettings>,
+    pub library_lock: Mutex<()>,
+    pub prepared_workshop: Mutex<Option<workshop::PreparedWorkspace>>,
+}
+
+fn remember_project(state: &State<AppState>, path: &str) {
+    let result = (|| {
+        let _guard = state.library_lock.lock().map_err(|_| "卡包记录暂不可用")?;
+        project_library::remember(&project::default_projects_root()?, path)
+    })();
+    // 记录失败不能把已成功打开/新建的项目伪装成失败；列表中会显示记录读取问题。
+    if let Err(e) = result { eprintln!("记录最近卡包失败：{e}"); }
+}
+
+#[tauri::command]
+fn list_projects(legacy_path: Option<String>, state: State<AppState>) -> Result<project_library::ProjectLibrary, String> {
+    let _guard = state.library_lock.lock().map_err(|_| "卡包列表暂不可用")?;
+    let root = project::default_projects_root()?;
+    let mut roots = vec![root.clone()];
+    // 兼容早期便携版本把项目放在 exe 同级 projects 的情况。
+    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())) {
+        let legacy = dir.join("projects");
+        if legacy != root { roots.push(legacy); }
+    }
+    Ok(project_library::list(&root, &roots, legacy_path.as_deref()))
 }
 
 #[tauri::command]
@@ -59,6 +85,7 @@ fn create_demo_project(path: Option<String>, state: State<AppState>) -> Result<S
         _ => project::auto_project_dir(&project::default_projects_root()?, "Demo")?,
     };
     demo::create_demo_project(&path)?;
+    remember_project(&state, &path);
     *state.project_root.lock().unwrap() = Some(path.clone());
     Ok(path)
 }
@@ -84,6 +111,7 @@ fn new_project(
         _ => project::auto_project_dir(&project::default_projects_root()?, &pack_id)?,
     };
     project::create_project(&path, &pack_id, &name, &author)?;
+    remember_project(&state, &path);
     *state.project_root.lock().unwrap() = Some(path.clone());
     Ok(path)
 }
@@ -94,6 +122,7 @@ fn open_project(
     state: State<AppState>,
 ) -> Result<(ProjectMeta, Vec<CardDef>), String> {
     let data = project::load_project(&path)?;
+    remember_project(&state, &path);
     *state.project_root.lock().unwrap() = Some(path);
     Ok(data)
 }
@@ -123,9 +152,30 @@ fn save_card(state: State<AppState>, card: CardDef) -> Result<(), String> {
 /// 重命名卡牌（事务：新文件 → meta 原位替换 → 删旧文件；默认命名立绘跟随）。
 /// 注意：改名会改变 Entry，已发布/安装过的卡会破坏存档引用，前端需先警告。
 #[tauri::command]
-fn rename_card(state: State<AppState>, old_id: String, new_id: String) -> Result<(), String> {
+fn rename_card(state: State<AppState>, old_id: String, new_id: String) -> Result<CardDef, String> {
     let root = require_root(&state)?;
-    project::rename_card(&root, &old_id, &new_id)
+    project::rename_card(&root, &old_id, &new_id)?;
+    project::read_card(&root, &new_id)
+}
+
+#[tauri::command]
+fn restore_deleted_card(state: State<AppState>, card: CardDef, index: usize) -> Result<(), String> {
+    project::restore_deleted_card(&require_root(&state)?, &card, index)
+}
+
+#[tauri::command]
+fn list_backups(state: State<AppState>, path: Option<String>) -> Result<Vec<recovery::BackupEntry>, String> {
+    let root = match path { Some(path) => path, None => require_root(&state)? };
+    recovery::list(&root)
+}
+
+#[tauri::command]
+fn restore_backup(state: State<AppState>, key: String, path: Option<String>) -> Result<(ProjectMeta, Vec<CardDef>), String> {
+    let root = match path { Some(path) => path, None => require_root(&state)? };
+    let result = recovery::restore(&root, &key)?;
+    *state.project_root.lock().map_err(|_| "项目状态读取失败")? = Some(root.clone());
+    remember_project(&state, &root);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -181,8 +231,11 @@ fn save_portrait(
 }
 
 #[tauri::command]
-fn read_portrait(state: State<AppState>, rel: String) -> Result<Vec<u8>, String> {
+fn read_portrait(state: State<AppState>, rel: String, project_root: Option<String>) -> Result<Vec<u8>, String> {
     let root = require_root(&state)?;
+    if project_root.as_deref().is_some_and(|expected| expected != root) {
+        return Err("项目已切换，请重新读取立绘".into());
+    }
     project::read_portrait_bytes(&root, &rel)
 }
 
@@ -389,7 +442,11 @@ fn ensure_runtime(state: State<AppState>) -> Result<game::RuntimeEnsure, String>
     if game_dir.is_empty() {
         return Err("尚未配置游戏目录".into());
     }
-    game::ensure_bundled_runtime(&game_dir)
+    let result = game::ensure_bundled_runtime(&game_dir)?;
+    if result.action != "locked" {
+        state.settings.lock().unwrap().runtime_version = Some(result.version.clone());
+    }
+    Ok(result)
 }
 
 /// 一键安装到游戏 mods 目录
@@ -425,7 +482,7 @@ fn install_to_game(state: State<AppState>, version: String) -> Result<InstallRes
 
 /// 发布前预检：Entry 冲突 / vanilla_id 重复 / 空 custom handler / 缺失文案等
 #[tauri::command]
-fn validate_project(state: State<AppState>) -> Result<Vec<String>, String> {
+fn validate_project(state: State<AppState>) -> Result<Vec<publish::ValidationIssue>, String> {
     let root = require_root(&state)?;
     let (meta, cards) = project::load_project(&root)?;
     Ok(publish::preflight_with_pools(
@@ -451,6 +508,9 @@ fn prepare_workshop(
     if cards.is_empty() {
         return Err("卡包中没有卡牌".into());
     }
+    let signature = workshop::source_signature(&root, &meta, &cards)?;
+    // 重新生成失败后，旧工作区不得继续上传。
+    *state.prepared_workshop.lock().map_err(|_| "工坊状态读取失败")? = None;
     let ws = workshop::prepare_workspace(
         &out_dir,
         &root,
@@ -461,12 +521,29 @@ fn prepare_workshop(
         &cards,
     )?;
     touch_last_version(&root, &meta, &version)?;
+    let (current_meta, current_cards) = project::load_project(&root)?;
+    if signature != workshop::source_signature(&root, &current_meta, &current_cards)? {
+        return Err("生成期间项目内容发生变化，请重新生成工坊工作区".into());
+    }
+    *state.prepared_workshop.lock().map_err(|_| "工坊状态读取失败")? = Some(workshop::PreparedWorkspace {
+        root, workspace: ws.clone(), version, visibility, change_note,
+        runtime_dependency: current_meta.runtime_workshop_id,
+        source_signature: signature,
+        content_signature: workshop::content_signature(&ws)?,
+    });
     Ok(ws)
 }
 
 /// 调用官方 ModUploader 上传；成功后把 mod_id.txt 回写进项目 meta
 #[tauri::command]
-fn publish_workshop(state: State<AppState>, workspace: String) -> Result<String, String> {    let uploader = state
+fn publish_workshop(state: State<AppState>, workspace: String, version: String, visibility: String,
+    change_note: String, runtime_dependency: Option<u64>) -> Result<String, String> {
+    let root = require_root(&state)?;
+    let prepared = state.prepared_workshop.lock().map_err(|_| "工坊状态读取失败")?.clone()
+        .ok_or("请先重新生成工坊工作区")?;
+    let (meta, cards) = project::load_project(&root)?;
+    prepared.verify(&root, &workspace, &version, &visibility, &change_note, runtime_dependency, &meta, &cards)?;
+    let uploader = state
         .settings
         .lock()
         .unwrap()
@@ -522,6 +599,8 @@ pub fn run() {
         .manage(AppState {
             project_root: Mutex::new(None),
             settings: Mutex::new(game::load_settings()),
+            library_lock: Mutex::new(()),
+            prepared_workshop: Mutex::new(None),
         })
         .setup(|_app| {
             // 上一轮自动更新的 editor.exe.old 残留清理（删不掉留给下次启动）
@@ -541,11 +620,15 @@ pub fn run() {
             create_demo_project,
             new_project,
             default_projects_root,
+            list_projects,
             open_project,
             get_project_meta,
             save_card,
             rename_card,
             delete_card,
+            restore_deleted_card,
+            list_backups,
+            restore_backup,
             update_project_meta,
             read_game_pools,
             import_custom_pools,
