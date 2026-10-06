@@ -18,7 +18,6 @@ export default function LookTab({ card }: { card: CardDef }) {
   const [crop, setCrop] = useState<{ url: string; bytes: Uint8Array; ext: string; isRecrop: boolean } | null>(null);
   // 卡型比例：先古卡 = 整卡满幅 250:351，其余 = 立绘窗 250:190
   const aspect = card.rarity === 'Ancient' ? 250 / 351 : 250 / 190;
-
   useEffect(() => {
     if (!card.portrait) { setDim(''); return; }
     let cancelled = false;
@@ -71,13 +70,9 @@ export default function LookTab({ card }: { card: CardDef }) {
     }
   };
 
-  // 比例正确（含裁剪产物）即算合格；否则提示建议尺寸
-  const m = dim.match(/^(\d+)×(\d+)$/);
-  const good = !!m && Math.abs(Number(m[1]) / Number(m[2]) - aspect) / aspect < 0.015;
-
   return (
     <div className="space-y-4">
-      <Field label={t('pp.portraitLabel')} hint={dim ? `${dim}${good ? '' : t('pp.portraitSuggest')}` : t('pp.portraitUnset')}>
+      <Field label={t('pp.portraitLabel')} hint={dim || t('pp.portraitUnset')}>
         <div className="flex items-center gap-2">
           <button
             onClick={() => fileRef.current?.click()}
@@ -110,12 +105,11 @@ export default function LookTab({ card }: { card: CardDef }) {
           />
         </div>
       </Field>
-      <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-slate-500">
-        {t('pp.portraitNote')}
-        {projectRoot && card.portrait && (
-          <div className="mt-1 font-mono text-[10px] text-slate-600">{card.portrait}</div>
-        )}
-      </div>
+      {projectRoot && card.portrait && (
+        <div className="rounded-lg border border-white/10 bg-black/30 p-3 font-mono text-[10px] text-slate-600">
+          {card.portrait}
+        </div>
+      )}
       {crop && (
         <PortraitCropper
           srcUrl={crop.url}

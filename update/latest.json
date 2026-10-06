@@ -1,17 +1,17 @@
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "notes": {
-    "zhs": "修复 8 个效果系统问题：全体敌人伤害、召唤奥斯提、音效可清空、召唤站位不溢出屏幕、金币/生成/召唤的升级预览、一键描述（对象/段数/全部触发时机）、X 费卡按能量重复效果、覆盖卡立绘与数值；新增应用内自动更新（国内多源加速）。",
-    "eng": "Fixed 8 effect-system issues: AoE damage, Osty summon, clearable SFX, summon layout overflow, gold/spawn/summon upgrade preview, description generation (target/hit count/all triggers), X-cost scaling, vanilla-override portrait & literal amounts; added in-app auto-update with China-friendly mirrors."
+    "zhs": "界面文案全面改为官方正式表述（术语对齐游戏内置简体中文本地化），移除全部悬停提示与大部分界面提示文字，界面更简洁。",
+    "eng": "UI copy rewritten in the game's official tone; all hover tooltips and most inline hints removed for a cleaner interface."
   },
-  "pub_date": "2026-10-06T09:08:14.278Z",
+  "pub_date": "2026-10-06T10:40:23.559Z",
   "exe": {
-    "sha256": "d8c0c4bd03cf0949715e731f939b215339a8e810c1f9b414806ee5d43be6d6a7",
-    "size": 27293184,
+    "sha256": "747105d86df1ef07548af6d99889c2e96e191b47cd9fecc00b62c4327f81a404",
+    "size": 27286016,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.0/SpireForge-editor-v0.2.0.exe",
-      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.0/SpireForge-editor-v0.2.0.exe",
-      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.0/SpireForge-editor-v0.2.0.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.1/SpireForge-editor-v0.2.1.exe",
+      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.1/SpireForge-editor-v0.2.1.exe",
+      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.1/SpireForge-editor-v0.2.1.exe"
     ]
   }
 }

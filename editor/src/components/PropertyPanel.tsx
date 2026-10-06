@@ -62,7 +62,6 @@ function BasicTab({ card }: { card: CardDef }) {
   const { updateCard } = useStore();
   const t = useT();
   const lang = useLang();
-  const isCurseLike = card.card_type === 'Curse' || card.card_type === 'Status';
 
   /** 卡池多选切换：pools 存全量，pool 保持主池（首个）——运行时按 pools 注册进全部池 */
   const togglePool = (p: Pool) => {
@@ -79,14 +78,13 @@ function BasicTab({ card }: { card: CardDef }) {
     <div className="space-y-3">
       <VanillaSection card={card} />
 
-      <Field label={t('pp.idLabel')} hint={t('pp.idHint')}>
+      <Field label={t('pp.idLabel')}>
         <IdField card={card} />
       </Field>
 
       <div className="block min-w-0">
         <div className="mb-1 flex items-baseline justify-between gap-2">
           <span className="shrink-0 whitespace-nowrap text-xs font-medium text-slate-400">{t('pp.poolLabel')}</span>
-          <span title={t('pp.poolHint')} className="truncate text-right text-[10px] text-slate-600">{t('pp.poolHint')}</span>
         </div>
         <div className="flex flex-wrap gap-1">
           {(Object.entries(POOL_LABEL)).map(([v, l]) => {
@@ -147,7 +145,7 @@ function BasicTab({ card }: { card: CardDef }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t('pp.costLabel')} hint={isCurseLike ? t('pp.costHintCurse') : t('pp.costHint')}>
+        <Field label={t('pp.costLabel')}>
           <NumInput
             value={card.cost}
             onCommit={(n) => {
@@ -171,14 +169,13 @@ function BasicTab({ card }: { card: CardDef }) {
         </div>
       </div>
 
-      <Field label={t('pp.keywordLabel')} hint={t('pp.keywordHint')}>
+      <Field label={t('pp.keywordLabel')}>
         <div className="mb-1.5 flex flex-wrap gap-1">
-          {KEYWORD_CHIPS.map(({ k, label, hint }) => {
+          {KEYWORD_CHIPS.map(({ k, label }) => {
             const on = card.keywords.includes(k);
             return (
               <button
                 key={k}
-                title={pick(hint, lang)}
                 onClick={() =>
                   updateCard({
                     keywords: on
@@ -242,8 +239,7 @@ export default function PropertyPanel() {
           </button>
         ))}
         {dirty && (
-          <span title={t('app.undoTitle')}
-            className="whitespace-nowrap rounded-md bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300">
+          <span className="whitespace-nowrap rounded-md bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300">
             ● {t('pp.dirtyBadge', { n: dirtyIds.length })}
           </span>
         )}
@@ -253,7 +249,6 @@ export default function PropertyPanel() {
             await duplicateCard(card.id);
             showToast(t('pp.copied'));
           }}
-          title={t('pp.copyTitle')}
           className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200"
         >
           {t('pp.copy')}

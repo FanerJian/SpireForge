@@ -31,7 +31,6 @@ export default function LocTab({ card }: { card: CardDef }) {
         <div className="mb-1.5 flex justify-end">
           <button
             onClick={() => genDesc(card)}
-            title={t('pp.genDescTitle')}
             className="whitespace-nowrap text-[11px] text-sky-300/80 underline hover:text-sky-200"
           >
             {t('pp.genDesc')}

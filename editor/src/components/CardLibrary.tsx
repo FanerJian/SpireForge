@@ -171,21 +171,18 @@ export default function CardLibrary() {
           <div className="flex gap-1.5">
             <button
               onClick={() => setShowVanilla(true)}
-              title={t('lib.vanillaTitle')}
               className="whitespace-nowrap rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-200 transition hover:bg-sky-500/20"
             >
               {t('lib.vanilla')}
             </button>
             <button
               onClick={doImportPck}
-              title={t('lib.packTitle')}
               className="whitespace-nowrap rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
             >
               {t('lib.pack')}
             </button>
             <button
               onClick={doImport}
-              title={t('lib.importTitle')}
               className="whitespace-nowrap rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
             >
               {t('lib.import')}
@@ -201,7 +198,6 @@ export default function CardLibrary() {
           />
           <button
             onClick={() => setShowTpl((v) => !v)}
-            title={t('lib.newCardTitle')}
             className="shrink-0 whitespace-nowrap rounded-md bg-amber-500/90 px-2.5 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-400"
           >
             {t('lib.newCard')}

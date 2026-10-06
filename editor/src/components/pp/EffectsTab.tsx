@@ -58,7 +58,6 @@ export default function EffectsTab({ card }: { card: CardDef }) {
   const patch = (i: number, p: Partial<EffectDef>) =>
     setList(list.map((e, idx) => (idx === i ? ({ ...e, ...p } as EffectDef) : e)));
 
-  const triggerMeta = TRIGGER_OPTIONS.find((o) => o.v === trigger)!;
   const isPlay = trigger === 'play';
   const hookCtx = !isPlay; // 钩子上下文：无玩家指定目标，需要 target 字段的效果走钩子取敌
   const enterCombatUnsupported = trigger === 'on_enter_combat'
@@ -72,11 +71,9 @@ export default function EffectsTab({ card }: { card: CardDef }) {
           options={TRIGGER_OPTIONS.map((o) => ({ v: o.v, label: pick(o.label, lang) }))}
           onChange={setTrigger}
         />
-        <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-          <span className="text-[11px] text-slate-600">{pick(triggerMeta.hint, lang)}</span>
+        <div className="mt-1 flex justify-end">
           <button
             onClick={() => (isPlay ? genDesc(card) : appendHookDesc(card, trigger, list))}
-            title={t(isPlay ? 'pp.genDescBtnTitle' : 'pp.genDescHookTitle')}
             className="shrink-0 whitespace-nowrap text-[11px] text-sky-300/80 underline hover:text-sky-200"
           >
             {t(isPlay ? 'pp.genDescBtn' : 'pp.genDescBtnHook')}
@@ -166,7 +163,6 @@ export default function EffectsTab({ card }: { card: CardDef }) {
               <button
                 key={k}
                 onClick={() => add(k)}
-                title={pick(EFFECT_META[k].desc, lang)}
                 className="whitespace-nowrap rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/50 hover:text-amber-300"
               >
                 + {pick(EFFECT_META[k].label, lang)}
@@ -176,18 +172,13 @@ export default function EffectsTab({ card }: { card: CardDef }) {
         </div>
       </div>
       {isPlay && (
-        <Field label={t('pp.maxUpgrade')} hint={t('pp.maxUpgradeHint')}>
+        <Field label={t('pp.maxUpgrade')}>
           <NumInput
             width="w-24"
             value={card.max_upgrade_level}
             onCommit={(n) => updateCard({ max_upgrade_level: Math.max(0, Math.round(n ?? 0)) })}
           />
         </Field>
-      )}
-      {!isPlay && (
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-slate-500">
-          {t('pp.hookLiteralNote')}
-        </div>
       )}
     </div>
   );

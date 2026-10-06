@@ -36,7 +36,6 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
       <button
         onClick={undo}
         disabled={undoStack.length === 0}
-        title={t('app.undoTitle')}
         className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
       >
         {t('app.undo')}
@@ -44,7 +43,6 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
       <button
         onClick={redo}
         disabled={redoStack.length === 0}
-        title={t('app.redoTitle')}
         className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
       >
         {t('app.redo')}
@@ -66,21 +64,18 @@ function Toolbar({ onPublish, onSettings }: { onPublish: () => void; onSettings:
       </button>
       <button
         onClick={onSettings}
-        title={t('app.settingsTitle')}
         className="whitespace-nowrap rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
       >
         {t('app.settings')}
       </button>
       <button
         onClick={() => { void closeProject(); }}
-        title={t('app.switchTitle')}
         className="whitespace-nowrap rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
       >
         {t('app.switchProject')}
       </button>
       <button
         onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-        title={t('app.langTitle')}
         className="w-12 whitespace-nowrap rounded-md border border-white/10 px-1 py-1.5 text-center text-xs font-semibold text-sky-300/80 transition hover:border-sky-400/40 hover:text-sky-200"
       >
         {t('app.toEnglish')}

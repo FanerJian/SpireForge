@@ -1,4 +1,4 @@
-// 新建卡牌模板：两三下点击得到一张能进游戏的卡，再改数值即可。
+// 新建卡牌模板：从预设结构创建卡牌，再调整数值即可。
 import type { L } from './i18n';
 import { newCard, type CardDef } from './types';
 
@@ -11,7 +11,7 @@ export interface CardTemplate {
 
 export const CARD_TEMPLATES: CardTemplate[] = [
   {
-    id: 'blank', label: { zh: '空白卡', en: 'Blank card' }, desc: { zh: '全部自己填', en: 'Fill in everything yourself' },
+    id: 'blank', label: { zh: '空白卡', en: 'Blank card' }, desc: { zh: '自行填写全部字段', en: 'Fill in every field yourself' },
     make: (id) => newCard(id),
   },
   {

@@ -169,7 +169,6 @@ export default function PortraitCropper({ srcUrl, aspect, onConfirm, onCancel }:
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-3">
-          <span className="text-[11px] text-slate-500">{t('pp.cropHint')}</span>
           <div className="flex items-center gap-2">
             {nat && <span className="font-mono text-[11px] text-slate-400">{t('pp.cropOutput', { w: outW, h: outH })}</span>}
             <button onClick={onCancel} className="rounded-md border border-white/15 px-3 py-1.5 text-xs text-slate-300 hover:border-white/40">{t('pp.cropCancel')}</button>

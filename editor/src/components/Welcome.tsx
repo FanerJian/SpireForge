@@ -177,7 +177,6 @@ export default function Welcome() {
             <button
               onClick={doDemo}
               disabled={demoBusy}
-              title={t('w.demoTitle')}
               className="w-full rounded-lg border border-emerald-400/30 bg-emerald-500/10 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-40"
             >
               {t('w.demo')}

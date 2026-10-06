@@ -12,7 +12,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
     <label className="block min-w-0">
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <span className="shrink-0 whitespace-nowrap text-xs font-medium text-slate-400">{label}</span>
-        {hint && <span title={hint} className="truncate text-right text-[10px] text-slate-600">{hint}</span>}
+        {hint && <span className="truncate text-right text-[10px] text-slate-600">{hint}</span>}
       </div>
       {children}
     </label>

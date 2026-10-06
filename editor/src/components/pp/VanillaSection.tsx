@@ -83,7 +83,6 @@ export default function VanillaSection({ card }: { card: CardDef }) {
             <span className="rounded bg-sky-500/20 px-1.5 py-0.5 font-mono text-[11px] text-sky-200">
               {t('pp.vanillaActive', { id: card.vanilla_id })}
             </span>
-            <span className="ml-2 text-slate-500">{t('pp.vanillaActiveHint')}</span>
           </div>
           <button
             onClick={() => updateCard({ vanilla_id: null, stats: null, upgrade_stats: null })}
@@ -93,8 +92,7 @@ export default function VanillaSection({ card }: { card: CardDef }) {
           </button>
         </div>
       ) : (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">{t('pp.vanillaHint')}</span>
+        <div className="mb-2 flex items-center justify-end gap-2">
           <button
             onClick={() => updateCard({ vanilla_id: '' })}
             className="shrink-0 whitespace-nowrap rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-500/20"
@@ -143,7 +141,6 @@ function VanillaInfo({ vanilla, onPrefill }: { vanilla: VanillaEntry; onPrefill:
         </span>
         <button
           onClick={onPrefill}
-          title={t('pp.prefillTitle')}
           className="shrink-0 whitespace-nowrap rounded border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20"
         >
           {t('pp.prefill')}

@@ -205,7 +205,6 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
             </button>
           ))}
         </div>
-        <div className="mt-1.5 text-[10px] leading-relaxed text-slate-600">{t('pp.delayedHint')}</div>
       </div>
     </div>
   );
@@ -248,12 +247,11 @@ export function CustomEffectBody({ e, patch, hookCtx }: {
           rawLabel={(raw) => t('pp.useRaw', { v: raw })}
         />
         {unregistered && (
-          <span className="text-[10px] text-rose-400/80" title={t('pp.handlerUnregisteredTitle')}>
+          <span className="text-[10px] text-rose-400/80">
             {t('pp.handlerUnregistered')}
           </span>
         )}
       </div>
-      <div className="text-[10px] leading-relaxed text-slate-600">{t('pp.builtinHint')}</div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.amount')}</span>
         <input
@@ -265,7 +263,6 @@ export function CustomEffectBody({ e, patch, hookCtx }: {
             patch({ amount: v } as Partial<EffectDef>);
           }}
         />
-        <span className="text-[10px] text-slate-600">{t('pp.amountOpt')}</span>
       </div>
       {hookCtx && (
         <div className="flex flex-wrap items-center gap-2">
@@ -356,9 +353,6 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
           value={(e as { amount: number }).amount}
           onCommit={(n) => { if (n != null) patch({ amount: n } as Partial<EffectDef>); }}
         />
-        {e.kind === 'gold' && (
-          <span className="text-[10px] text-slate-600">{t('pp.goldNegative')}</span>
-        )}
         {e.kind === 'power' && (
           <>
             <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.powerLabel')}</span>
@@ -417,12 +411,11 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
                 value={me.hp}
                 onCommit={(n) => patch({ hp: n } as Partial<EffectDef>)}
               />
-              <span className="text-[10px] text-slate-600">{t('pp.summonHpOpt')}</span>
             </>
           );
         })()}
         {('props' in e) && (
-          <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-400" title={t('pp.unpoweredTitle')}>
+          <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-400">
             <input
               type="checkbox"
               checked={(e as { props: string[] }).props.includes('Unpowered')}
@@ -523,7 +516,6 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
                 />
               </label>
             </div>
-            <div className="text-[10px] leading-relaxed text-slate-600">{t('pp.vfxHint')}</div>
           </div>
         );
       })()}
@@ -576,7 +568,6 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               />
             </label>
           </div>
-          <div className="text-[10px] leading-relaxed text-slate-600">{t('pp.hitVfxHint')}</div>
         </>
       )}
       {e.kind === 'power' && (
@@ -591,7 +582,6 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
             <option value="self">{t('pp.targetSelf')}</option>
             <option value="all_enemies">{t('pp.targetAllEnemies')}</option>
           </select>
-          <span className="text-[10px] text-slate-600">{t('pp.buffHint')}</span>
         </div>
       )}
       {hookCtx && e.kind === 'damage' && (
@@ -618,9 +608,6 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               if (lk && (u?.[lk] ?? 0) !== 0) updateCard({ upgrades: { ...u, [lk]: 0 } });
             }}
           />
-          {(e.kind === 'spawn' || e.kind === 'summon') && (
-            <span className="text-[10px] text-slate-600">{t('pp.upgradeAmountHint')}</span>
-          )}
         </div>
       )}
     </div>
