@@ -98,6 +98,16 @@ public sealed class SfEffect
     [JsonPropertyName("sfx")]
     public string Sfx { get; set; } = "";
 
+    /// <summary>播放来源（vfx 效果）：target（缺省，按 target 字段定位）/
+    /// self（卡牌使用者）/ 怪物类名或 Entry（场上该怪活体）。（params.source 亦可）</summary>
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "";
+
+    /// <summary>延迟效果（delayed）：触发哪一方的回合时机 player（缺省，我方）/
+    /// enemy（敌方）/ both（双方）。缺省与我方触发的历史行为一致。</summary>
+    [JsonPropertyName("side")]
+    public string Side { get; set; } = "";
+
     /// <summary>攻击者侧特效（damage，如出手投掷物）（编辑器顶层字段；params.attacker_vfx 亦可）。</summary>
     [JsonPropertyName("attacker_vfx")]
     public string AttackerVfx { get; set; } = "";
@@ -168,6 +178,7 @@ public sealed class SfEffect
             "vfx" => Vfx,
             "sfx" => Sfx,
             "attacker_vfx" => AttackerVfx,
+            "source" => Source,
             _ => "",
         };
     }

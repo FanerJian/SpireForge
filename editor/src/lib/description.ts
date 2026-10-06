@@ -131,26 +131,27 @@ function effectSentence(fx: EffectDef, varName: string | null): { zhs: string; e
       const n = Math.max(1, Math.round(fx.turns));
       const timingZh = fx.timing === 'turn_start' ? '开始' : '结束';
       const timingEn = fx.timing === 'turn_start' ? 'start' : 'end';
+      const side = fx.side ?? 'player';
+      // 我方=历史文案；敌方/双方带出回合归属（once 模式按"轮"计数）
+      const zhWhen = side === 'enemy'
+        ? (fx.every_turn === false ? `打出后，${n} 回合后的敌方回合${timingZh}时` : `打出后，接下来 ${n} 次敌方回合${timingZh}时`)
+        : side === 'both'
+          ? (fx.every_turn === false ? `打出后，${n} 回合后的我方与敌方回合${timingZh}时` : `打出后，接下来 ${n} 个回合的每回合我方与敌方${timingZh}时`)
+          : (fx.every_turn === false ? `打出后，${n} 回合后的回合${timingZh}时` : `打出后，接下来 ${n} 个回合的每回合${timingZh}时`);
+      const enWhen = side === 'enemy'
+        ? (fx.every_turn === false ? `After you play this, ${n} round(s) from now, at the ${timingEn} of the enemy turn` : `After you play this, at the ${timingEn} of each of the next ${n} enemy turn(s)`)
+        : side === 'both'
+          ? (fx.every_turn === false ? `After you play this, ${n} round(s) from now, at the ${timingEn} of both sides' turns` : `After you play this, at the ${timingEn} of each of the next ${n} rounds (both sides)`)
+          : (fx.every_turn === false ? `After you play this, ${n} turn(s) from now, at the ${timingEn} of that turn` : `After you play this, at the ${timingEn} of each of the next ${n} turn(s)`);
       const inner = (fx.effects ?? []).map((f) => effectSentence(f, null));
       const zhBody = inner.map((s) => s.zhs).join('\n');
       const enBody = inner.map((s) => s.eng).join('\n');
-      if (fx.every_turn === false) {
-        return {
-          zhs: inner.length
-            ? `打出后，${n} 回合后的回合${timingZh}时：\n${zhBody}`
-            : `打出后，${n} 回合后的回合${timingZh}时触发延迟效果。`,
-          eng: inner.length
-            ? `After you play this, ${n} turn(s) from now, at the ${timingEn} of that turn:\n${enBody}`
-            : `After you play this, ${n} turn(s) from now, at the ${timingEn} of that turn, trigger the delayed effect.`,
-        };
+      if (inner.length) {
+        return { zhs: `${zhWhen}：\n${zhBody}`, eng: `${enWhen}:\n${enBody}` };
       }
       return {
-        zhs: inner.length
-          ? `打出后，接下来 ${n} 个回合的每回合${timingZh}时：\n${zhBody}`
-          : `打出后，接下来 ${n} 个回合的每回合${timingZh}时触发延迟效果。`,
-        eng: inner.length
-          ? `After you play this, at the ${timingEn} of each of the next ${n} turn(s):\n${enBody}`
-          : `After you play this, at the ${timingEn} of each of the next ${n} turn(s), trigger the delayed effect.`,
+        zhs: `${zhWhen}触发延迟效果。`,
+        eng: `${enWhen}, trigger the delayed effect.`,
       };
     }
   }

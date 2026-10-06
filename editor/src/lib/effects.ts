@@ -45,7 +45,7 @@ export function defaultEffect(kind: EffectDef['kind']): EffectDef | null {
     case 'power': return { kind: 'power', amount: 2, power: 'Vulnerable' };
     case 'spawn': return { kind: 'spawn', amount: 1, card_entry: '' };
     case 'summon': return { kind: 'summon', amount: 1, monster: 'DampCultist', hp: 13 };
-    case 'delayed': return { kind: 'delayed', turns: 2, timing: 'turn_end', effects: [{ kind: 'block', amount: 4, props: ['Move'] }] };
+    case 'delayed': return { kind: 'delayed', turns: 2, timing: 'turn_end', side: 'player', effects: [{ kind: 'block', amount: 4, props: ['Move'] }] };
     case 'vfx': return { kind: 'vfx', vfx: 'attack_slash', target: 'random_enemy' };
     case 'custom': return { kind: 'custom', handler: '' };
     default: return null;

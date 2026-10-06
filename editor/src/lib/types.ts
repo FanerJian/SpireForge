@@ -57,8 +57,24 @@ export type EffectDef =
   | { kind: 'power'; amount: number; power: string; target?: string; upgrade_amount?: number }
   | { kind: 'spawn'; amount: number; card_entry: string; pile?: string; upgrade_amount?: number }
   | { kind: 'summon'; amount: number; monster: string; hp?: number; upgrade_amount?: number }
-  | { kind: 'delayed'; turns: number; timing?: 'turn_start' | 'turn_end'; every_turn?: boolean; effects?: EffectDef[] }
-  | { kind: 'vfx'; vfx: string; target?: string }
+  | {
+      kind: 'delayed';
+      turns: number;
+      timing?: 'turn_start' | 'turn_end';
+      /** 触发哪一方：player（缺省，我方回合时机）/ enemy（敌方）/ both（双方） */
+      side?: 'player' | 'enemy' | 'both';
+      every_turn?: boolean;
+      effects?: EffectDef[];
+    }
+  | {
+      kind: 'vfx';
+      vfx: string;
+      target?: string;
+      /** 同步音效："event:/sfx/…"（FMOD）或音频文件名 */
+      sfx?: string;
+      /** 播放来源：target（缺省，按 target 定位）/ self（卡牌使用者）/ 怪物类名或 Entry */
+      source?: string;
+    }
   | { kind: 'custom'; handler: string; amount?: number; target?: string; params?: Record<string, unknown> };
 
 /** 生命周期钩子字段名（与 CardDef 上的可选 EffectDef[] 字段一致） */

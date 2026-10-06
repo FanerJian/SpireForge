@@ -136,8 +136,8 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 | `power` | `amount`, `power: string`, `target?` | `PowerCmd.Apply<T>`（反射解析） | 施加增益/减益，见下 |
 | `spawn` | `amount`, `card_entry: string`, `pile?` | `ICombatState.CreateCard` + `CardPileCmd.AddGeneratedCardToCombat` | 生成卡牌，见下 |
 | `summon` | `amount`, `monster: string`, `hp?` | `CreatureCmd.Add`（随机遭遇站位落位） | 召唤敌人，见下 |
-| `delayed` | `turns: number`, `timing?`, `every_turn?`, `effects: SfEffect[]` | `SfDelayedPower`（承载力量） | 延迟效果，见下 |
-| `vfx` | `vfx: string`, `target?` | `VfxCmd`（内置）或直接实例化（res:// 场景） | 播放视觉特效（纯演出），见下 |
+| `delayed` | `turns: number`, `timing?`, `side?`, `every_turn?`, `effects: SfEffect[]` | `SfDelayedPower`（承载力量） | 延迟效果，见下 |
+| `vfx` | `vfx: string`, `target?`, `source?`, `sfx?` | `VfxCmd`（内置）或直接实例化（res:// 场景） | 播放视觉特效/音效（纯演出），见下 |
 | `custom` | `handler: string`, `amount?`, `target?`, `params?` | 由处理器定义 | 见下方「自定义效果」 |
 
 `damage.target` 只在钩子上下文生效（打出时永远以玩家指定目标为准）：
@@ -154,7 +154,11 @@ props 自动回落直结 + 特效另补。`sfx` 以 `event:` 开头走 FMOD 事�
 `cross_heal`/`lightning`/`coin_explosion_regular`…，目录见 `spireforge-catalog.json` 的
 `vfx` 段）、`vfx/vfx_x` 内路径、或 `res://<modId>/vfx/x.tscn` 完整路径（mod 自带特效）。
 `target`：`random_enemy`（默认）/ `all_enemies`（敌人阵营中心一次）/ `self` /
-`side_enemy` / `side_player` / `screen`。目录 = VfxCmd consts + 游戏程序集里全部
+`side_enemy` / `side_player` / `screen`。`source`（2026-10-06 起）= 播放来源：
+缺省按 `target` 定位；`self` = 这张卡的使用者（玩家）；填怪物类名/Entry（如
+`DampCultist`）= 场上该怪的全部活体（可多只，逐只播放）。`sfx` = 同步音效，
+`event:` 开头走 FMOD、其余按音频文件播放（与 damage 打击音效同款双通道）。
+目录 = VfxCmd consts + 游戏程序集里全部
 `*Vfx` 节点类（反射，随游戏更新自动扩展）+ mods/*/{vfx} 松散场景。纯演出不改数值，
 卡面描述不生成对应文本。
 
@@ -176,13 +180,17 @@ props 自动回落直结 + 特效另补。`sfx` 以 `event:` 开头走 FMOD 事�
 - `monster` = 怪物类名或 Entry（`DampCultist` / `DAMP_CULTIST`，含 mod 怪物）；`hp` = 指定生命
   （缺省按怪物原生 HP 区间随机，受怪物 HP 缩放规则影响）
 - **落位**：从当前遭遇战的站位表（`Encounter.Slots`，场景 Marker2D 名单）里**随机挑一个
-  空位**（与游戏 Fabricator/LivingFog 召唤同源）；没有空位时随机复用既有站位，
-  连站位表都没有时落回游戏默认位置
+  空位**（与游戏 Fabricator/LivingFog 召唤同源）；没有空位时随机复用既有站位。
+  连站位表都没有时（绝大多数遭遇 `Slots` 为空），召唤完成后按游戏
+  `NCombatRoom.PositionEnemies` 同款算法把当前全部敌人横向等距重新铺开
+  （2026-10-06 修复：此前无人给中途召唤的怪定位，多只全部叠在同一默认位置）
 - 不需要选择上下文（on_enter_combat 可用）
 
 **delayed（延迟效果 —— 打出后下几回合）**：
 - `turns` = 持续回合数（>=1）；`timing` = `turn_end`（默认）/ `turn_start`；
-  `every_turn` = `true`（缺省，每回合触发）/ `false`（等 N 回合后仅在最后一次时机触发一次）；
+  `side`（2026-10-06 起）= 触发哪一方的回合时机：`player`（缺省，我方——历史行为）/
+  `enemy`（敌方）/ `both`（双方都触发）；`every_turn` = `true`（缺省，每回合触发）/
+  `false`（等 N 回合后仅在最后一次时机触发一次）；
   `effects` = 内嵌效果清单（语法与打出效果一致，目标语义同钩子：`self`/`random_enemy`/`all_enemies`，
   可再嵌套 delayed）
 - Runtime 把内嵌清单挂在隐藏承载力量 `SfDelayedPower` 上（玩家可见图标显示剩余回合数，

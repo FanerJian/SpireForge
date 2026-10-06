@@ -663,7 +663,12 @@ mod tests {
                 hit_count: Some(2.0),
                 upgrade_amount: 0.0,
             },
-            EffectDef::Vfx { vfx: "vfx/vfx_chain".into(), target: Some("screen".into()) },
+            EffectDef::Vfx {
+                vfx: "vfx/vfx_chain".into(),
+                target: Some("screen".into()),
+                sfx: Some("event:/sfx/combat/damage_heavy".into()),
+                source: Some("DampCultist".into()),
+            },
             EffectDef::Discard { amount: 1.0, upgrade_amount: 0.0 },
             EffectDef::Exhaust { amount: 2.0, upgrade_amount: 0.0 },
             EffectDef::Gold { amount: 10.0, upgrade_amount: 0.0 },
@@ -690,6 +695,7 @@ mod tests {
             EffectDef::Delayed {
                 turns: 2,
                 timing: Some("turn_end".into()),
+                side: Some("enemy".into()),
                 every_turn: false,
                 effects: vec![EffectDef::Block {
                     amount: 4.0,
@@ -749,6 +755,11 @@ mod tests {
             if vfx == "attack_blunt" && sfx == "blunt_attack.mp3"
         ));
         assert!(matches!(&back.effects[2], EffectDef::Discard { amount, .. } if *amount == 1.0));
+        assert!(matches!(
+            &back.effects[1],
+            EffectDef::Vfx { vfx, sfx: Some(sfx), source: Some(src), .. }
+            if vfx == "vfx/vfx_chain" && sfx == "event:/sfx/combat/damage_heavy" && src == "DampCultist"
+        ));
         assert!(matches!(&back.effects[5], EffectDef::LoseHp { amount, upgrade_amount } if *amount == 3.0 && *upgrade_amount == 2.0));
         assert!(
             matches!(&back.effects[7], EffectDef::Power { power, .. } if power == "Vulnerable")
@@ -758,8 +769,8 @@ mod tests {
         );
         assert!(matches!(
             &back.effects[10],
-            EffectDef::Delayed { turns: 2, timing: Some(t), every_turn: false, effects }
-            if t == "turn_end" && effects.len() == 1
+            EffectDef::Delayed { turns: 2, timing: Some(t), side: Some(s), every_turn: false, effects }
+            if t == "turn_end" && s == "enemy" && effects.len() == 1
         ));
         // 兼容旧卡包：every_turn/effects 全缺省（黑屏卡 card_1 的形态）必须照常解析
         let legacy_delayed: EffectDef =

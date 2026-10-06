@@ -106,6 +106,16 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
           <option value="turn_end">{t('pp.delayedTurnEnd')}</option>
           <option value="turn_start">{t('pp.delayedTurnStart')}</option>
         </select>
+        <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.delayedSide')}</span>
+        <select
+          className={selectCls + ' w-28'}
+          value={e.side ?? 'player'}
+          onChange={(ev) => patch({ side: ev.target.value } as Partial<EffectDef>)}
+        >
+          <option value="player">{t('pp.sidePlayer')}</option>
+          <option value="enemy">{t('pp.sideEnemy')}</option>
+          <option value="both">{t('pp.sideBoth')}</option>
+        </select>
         <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.delayedMode')}</span>
         <select
           className={selectCls + ' w-44'}
@@ -417,33 +427,72 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
         )}
       </div>
       )}
-      {e.kind === 'vfx' && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxLabel')}</span>
-          <Combobox
-            value={(e as { vfx: string }).vfx}
-            items={vfxCombo}
-            onChange={(v) => patch({ vfx: v } as Partial<EffectDef>)}
-            fallbackDisplay={(e as { vfx: string }).vfx}
-            searchPlaceholder={t('pp.vfxSearch')}
-            allowRaw
-            rawLabel={(raw) => t('pp.useRaw', { v: raw })}
-          />
-          <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
-          <select
-            className={selectCls + ' w-40'}
-            value={(e as { target?: string }).target ?? 'random_enemy'}
-            onChange={(ev) => patch({ target: ev.target.value } as Partial<EffectDef>)}
-          >
-            <option value="random_enemy">{t('pp.vfxTargetRandom')}</option>
-            <option value="all_enemies">{t('pp.vfxTargetAll')}</option>
-            <option value="self">{t('pp.targetSelf')}</option>
-            <option value="side_enemy">{t('pp.vfxTargetSideEnemy')}</option>
-            <option value="side_player">{t('pp.vfxTargetSidePlayer')}</option>
-            <option value="screen">{t('pp.vfxTargetScreen')}</option>
-          </select>
-        </div>
-      )}
+      {e.kind === 'vfx' && (() => {
+        const vf = e as { vfx: string; target?: string; sfx?: string; source?: string };
+        const src = vf.source ?? '';
+        const srcIsMonster = src !== '' && src !== 'self' && src !== 'target';
+        return (
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxLabel')}</span>
+              <Combobox
+                value={vf.vfx}
+                items={vfxCombo}
+                onChange={(v) => patch({ vfx: v } as Partial<EffectDef>)}
+                fallbackDisplay={vf.vfx}
+                searchPlaceholder={t('pp.vfxSearch')}
+                allowRaw
+                rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+              />
+              <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
+              <select
+                className={selectCls + ' w-40'}
+                value={vf.target ?? 'random_enemy'}
+                onChange={(ev) => patch({ target: ev.target.value } as Partial<EffectDef>)}
+              >
+                <option value="random_enemy">{t('pp.vfxTargetRandom')}</option>
+                <option value="all_enemies">{t('pp.vfxTargetAll')}</option>
+                <option value="self">{t('pp.targetSelf')}</option>
+                <option value="side_enemy">{t('pp.vfxTargetSideEnemy')}</option>
+                <option value="side_player">{t('pp.vfxTargetSidePlayer')}</option>
+                <option value="screen">{t('pp.vfxTargetScreen')}</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxSource')}</span>
+              <select
+                className={selectCls + ' w-40'}
+                value={srcIsMonster ? '__monster' : (src || 'target')}
+                onChange={(ev) =>
+                  patch({ source: ev.target.value === '__monster' ? '' : ev.target.value === 'target' ? undefined : ev.target.value } as Partial<EffectDef>)
+                }
+              >
+                <option value="target">{t('pp.vfxSourceTarget')}</option>
+                <option value="self">{t('pp.vfxSourceSelf')}</option>
+                <option value="__monster">{t('pp.vfxSourceMonster')}</option>
+              </select>
+              {srcIsMonster && (
+                <Combobox
+                  value={src}
+                  items={monsterCombo}
+                  onChange={(v) => patch({ source: v } as Partial<EffectDef>)}
+                  fallbackDisplay={src}
+                  searchPlaceholder={t('pp.monsterSearch')}
+                  allowRaw
+                  rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+                />
+              )}
+              <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
+              <input
+                className={inputCls + ' w-44 font-mono text-xs'}
+                placeholder={t('pp.hitSfxPh')}
+                value={vf.sfx ?? ''}
+                onChange={(ev) => patch({ sfx: ev.target.value || undefined } as Partial<EffectDef>)}
+              />
+            </div>
+          </div>
+        );
+      })()}
       {e.kind === 'damage' && (
         <>
           <div className="flex flex-wrap items-center gap-2">

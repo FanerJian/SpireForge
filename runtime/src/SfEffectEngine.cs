@@ -257,12 +257,14 @@ public static class SfEffectEngine
                 }
                 var hp = e.DecimalParam("hp");
                 var count = System.Math.Max(1, (int)Amount(card, e, varName));
+                var usedSlots = false;
                 for (var i = 0; i < count; i++)
                 {
                     var model = template.ToMutable();
                     // 落位：当前遭遇的站位里随机挑空位（与 Fabricator/LivingFog 召唤同源），
                     // 没有空位时随机复用既有站位，连站位表都没有时才落回默认位置
                     var slot = PickSummonSlot(combat, card);
+                    usedSlots |= slot != null;
                     var creature = slot != null
                         ? await CreatureCmd.Add(model, combat, MegaCrit.Sts2.Core.Combat.CombatSide.Enemy, slot)
                         : await CreatureCmd.Add(model, combat);
@@ -270,6 +272,12 @@ public static class SfEffectEngine
                     {
                         await CreatureCmd.SetMaxAndCurrentHp(creature, hp.Value);
                     }
+                }
+                if (!usedSlots)
+                {
+                    // 绝大多数遭遇没有站位表，此时游戏不会给中途召唤的怪定位
+                    // （初始排版只发生在战斗开始）——按游戏同款算法重新铺开全部敌人
+                    SfSummonLayout.SpreadEnemies(combat);
                 }
                 break;
             }
@@ -291,13 +299,16 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": delayed has no combat state, skipped");
                     break;
                 }
-                await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing, e.EveryTurn);
+                await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing, e.EveryTurn, e.Side);
                 break;
             }
 
             case SfEffectKind.Vfx:
             {
                 // 播放视觉特效（纯演出，不影响数值）：params.vfx / 顶层 vfx = 特效 spec，
+                // params.sfx / 顶层 sfx = 同步音效（event:/… 走 FMOD，其余按音频文件播放）；
+                // 来源 params.source / 顶层 source：target（缺省，按 target 定位）/
+                // self（卡牌使用者）/ 怪物类名或 Entry（场上该怪的活体，可多只）；
                 // target：random_enemy（默认）/ all_enemies（阵营中心一次）/ self / screen
                 var spec = e.StringParam("vfx");
                 if (string.IsNullOrWhiteSpace(spec))
@@ -305,21 +316,48 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": vfx effect missing params.vfx");
                     break;
                 }
+                var sfx = e.StringParam("sfx");
+                var source = (e.Source ?? "").Trim();
+                if (source.Length > 0 && !source.Equals("target", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    var origins = ResolveSources(card, source);
+                    if (origins.Count == 0)
+                    {
+                        SfLog.Warn("card " + card.Id + ": vfx source '" + source + "' not found on field, skipped");
+                        break;
+                    }
+                    foreach (var src in origins)
+                    {
+                        SfVfx.PlayOnCreature(src, spec);
+                        PlaySfx(sfx);
+                    }
+                    break;
+                }
                 switch ((e.Target ?? "").Trim().ToLowerInvariant())
                 {
                     case "screen":
                         SfVfx.PlayFullScreen(spec, card.Owner?.Creature);
+                        PlaySfx(sfx);
                         break;
                     case "side_player":
-                        if (RequireCombat(card) is { } pc) SfVfx.PlayOnSide(MegaCrit.Sts2.Core.Combat.CombatSide.Player, spec, pc);
+                        if (RequireCombat(card) is { } pc)
+                        {
+                            SfVfx.PlayOnSide(MegaCrit.Sts2.Core.Combat.CombatSide.Player, spec, pc);
+                            PlaySfx(sfx);
+                        }
                         break;
                     case "side_enemy":
-                        if (RequireCombat(card) is { } ec) SfVfx.PlayOnSide(MegaCrit.Sts2.Core.Combat.CombatSide.Enemy, spec, ec);
+                        if (RequireCombat(card) is { } ec)
+                        {
+                            SfVfx.PlayOnSide(MegaCrit.Sts2.Core.Combat.CombatSide.Enemy, spec, ec);
+                            PlaySfx(sfx);
+                        }
                         break;
                     default:
                         foreach (var t in ResolveTargetList(card, e, play))
                         {
                             SfVfx.PlayOnCreature(t, spec);
+                            PlaySfx(sfx);
                         }
                         break;
                 }
@@ -460,6 +498,54 @@ public static class SfEffectEngine
             SfLog.Warn("card " + card.Id + ": no combat state for vfx, skipped");
         }
         return combat;
+    }
+
+    /// <summary>vfx 效果的播放来源：self = 卡牌使用者；其余按怪物类名/Id.Entry 匹配
+    /// 场上活体（不限阵营，可多只）。无匹配返回空清单（调用方记日志跳过）。</summary>
+    private static IReadOnlyList<Creature> ResolveSources(CardModel card, string source)
+    {
+        if (source.Equals("self", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return [card.Owner.Creature];
+        }
+        var combat = card.Owner?.Creature?.CombatState;
+        if (combat == null)
+        {
+            return [];
+        }
+        var matches = new List<Creature>();
+        foreach (var c in combat.Creatures)
+        {
+            if (c == null || c.IsDead || c.Monster == null)
+            {
+                continue;
+            }
+            if (string.Equals(c.Monster.GetType().Name, source, System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Monster.Id?.Entry, source, System.StringComparison.OrdinalIgnoreCase))
+            {
+                matches.Add(c);
+            }
+        }
+        return matches;
+    }
+
+    /// <summary>独立音效（与 AttackCommand 同款双通道）："event:/…" 走 FMOD，
+    /// 其余按音频文件路径播放。</summary>
+    private static void PlaySfx(string? sfx)
+    {
+        var s = (sfx ?? "").Trim();
+        if (s.Length == 0)
+        {
+            return;
+        }
+        if (s.StartsWith("event:", System.StringComparison.Ordinal))
+        {
+            MegaCrit.Sts2.Core.Commands.SfxCmd.Play(s);
+        }
+        else
+        {
+            MegaCrit.Sts2.Core.Audio.Debug.NDebugAudioManager.Instance?.Play(s);
+        }
     }
 
     /// <summary>ValueProp 是位标志（Unblockable=2, Unpowered=4, Move=8, SkipHurtAnim=0x10）。

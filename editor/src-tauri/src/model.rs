@@ -103,12 +103,18 @@ pub enum EffectDef {
         upgrade_amount: f64,
     },
     /// 播放视觉特效（纯演出，不影响数值）：vfx = 特效名/vfx内路径/res://路径，
-    /// target：random_enemy（默认）/ all_enemies（阵营中心）/ self / screen / side_enemy / side_player
+    /// target：random_enemy（默认）/ all_enemies（阵营中心）/ self / screen / side_enemy / side_player，
+    /// sfx = 同步音效（event:/… 或音频文件名），source = 播放来源：
+    /// target（缺省，按 target 定位）/ self（卡牌使用者）/ 怪物类名或 Entry
     Vfx {
         #[serde(default)]
         vfx: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sfx: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
     },
     /// 获得格挡（BlockVar）
     Block {
@@ -245,6 +251,9 @@ pub enum EffectDef {
         turns: i64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         timing: Option<String>,
+        /// 触发哪一方：player（缺省，我方回合时机）/ enemy（敌方）/ both（双方）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        side: Option<String>,
         /// true（缺省）= 每回合触发；false = 仅最后一回合触发一次（显式 false 才落盘）
         #[serde(default = "default_true", skip_serializing_if = "is_true")]
         every_turn: bool,
