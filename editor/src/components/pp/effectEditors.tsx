@@ -464,9 +464,16 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               <select
                 className={selectCls + ' w-40'}
                 value={srcIsMonster ? '__monster' : (src || 'target')}
-                onChange={(ev) =>
-                  patch({ source: ev.target.value === '__monster' ? '' : ev.target.value === 'target' ? undefined : ev.target.value } as Partial<EffectDef>)
-                }
+                onChange={(ev) => {
+                  const v = ev.target.value;
+                  if (v === '__monster') {
+                    // 「指定怪物」只是 UI 态（source 需存怪物名）：首次选中落默认怪，
+                    // 让怪物下拉出现；已在怪物态则不动，避免把已填的名字抹掉
+                    if (!srcIsMonster) patch({ source: 'DampCultist' } as Partial<EffectDef>);
+                    return;
+                  }
+                  patch({ source: v === 'target' ? undefined : v } as Partial<EffectDef>);
+                }}
               >
                 <option value="target">{t('pp.vfxSourceTarget')}</option>
                 <option value="self">{t('pp.vfxSourceSelf')}</option>
