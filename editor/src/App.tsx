@@ -8,7 +8,7 @@ import Welcome from './components/Welcome';
 import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
 import { setLang, useLang, useT } from './lib/i18n';
-import { grantEntry } from './lib/types';
+import { grantEntry } from './lib/entry';
 import { bytesToDataUrl, extOf } from './lib/img';
 
 function Toast({ msg }: { msg: string }) {

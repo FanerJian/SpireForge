@@ -1,7 +1,6 @@
-// 与 src-tauri/src/model.rs 保持镜像；字段改动需双侧同步
-import type { L } from './i18n';
-import { POWER_DEBUFFS } from './powers';
-import { MONSTER_ZH } from './monsters';
+// 卡包数据 schema（与 src-tauri/src/model.rs 保持镜像；字段改动需双侧同步）。
+// 领域逻辑分属各自模块：Entry 派生 → entry.ts，效果常量/默认值 → effects.ts，
+// 描述合成 → description.ts，新建模板 → templates.ts。
 
 export type CardType = 'Attack' | 'Skill' | 'Power' | 'Status' | 'Curse' | 'Quest';
 export type CardRarity =
@@ -121,23 +120,6 @@ export interface EditorSettings {
   uploader_path: string | null;
 }
 
-/** 从原版目录 vars 推导效果清单（「预填原版效果」用）：
- *  Damage/Block/Cards/Energy → 内建效果；XxxPower → 施加增益/减益。
- *  计算型变量（CalculationBase 等）无法静态映射，跳过。 */
-export function effectsFromVanillaVars(vars: Record<string, number>): EffectDef[] {
-  const out: EffectDef[] = [];
-  if (typeof vars.Damage === 'number') out.push({ kind: 'damage', amount: vars.Damage, props: ['Move'] });
-  if (typeof vars.Block === 'number') out.push({ kind: 'block', amount: vars.Block, props: ['Move'] });
-  if (typeof vars.Cards === 'number') out.push({ kind: 'draw', amount: vars.Cards });
-  if (typeof vars.Energy === 'number') out.push({ kind: 'energy', amount: vars.Energy });
-  for (const [k, v] of Object.entries(vars)) {
-    if (typeof v !== 'number' || !k.endsWith('Power') || k === 'Power') continue;
-    const name = k.slice(0, -5); // 去掉 Power 后缀 → SfPowerResolver 可解析名
-    out.push({ kind: 'power', amount: v, power: name, target: POWER_DEBUFFS.includes(name) ? undefined : 'self' });
-  }
-  return out;
-}
-
 /** 原版卡牌目录条目（schema/vanilla-catalog.json，v0.111.0 数据，spire-codex 提取） */
 export interface VanillaEntry {
   entry: string;
@@ -195,6 +177,14 @@ export interface RuntimeCard {
   source: string;
 }
 
+/** 自定义效果处理器条目（SfEffects 注册表快照：内置 + 各 mod 注册的） */
+export interface RuntimeCustomEffect {
+  name: string;
+  source: string;
+  desc_zh: string;
+  desc_en: string;
+}
+
 /** 游戏内容目录（mods/SpireForgeRuntime/spireforge-catalog.json；读取失败时为 null） */
 export interface RuntimeCatalog {
   language: string;
@@ -202,6 +192,8 @@ export interface RuntimeCatalog {
   powers: RuntimePower[];
   monsters: RuntimeMonster[];
   cards: RuntimeCard[];
+  /** Runtime < 0.1.7 没有此段（旧目录文件读取后为 undefined） */
+  custom_effects?: RuntimeCustomEffect[];
 }
 
 export function newCard(id: string): CardDef {
@@ -225,343 +217,4 @@ export function newCard(id: string): CardDef {
     effects: [],
     upgrades: { damage: 0, block: 0, draw: 0, energy: 0, heal: 0, keywords: [] },
   };
-}
-
-/** id 派生规则（与游戏 StringHelper.Slugify 一致）。
- *  游戏实现：CamelCase 正则 `([A-Za-z0-9]|\G(?!^))([A-Z])` → "$1_$2"，
- *  再大写、空白→下划线、剔除 [^A-Z0-9_]。
- *  JS 无 \G，用等价收敛循环（反复替换重叠大写对直至稳定）。 */
-export function slugify(txt: string): string {
-  let s = txt.trim();
-  for (;;) {
-    const next = s.replace(/([A-Za-z0-9])([A-Z])/g, '$1_$2');
-    if (next === s) break;
-    s = next;
-  }
-  const upper = s.toUpperCase();
-  const spaced = upper.replace(/\s+/g, '_');
-  return spaced.replace(/[^A-Z0-9_]/g, '');
-}
-
-export function pascal(s: string): string {
-  return s
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map((p) => p[0].toUpperCase() + p.slice(1))
-    .join('');
-}
-
-/** 卡牌完整 Entry：SNAKE(Pascal(packId) + Pascal(cardId)) */
-export function cardEntry(packId: string, cardId: string): string {
-  return slugify(pascal(packId) + pascal(cardId));
-}
-
-/** 「添加至卡组」登记用的 Entry。覆盖卡（vanilla_id）在 Runtime 是就地修补原版模板，
- *  ModelDb 里只有原版 Entry——按包内派生 Entry 登记会查无此卡，必须用原版 Entry。
- *  规范化与 Rust 端 publish.rs 一致：大写 + 只留字母数字下划线。 */
-export function grantEntry(card: { id: string; vanilla_id?: string | null }, packId: string): string {
-  const v = card.vanilla_id?.trim();
-  if (v) return v.toUpperCase().replace(/[^A-Z0-9_]/g, '');
-  return cardEntry(packId, card.id);
-}
-
-/** 兼容旧名 */
-export const pascalToSnake = slugify;
-
-/** 常用力量中文名 → 完整官方译名表移至 powers.ts（工具脚本生成，265 项全量） */
-import { POWER_ZH } from './powers';
-export { POWER_ZH };
-
-const PILE_ZH: Record<string, string> = { draw: '抽牌堆', hand: '手牌', discard: '弃牌堆' };
-
-/** 参与升级数值编辑的打出效果种类（custom/delayed 的数值语义由内嵌效果或处理器定义，不参与） */
-export const AMOUNT_KINDS: EffectDef['kind'][] = [
-  'damage', 'block', 'draw', 'energy', 'heal', 'discard', 'exhaust',
-  'gold', 'lose_hp', 'max_hp', 'power', 'spawn', 'summon',
-];
-
-/** 参与升级变量的旧五通道（effect.upgrade_amount 未设时回落；见 SfCardBase.OnUpgrade） */
-export const LEGACY_UPGRADE: Partial<Record<EffectDef['kind'], keyof Omit<UpgradeDef, 'keywords'>>> = {
-  damage: 'damage', block: 'block', draw: 'draw', energy: 'energy', heal: 'heal',
-};
-
-/** 打出效果 → 描述占位符变量基名（与 Runtime SfVarNaming.BaseName 一致；
- *  gold/spawn/summon 的描述带措辞不走占位符，但仍建变量可升级） */
-const VAR_BASE: Partial<Record<EffectDef['kind'], string>> = {
-  damage: 'Damage', block: 'Block', draw: 'Cards', energy: 'Energy', heal: 'Heal',
-  lose_hp: 'LoseHp', max_hp: 'MaxHp', discard: 'Discard', exhaust: 'Exhaust',
-};
-
-/** 效果清单第 i 条的变量名：同种类第 n 条加序号后缀（Damage/Damage2…）。
- *  必须与 Runtime SfVarNaming.Name 同规则——占位符才能解析到对应变量。 */
-function effectVarName(list: EffectDef[], i: number): string | null {
-  const base = VAR_BASE[list[i].kind];
-  if (!base) return null;
-  let seen = 0;
-  for (let j = 0; j <= i; j++) if (list[j].kind === list[i].kind) seen++;
-  return seen === 1 ? base : base + seen;
-}
-
-/** 卡面预览的占位符变量表（CardPreview 用）：变量名 → 显示值。
- *  勾选升级预览时显示「N+M」（M = per-effect upgrade_amount，未单独设置时回落旧五通道）。
- *  之前只读 upgrades.* 旧通道——全种类升级改造后 per-effect 增量在预览里不生效（已修）。 */
-export function previewEffectVars(card: CardDef, upgraded: boolean): Record<string, string> {
-  const vars: Record<string, string> = {};
-  card.effects.forEach((e, i) => {
-    const name = effectVarName(card.effects, i);
-    if (!name) return;
-    const own = (e as { upgrade_amount?: number }).upgrade_amount;
-    const lk = LEGACY_UPGRADE[e.kind];
-    const up = own ?? (lk ? card.upgrades[lk] : 0);
-    const shown = String((e as { amount?: number }).amount ?? 0);
-    vars[name] = upgraded && up ? `${shown}+${up}` : shown;
-  });
-  return vars;
-}
-
-/** 单条效果的描述句。varName 非空时数值走 {占位符}（游戏内升级后自动更新），
- *  否则字面值（钩子效果、gold/spawn/summon 等带措辞的句子——改数值需手改描述）。 */
-function effectSentence(fx: EffectDef, varName: string | null): { zhs: string; eng: string } {
-  const num = (v: string | null, literal: number) => (v ? `{${v}}` : `${literal}`);
-  switch (fx.kind) {
-    case 'damage': {
-      const n = num(varName, fx.amount);
-      return { zhs: `造成 ${n} 点伤害。`, eng: `Deal ${n} damage.` };
-    }
-    case 'block': {
-      const n = num(varName, fx.amount);
-      return { zhs: `获得 ${n} 点格挡。`, eng: `Gain ${n} Block.` };
-    }
-    case 'draw': {
-      const n = num(varName, fx.amount);
-      return { zhs: `抽 ${n} 张牌。`, eng: `Draw ${n} card(s).` };
-    }
-    case 'energy': {
-      const n = num(varName, fx.amount);
-      return { zhs: `获得 ${n} 点能量。`, eng: `Gain ${n} Energy.` };
-    }
-    case 'heal': {
-      const n = num(varName, fx.amount);
-      return { zhs: `回复 ${n} 点生命。`, eng: `Heal ${n} HP.` };
-    }
-    case 'discard': {
-      const n = num(varName, fx.amount);
-      return { zhs: `随机弃置 ${n} 张手牌。`, eng: `Discard ${n} random card(s).` };
-    }
-    case 'exhaust': {
-      const n = num(varName, fx.amount);
-      return { zhs: `随机消耗 ${n} 张手牌。`, eng: `Exhaust ${n} random card(s).` };
-    }
-    case 'lose_hp': {
-      const n = num(varName, fx.amount);
-      return { zhs: `失去 ${n} 点生命。`, eng: `Lose ${n} HP.` };
-    }
-    case 'max_hp': {
-      const n = num(varName, fx.amount);
-      return { zhs: `生命上限 +${n}。`, eng: `Gain ${n} Max HP.` };
-    }
-    case 'gold': {
-      // 带得失措辞，用字面值（变量仍存在，升级后需手改描述）
-      const a = fx.amount;
-      return a >= 0
-        ? { zhs: `获得 ${a} 金币。`, eng: `Gain ${a} gold.` }
-        : { zhs: `失去 ${-a} 金币。`, eng: `Lose ${-a} gold.` };
-    }
-    case 'power': {
-      const zh = POWER_ZH[fx.power] ?? fx.power;
-      // 目标措辞随 fx.target 分流（官方句式：全体=「给予所有敌人N层X」/Apply N X to ALL enemies，
-      // 自身=「获得N层X」/Gain N X，打出指定目标=「给予N层X」）
-      if (fx.target === 'all_enemies') {
-        return { zhs: `给予所有敌人 ${fx.amount} 层${zh}。`, eng: `Apply ${fx.amount} ${fx.power} to ALL enemies.` };
-      }
-      if (fx.target === 'self') {
-        return { zhs: `获得 ${fx.amount} 层${zh}。`, eng: `Gain ${fx.amount} ${fx.power}.` };
-      }
-      return { zhs: `给予 ${fx.amount} 层${zh}。`, eng: `Apply ${fx.amount} ${fx.power}.` };
-    }
-    case 'spawn': {
-      const pile = PILE_ZH[fx.pile ?? 'draw'] ?? '抽牌堆';
-      return {
-        zhs: `将 ${Math.max(1, fx.amount)} 张「${fx.card_entry || '?'}」置入${pile}。`,
-        eng: `Put ${Math.max(1, fx.amount)} ${fx.card_entry || '?'} into your ${fx.pile ?? 'draw'} pile.`,
-      };
-    }
-    case 'summon': {
-      const zh = MONSTER_ZH[fx.monster] ?? fx.monster;
-      const n = Math.max(1, fx.amount);
-      const hp = fx.hp && fx.hp > 0 ? (n > 1 ? `（每只 ${fx.hp} 点生命）` : `（${fx.hp} 点生命）`) : '';
-      return {
-        zhs: n > 1 ? `召唤 ${n} 只「${zh}」${hp}。` : `召唤「${zh}」${hp}。`,
-        eng: n > 1
-          ? `Summon ${n} ${fx.monster}s${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP each` : ''}.`
-          : `Summon a ${fx.monster}${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP` : ''}.`,
-      };
-    }
-    case 'custom':
-      return { zhs: `【${fx.handler || '自定义效果'}】`, eng: `[custom:${fx.handler || '?'}]` };
-    case 'delayed': {
-      // 内嵌效果走字面数值（变量属于打出效果，延迟执行不借用）；
-      // effects 可缺失（删空内嵌后 Rust 端不落该字段，老卡包 JSON 里就是没有）
-      const n = Math.max(1, Math.round(fx.turns));
-      const timingZh = fx.timing === 'turn_start' ? '开始' : '结束';
-      const timingEn = fx.timing === 'turn_start' ? 'start' : 'end';
-      const inner = (fx.effects ?? []).map((f) => effectSentence(f, null));
-      const zhBody = inner.map((s) => s.zhs).join('\n');
-      const enBody = inner.map((s) => s.eng).join('\n');
-      if (fx.every_turn === false) {
-        return {
-          zhs: inner.length
-            ? `打出后，${n} 回合后的回合${timingZh}时：\n${zhBody}`
-            : `打出后，${n} 回合后的回合${timingZh}时触发延迟效果。`,
-          eng: inner.length
-            ? `After you play this, ${n} turn(s) from now, at the ${timingEn} of that turn:\n${enBody}`
-            : `After you play this, ${n} turn(s) from now, at the ${timingEn} of that turn, trigger the delayed effect.`,
-        };
-      }
-      return {
-        zhs: inner.length
-          ? `打出后，接下来 ${n} 个回合的每回合${timingZh}时：\n${zhBody}`
-          : `打出后，接下来 ${n} 个回合的每回合${timingZh}时触发延迟效果。`,
-        eng: inner.length
-          ? `After you play this, at the ${timingEn} of each of the next ${n} turn(s):\n${enBody}`
-          : `After you play this, at the ${timingEn} of each of the next ${n} turn(s), trigger the delayed effect.`,
-      };
-    }
-  }
-}
-
-/** 效果清单 → 多行描述；useVars=true（打出效果）时数值型种类用变量占位符 */
-function composeListDescription(list: EffectDef[], useVars: boolean): { zhs: string; eng: string } | null {
-  const z: string[] = [];
-  const e: string[] = [];
-  list.forEach((fx, i) => {
-    const s = effectSentence(fx, useVars ? effectVarName(list, i) : null);
-    z.push(s.zhs);
-    e.push(s.eng);
-  });
-  if (z.length === 0) return null;
-  return { zhs: z.join('\n'), eng: e.join('\n') };
-}
-
-/** 按打出效果生成中/英描述（占位符自动对应数值变量）；无打出效果时返回 null */
-export function composeDescription(card: CardDef): { zhs: string; eng: string } | null {
-  return composeListDescription(card.effects, true);
-}
-
-/** 钩子触发的描述前缀（官方风格短语，en 尾带空格） */
-const TRIGGER_PREFIX: Record<HookField, { zhs: string; eng: string }> = {
-  on_draw: { zhs: '抽到时，', eng: 'When drawn, ' },
-  on_discard: { zhs: '被弃置时，', eng: 'When discarded, ' },
-  on_exhaust: { zhs: '被消耗时，', eng: 'When exhausted, ' },
-  on_enter_combat: { zhs: '战斗开始时，', eng: 'At combat start, ' },
-  on_turn_end_in_hand: { zhs: '回合结束时若在手中，', eng: 'At turn end while in hand, ' },
-};
-
-/** 钩子效果 → 描述句（字面数值 + 每行带触发时机前缀）；清单为空返回 null。
- *  供钩子页签的「按效果生成描述」追加到卡面文本。 */
-export function composeHookDescription(trigger: HookField, list: EffectDef[]): { zhs: string; eng: string } | null {
-  if (list.length === 0) return null;
-  const body = composeListDescription(list, false);
-  if (!body) return null;
-  const p = TRIGGER_PREFIX[trigger];
-  return {
-    zhs: body.zhs.split('\n').map((l) => p.zhs + l).join('\n'),
-    eng: body.eng.split('\n').map((l) => p.eng + l).join('\n'),
-  };
-}
-
-/** 新建卡牌模板：两三下点击得到一张能进游戏的卡，再改数值即可 */
-export interface CardTemplate {
-  id: string;
-  label: L;
-  desc: L;
-  make: (id: string, seq: number) => CardDef;
-}
-
-export const CARD_TEMPLATES: CardTemplate[] = [
-  {
-    id: 'blank', label: { zh: '空白卡', en: 'Blank card' }, desc: { zh: '全部自己填', en: 'Fill in everything yourself' },
-    make: (id) => newCard(id),
-  },
-  {
-    id: 'strike', label: { zh: '打击式攻击', en: 'Strike-style attack' }, desc: { zh: '1 费 · 造成伤害 · 升级 +3', en: '1 cost · damage · upgrade +3' },
-    make: (id, seq) => ({
-      ...newCard(id),
-      name: { zhs: `打击 ${seq}`, eng: `Strike ${seq}` },
-      card_type: 'Attack',
-      effects: [{ kind: 'damage', amount: 6, props: ['Move'] }],
-      upgrades: { damage: 3, block: 0, draw: 0, energy: 0, heal: 0, keywords: [] },
-      description: { zhs: '造成 {Damage} 点伤害。', eng: 'Deal {Damage} damage.' },
-    }),
-  },
-  {
-    id: 'defend', label: { zh: '防御式技能', en: 'Defend-style skill' }, desc: { zh: '1 费 · 获得格挡 · 升级 +3', en: '1 cost · block · upgrade +3' },
-    make: (id, seq) => ({
-      ...newCard(id),
-      name: { zhs: `防御 ${seq}`, eng: `Defend ${seq}` },
-      card_type: 'Skill',
-      target: 'Self',
-      effects: [{ kind: 'block', amount: 5, props: ['Move'] }],
-      upgrades: { damage: 0, block: 3, draw: 0, energy: 0, heal: 0, keywords: [] },
-      description: { zhs: '获得 {Block} 点格挡。', eng: 'Gain {Block} Block.' },
-    }),
-  },
-  {
-    id: 'draw', label: { zh: '过牌技能', en: 'Draw skill' }, desc: { zh: '0 费 · 抽牌 · 升级多抽 1', en: '0 cost · draw · upgrade draws 1 more' },
-    make: (id, seq) => ({
-      ...newCard(id),
-      name: { zhs: `洞察 ${seq}`, eng: `Insight ${seq}` },
-      card_type: 'Skill',
-      target: 'None',
-      cost: 0,
-      effects: [{ kind: 'draw', amount: 1 }],
-      upgrades: { damage: 0, block: 0, draw: 1, energy: 0, heal: 0, keywords: [] },
-      description: { zhs: '抽 {Cards} 张牌。', eng: 'Draw {Cards} card(s).' },
-    }),
-  },
-  {
-    id: 'hybrid', label: { zh: '攻防一体', en: 'Attack + block' }, desc: { zh: '1 费 · 伤害 + 格挡', en: '1 cost · damage + block' },
-    make: (id, seq) => ({
-      ...newCard(id),
-      name: { zhs: `攻防 ${seq}`, eng: `Parry ${seq}` },
-      card_type: 'Skill',
-      effects: [
-        { kind: 'damage', amount: 4, props: ['Move'] },
-        { kind: 'block', amount: 4, props: ['Move'] },
-      ],
-      upgrades: { damage: 2, block: 3, draw: 0, energy: 0, heal: 0, keywords: [] },
-      description: { zhs: '造成 {Damage} 点伤害。\n获得 {Block} 点格挡。', eng: 'Deal {Damage} damage.\nGain {Block} Block.' },
-    }),
-  },
-  {
-    id: 'power', label: { zh: '增益能力', en: 'Buff power' }, desc: { zh: '1 费 · 战斗内获得增益', en: '1 cost · in-combat buff' },
-    make: (id, seq) => ({
-      ...newCard(id),
-      name: { zhs: `强化 ${seq}`, eng: `Blessing ${seq}` },
-      card_type: 'Power',
-      target: 'Self',
-      effects: [{ kind: 'power', amount: 2, power: 'Strength', target: 'self' }],
-      description: { zhs: '获得 2 层力量。', eng: 'Gain 2 Strength.' },
-    }),
-  },
-  {
-    id: 'curse', label: { zh: '诅咒牌', en: 'Curse card' }, desc: { zh: '不可打出 · 不进升级', en: 'unplayable · not upgradeable' },
-    make: (id, seq) => ({
-      ...newCard(id),
-      name: { zhs: `诅咒 ${seq}`, eng: `Curse ${seq}` },
-      card_type: 'Curse',
-      rarity: 'Curse',
-      target: 'None',
-      cost: -1,
-      pool: 'curse',
-      keywords: ['Unplayable'],
-      max_upgrade_level: 0,
-      description: { zhs: '不可打出。', eng: 'Unplayable.' },
-    }),
-  },
-];
-
-export function makeCardFromTemplate(tplId: string, id: string, seq: number): CardDef | null {
-  const tpl = CARD_TEMPLATES.find((t) => t.id === tplId);
-  return tpl ? tpl.make(id, seq) : null;
 }

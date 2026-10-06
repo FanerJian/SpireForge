@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { api } from './tauri';
 import { tr } from './i18n';
-import { makeCardFromTemplate, newCard, type CardDef, type EditorSettings, type ProjectMeta } from './types';
+import { makeCardFromTemplate } from './templates';
+import { newCard, type CardDef, type EditorSettings, type ProjectMeta } from './types';
 
 // 自动保存去抖：停止编辑 800ms 后落盘；切卡/关窗/发布另有兜底
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -30,7 +31,7 @@ interface EditorStore {
 
   showToast: (msg: string) => void;
   refreshSettings: () => Promise<void>;
-  newProject: (path: string, packId: string, name: string, author: string) => Promise<void>;
+  newProject: (packId: string, name: string, author: string) => Promise<void>;
   openProject: (path: string) => Promise<void>;
   select: (id: string | null) => void;
   updateCard: (patch: Partial<CardDef>) => void;
@@ -75,8 +76,8 @@ export const useStore = create<EditorStore>((set, get) => ({
     set({ settings });
   },
 
-  newProject: async (path, packId, name, author) => {
-    await api.newProject(path, packId, name, author);
+  newProject: async (packId, name, author) => {
+    const path = await api.newProject(packId, name, author);
     const [meta, cards] = await api.openProject(path);
     set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [], undoStack: [], redoStack: [] });
     await get().refreshSettings();

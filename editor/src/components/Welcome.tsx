@@ -16,6 +16,7 @@ export default function Welcome() {
   const [author, setAuthor] = useState('');
   const [busy, setBusy] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
+  const [projectsRoot, setProjectsRoot] = useState('');
   const [gameDirHint, setGameDirHint] = useState(settings.game_dir ? '' : t('w.gameMissing'));
   const [rtNote, setRtNote] = useState('');
   const packIdOk = PACK_ID_RE.test(packId.trim());
@@ -41,6 +42,13 @@ export default function Welcome() {
     if (!name || name === '我的卡包' || name === 'My Pack') setName(lang === 'en' ? 'My Pack' : '我的卡包');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
+
+  // 进入创建表单时取一次默认项目根（展示去向；失败静默——创建时后端会兜底回落）
+  useEffect(() => {
+    if (mode !== 'create' || projectsRoot) return;
+    api.defaultProjectsRoot().then(setProjectsRoot).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   // 挂载时自动检测一次游戏目录（首次运行的关键体验）
   useEffect(() => {
@@ -86,11 +94,10 @@ export default function Welcome() {
   };
 
   const doCreate = async () => {
-    const dir = await pickDirectory();
-    if (!dir) return;
     setBusy(true);
     try {
-      await newProject(dir, packId.trim(), name.trim(), author.trim());
+      // 不再选目录：后端自动放到编辑器 projects\ 下（与包 id 同名，重名自动加后缀）
+      await newProject(packId.trim(), name.trim(), author.trim());
     } catch (e) {
       alert(String(e));
     } finally {
@@ -111,13 +118,11 @@ export default function Welcome() {
     }
   };
 
-  /** 创建内置示例卡包并直接打开（新人推荐路径） */
+  /** 创建内置示例卡包并直接打开（新人推荐路径）；目录同样自动分配 */
   const doDemo = async () => {
-    const dir = await pickDirectory();
-    if (!dir) return;
     setDemoBusy(true);
     try {
-      await api.createDemoProject(dir);
+      const dir = await api.createDemoProject();
       await openProject(dir);
     } catch (e) {
       alert(t('w.demoFailed', { e: String(e) }));
@@ -214,6 +219,14 @@ export default function Welcome() {
             >
               {t('w.create')}
             </button>
+            {projectsRoot && (
+              <div className="text-center text-[11px] leading-relaxed text-slate-500">
+                {t('w.autoDir')}
+                <div className="mt-0.5 truncate font-mono text-[10px] text-slate-600" title={projectsRoot}>
+                  {projectsRoot}
+                </div>
+              </div>
+            )}
             <button onClick={() => setMode('none')} className="w-full text-xs text-slate-500 hover:text-slate-300">
               {t('w.back')}
             </button>

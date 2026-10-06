@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { api, pickJsonRaw, pickPckFile } from '../lib/tauri';
-import { CARD_TEMPLATES, type CardDef, type CardType } from '../lib/types';
+import type { CardDef, CardType } from '../lib/types';
+import { CARD_TEMPLATES } from '../lib/templates';
 import { pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
 import VanillaImportModal from './VanillaImportModal';
 

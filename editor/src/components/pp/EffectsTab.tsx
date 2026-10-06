@@ -1,0 +1,187 @@
+// 效果页签：触发时机切换 + 效果清单行（行头/排序/删除 + 按种类分发的编辑器）
+// + 底部「添加效果」按钮组 + 升级上限。
+import { useMemo, useState } from 'react';
+import { useStore } from '../../lib/store';
+import { Field, NumInput, Segmented } from '../ui';
+import { EFFECT_META, TRIGGER_OPTIONS, pick, useLang, useT, type TriggerKey } from '../../lib/i18n';
+import type { CardDef, EffectDef } from '../../lib/types';
+import {
+  CORE_KINDS, EXTRA_KINDS, NEEDS_CHOICE, defaultEffect,
+} from '../../lib/effects';
+import { buildMonsterCombo, buildPowerCombo, buildSpawnCombo, modMonsters, modPowers, useRuntimeCatalog, useVanillaCatalog } from './catalogs';
+import { useAppendHookDescription, useGenDescription } from './useDescription';
+import { CustomEffectBody, DelayedEffectBody, StandardEffectBody, effectMetaOf } from './effectEditors';
+
+export default function EffectsTab({ card }: { card: CardDef }) {
+  const { updateCard, cards, meta } = useStore();
+  const t = useT();
+  const lang = useLang();
+  const genDesc = useGenDescription();
+  const appendHookDesc = useAppendHookDescription();
+  const [trigger, setTrigger] = useState<TriggerKey>('play');
+  const vanilla = useVanillaCatalog();
+  const runtime = useRuntimeCatalog();
+  const u = card.upgrades;
+
+  // 下拉数据：内置目录 + mod 目录（Runtime 游戏内导出）合并构建
+  const mPowers = useMemo(() => modPowers(runtime), [runtime]);
+  const mMonsters = useMemo(() => modMonsters(runtime), [runtime]);
+  const powerCombo = useMemo(() => buildPowerCombo(lang, mPowers), [lang, mPowers]);
+  const monsterCombo = useMemo(() => buildMonsterCombo(lang, mMonsters), [lang, mMonsters]);
+  const spawnCombo = useMemo(
+    () => buildSpawnCombo({ cards, excludeId: card.id, packId: meta?.pack_id ?? '', vanilla, runtime, lang }),
+    [cards, vanilla, runtime, lang, meta?.pack_id, card.id],
+  );
+
+  const list: EffectDef[] = trigger === 'play' ? card.effects : (card[trigger] ?? []);
+  const setList = (fx: EffectDef[]) => {
+    if (trigger === 'play') updateCard({ effects: fx });
+    else updateCard({ [trigger]: fx } as Partial<CardDef>);
+  };
+
+  const add = (kind: string) => {
+    const def = defaultEffect(kind as EffectDef['kind']);
+    if (def) setList([...list, def]);
+  };
+
+  const remove = (i: number) => setList(list.filter((_, idx) => idx !== i));
+  const move = (i: number, d: number) => {
+    const j = i + d;
+    if (j < 0 || j >= list.length) return;
+    const fx = [...list];
+    [fx[i], fx[j]] = [fx[j], fx[i]];
+    setList(fx);
+  };
+  const patch = (i: number, p: Partial<EffectDef>) =>
+    setList(list.map((e, idx) => (idx === i ? ({ ...e, ...p } as EffectDef) : e)));
+
+  const triggerMeta = TRIGGER_OPTIONS.find((o) => o.v === trigger)!;
+  const isPlay = trigger === 'play';
+  const hookCtx = !isPlay; // 钩子上下文：无玩家指定目标，需要 target 字段的效果走钩子取敌
+  const enterCombatUnsupported = trigger === 'on_enter_combat'
+    && list.some((e) => NEEDS_CHOICE.includes(e.kind));
+
+  return (
+    <div className="space-y-3">
+      <Field label={t('pp.triggerLabel')}>
+        <Segmented
+          value={trigger}
+          options={TRIGGER_OPTIONS.map((o) => ({ v: o.v, label: pick(o.label, lang) }))}
+          onChange={setTrigger}
+        />
+        <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+          <span className="text-[11px] text-slate-600">{pick(triggerMeta.hint, lang)}</span>
+          <button
+            onClick={() => (isPlay ? genDesc(card) : appendHookDesc(card, trigger, list))}
+            title={t(isPlay ? 'pp.genDescBtnTitle' : 'pp.genDescHookTitle')}
+            className="shrink-0 whitespace-nowrap text-[11px] text-sky-300/80 underline hover:text-sky-200"
+          >
+            {t(isPlay ? 'pp.genDescBtn' : 'pp.genDescBtnHook')}
+          </button>
+        </div>
+      </Field>
+
+      {enterCombatUnsupported && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+          {t('pp.enterCombatWarn')}
+        </div>
+      )}
+
+      {list.length === 0 && (
+        <div className="rounded-lg border border-dashed border-white/10 px-3 py-6 text-center text-xs text-slate-600">
+          {t('pp.noEffects')}
+        </div>
+      )}
+      {list.map((e, i) => {
+        const meta = effectMetaOf(e.kind);
+        const rowPatch = (p: Partial<EffectDef>) => patch(i, p);
+        return (
+          <div key={i} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-200">{pick(meta.label, lang)}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => move(i, -1)} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200">↑</button>
+                <button onClick={() => move(i, 1)} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200">↓</button>
+                <button onClick={() => remove(i)} className="rounded px-1.5 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300">✕</button>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-600">
+              {pick(meta.desc, lang)}{isPlay && meta.varName ? <> · {`{${meta.varName}}`}</> : null}
+            </div>
+
+            {e.kind === 'delayed' ? (
+              <DelayedEffectBody
+                e={e as Extract<EffectDef, { kind: 'delayed' }>}
+                patch={rowPatch}
+                powerCombo={powerCombo}
+              />
+            ) : e.kind === 'custom' ? (
+              <CustomEffectBody
+                e={e as Extract<EffectDef, { kind: 'custom' }>}
+                patch={rowPatch}
+                hookCtx={hookCtx}
+              />
+            ) : (
+              <StandardEffectBody
+                e={e}
+                patch={rowPatch}
+                updateCard={updateCard}
+                isPlay={isPlay}
+                hookCtx={hookCtx}
+                upgrades={u}
+                powerCombo={powerCombo}
+                monsterCombo={monsterCombo}
+                spawnCombo={spawnCombo}
+              />
+            )}
+          </div>
+        );
+      })}
+      <div className="space-y-2 border-t border-white/10 pt-3">
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{t('pp.coreKinds')}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {CORE_KINDS.map((k) => (
+              <button
+                key={k}
+                onClick={() => add(k)}
+                className="whitespace-nowrap rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/50 hover:text-amber-300"
+              >
+                + {pick(EFFECT_META[k].label, lang)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{t('pp.extraKinds')}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {EXTRA_KINDS.map((k) => (
+              <button
+                key={k}
+                onClick={() => add(k)}
+                title={pick(EFFECT_META[k].desc, lang)}
+                className="whitespace-nowrap rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/50 hover:text-amber-300"
+              >
+                + {pick(EFFECT_META[k].label, lang)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {isPlay && (
+        <Field label={t('pp.maxUpgrade')} hint={t('pp.maxUpgradeHint')}>
+          <NumInput
+            width="w-24"
+            value={card.max_upgrade_level}
+            onCommit={(n) => updateCard({ max_upgrade_level: Math.max(0, Math.round(n ?? 0)) })}
+          />
+        </Field>
+      )}
+      {!isPlay && (
+        <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-slate-500">
+          {t('pp.hookLiteralNote')}
+        </div>
+      )}
+    </div>
+  );
+}

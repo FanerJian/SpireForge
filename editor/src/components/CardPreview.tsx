@@ -1,6 +1,8 @@
 import React from 'react';
 import type { CardDef } from '../lib/types';
-import { cardEntry, HOOK_FIELDS, previewEffectVars, pascalToSnake } from '../lib/types';
+import { HOOK_FIELDS } from '../lib/types';
+import { cardEntry, pascalToSnake } from '../lib/entry';
+import { previewEffectVars } from '../lib/description';
 import { HOOK_LABEL, pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
 
 /** 卡牌类型 → 框体配色 */

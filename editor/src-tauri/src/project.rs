@@ -116,6 +116,53 @@ pub fn read_meta(root: &str) -> Result<ProjectMeta, String> {
     Ok(meta)
 }
 
+/// 新建项目的默认根目录：编辑器 exe 同级的 projects\（便携约定，项目跟着编辑器走）。
+/// 开发机构建（exe 在 target\release|debug 下）改放其上两级的 editor\ 目录——
+/// cargo clean 会整目录删掉 target，用户项目不能跟着构建产物陪葬。
+/// exe 目录不可写（如被放进 Program Files）时回落到 用户\Documents\SpireForge\projects。
+pub fn default_projects_root() -> Result<PathBuf, String> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let mut base = dir.to_path_buf();
+            let is_cargo_out = dir
+                .file_name()
+                .map(|n| n == "release" || n == "debug")
+                .unwrap_or(false)
+                && dir.parent().map(|p| p.file_name() == Some(std::ffi::OsStr::new("target"))).unwrap_or(false);
+            if is_cargo_out {
+                if let Some(editor_dir) = dir.parent().and_then(|t| t.parent()).and_then(|c| c.parent()) {
+                    base = editor_dir.to_path_buf();
+                }
+            }
+            let primary = base.join("projects");
+            if fs::create_dir_all(&primary).is_ok() {
+                return Ok(primary);
+            }
+        }
+    }
+    let home = std::env::var("USERPROFILE").map_err(|_| "无法定位用户目录".to_string())?;
+    let fallback = PathBuf::from(home)
+        .join("Documents")
+        .join("SpireForge")
+        .join("projects");
+    fs::create_dir_all(&fallback).map_err(|e| format!("创建项目根目录失败: {e}"))?;
+    Ok(fallback)
+}
+
+/// 在根目录下给 pack_id 分配不重名的项目文件夹：MyPack → MyPack、MyPack_2、MyPack_3…
+/// 目录名只用于存储，包身份以 meta.pack_id 为准；validate_pack_id 顺带挡掉 Windows 保留名
+pub fn auto_project_dir(root: &Path, pack_id: &str) -> Result<String, String> {
+    validate_pack_id(pack_id)?;
+    let mut n = 1;
+    loop {
+        let name = if n == 1 { pack_id.to_string() } else { format!("{pack_id}_{n}") };
+        if !root.join(&name).exists() {
+            return Ok(root.join(name).to_string_lossy().into_owned());
+        }
+        n += 1;
+    }
+}
+
 pub fn create_project(root: &str, pack_id: &str, name: &str, author: &str) -> Result<(), String> {
     validate_pack_id(pack_id)?;
     let root_dir = PathBuf::from(root);
@@ -347,6 +394,21 @@ mod tests {
         ] {
             assert!(validate_rel_path(bad).is_err(), "{bad} must be rejected");
         }
+    }
+
+    #[test]
+    fn auto_project_dir_dedups_and_validates() {
+        let root = PathBuf::from(tmp_root("auto_dir"));
+        fs::create_dir_all(&root).unwrap();
+        let first = auto_project_dir(&root, "MyPack").unwrap();
+        assert!(first.ends_with("MyPack"), "{first}");
+        fs::create_dir_all(&first).unwrap();
+        let second = auto_project_dir(&root, "MyPack").unwrap();
+        assert!(second.ends_with("MyPack_2"), "{second}");
+        // 非法 pack_id 直接拒绝，不会拼出奇怪目录名
+        assert!(auto_project_dir(&root, "bad name").is_err());
+        assert!(auto_project_dir(&root, "con").is_err());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

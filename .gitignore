@@ -30,3 +30,6 @@ editor/src-tauri/gen/
 
 # ---- 发布产物（zip 走 GitHub Release，不进仓库）----
 /release/
+
+# ---- 编辑器新建的卡包项目（用户数据，不入库）----
+editor/projects/

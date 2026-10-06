@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
+import { inputCls } from './ui';
 
 /** 项目设置：包名 / 作者 / 简介。这三项此前只能手改 project.json；
  *  名称与简介会进入工坊条目，作者署名也会写进卡包清单。 */
@@ -19,9 +20,6 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
   }, [onClose]);
 
   if (!meta) return null;
-
-  const inputCls =
-    'w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-sm text-slate-200 outline-none focus:border-amber-400/60';
 
   const save = async () => {
     await updateMeta({

@@ -50,25 +50,41 @@ fn queue_card_grant(entries: Vec<String>) -> Result<game::GrantQueueResult, Stri
     game::queue_card_grant(entries)
 }
 
-/// 在选定目录创建内置示例卡包（5 张演示卡 + 占位立绘）
+/// 在自动分配的目录创建内置示例卡包（5 张演示卡 + 占位立绘）；path 省略时同 new_project 自动去重
 #[tauri::command]
-fn create_demo_project(path: String, state: State<AppState>) -> Result<(), String> {
+fn create_demo_project(path: Option<String>, state: State<AppState>) -> Result<String, String> {
+    let path = match path {
+        Some(p) if !p.trim().is_empty() => p,
+        _ => project::auto_project_dir(&project::default_projects_root()?, "Demo")?,
+    };
     demo::create_demo_project(&path)?;
-    *state.project_root.lock().unwrap() = Some(path);
-    Ok(())
+    *state.project_root.lock().unwrap() = Some(path.clone());
+    Ok(path)
 }
 
+/// 新建项目默认根目录（编辑器目录下 projects\；不可写时回落 Documents），前端展示去向用
+#[tauri::command]
+fn default_projects_root() -> Result<String, String> {
+    project::default_projects_root().map(|p| p.to_string_lossy().into_owned())
+}
+
+/// 创建卡包项目。path 省略时自动放到编辑器目录 projects\ 下：
+/// 文件夹与 pack_id 同名，重名自动加 _2/_3 后缀（用户无需选目录、无需改名）
 #[tauri::command]
 fn new_project(
-    path: String,
+    path: Option<String>,
     pack_id: String,
     name: String,
     author: String,
     state: State<AppState>,
-) -> Result<(), String> {
+) -> Result<String, String> {
+    let path = match path {
+        Some(p) if !p.trim().is_empty() => p,
+        _ => project::auto_project_dir(&project::default_projects_root()?, &pack_id)?,
+    };
     project::create_project(&path, &pack_id, &name, &author)?;
-    *state.project_root.lock().unwrap() = Some(path);
-    Ok(())
+    *state.project_root.lock().unwrap() = Some(path.clone());
+    Ok(path)
 }
 
 #[tauri::command]
@@ -488,6 +504,7 @@ pub fn run() {
             queue_card_grant,
             create_demo_project,
             new_project,
+            default_projects_root,
             open_project,
             get_project_meta,
             save_card,

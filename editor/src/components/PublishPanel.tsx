@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { api, pickDirectory, pickUploaderExe } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
-import { grantEntry, OFFICIAL_RUNTIME_WORKSHOP_ID } from '../lib/types';
+import { OFFICIAL_RUNTIME_WORKSHOP_ID } from '../lib/types';
+import { grantEntry } from '../lib/entry';
+import { inputCls } from './ui';
 
 function SectionTitle({ text }: { text: string }) {
   return (
@@ -158,9 +160,6 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
       );
     }
   };
-
-  const inputCls =
-    'w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-sm text-slate-200 outline-none focus:border-amber-400/60';
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>

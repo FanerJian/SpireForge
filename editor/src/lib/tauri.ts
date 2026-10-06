@@ -9,10 +9,13 @@ export const api = {
   /** 内置 Runtime 前置 mod 自动安装（幂等、防降级；游戏锁文件时 action=locked） */
   ensureRuntime: () => invoke<RuntimeEnsure>('ensure_runtime'),
 
-  newProject: (path: string, packId: string, name: string, author: string) =>
-    invoke<void>('new_project', { path, packId, name, author }),
-  /** 创建内置示例卡包（5 张演示卡：基础模板/力量/自定义效果咔咔/钩子 + 占位立绘） */
-  createDemoProject: (path: string) => invoke<void>('create_demo_project', { path }),
+  /** 新建项目：不再选目录，后端自动放到编辑器 projects\ 下并按 pack_id 去重命名，返回实际路径 */
+  newProject: (packId: string, name: string, author: string) =>
+    invoke<string>('new_project', { packId, name, author }),
+  /** 新建项目默认根目录（编辑器目录下 projects\；不可写时回落 Documents） */
+  defaultProjectsRoot: () => invoke<string>('default_projects_root'),
+  /** 创建内置示例卡包（5 张演示卡：基础模板/力量/自定义效果咔咔/钩子 + 占位立绘），同样自动定位 */
+  createDemoProject: () => invoke<string>('create_demo_project'),
   openProject: (path: string) =>
     invoke<[ProjectMeta, CardDef[]]>('open_project', { path }),
 
