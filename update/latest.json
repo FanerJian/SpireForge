@@ -1,17 +1,17 @@
 {
-  "version": "0.2.4",
+  "version": "0.2.5",
   "notes": {
-    "zhs": "修复「战斗开始时」钩子不触发与延迟效果重复触发；操作确认改为应用内窗口并等待结果；生成描述覆盖全部触发时机；多项效果系统修复。",
-    "eng": "Fixed the combat-start hook never firing and delayed effects double-firing; confirmations now wait for in-app dialogs; description generation covers every trigger; multiple effect-system fixes."
+    "zhs": "召唤建筑师等事件怪物无效修复；延迟效果可设置力量图标（游戏内图标或自传图片）；回合末在手的官方自动打出说明。",
+    "eng": "Fixed summoning event-only monsters such as the Architect; delayed effects can pick an in-game power icon or upload a custom image; official auto-play note for turn-end-in-hand."
   },
-  "pub_date": "2026-10-06T17:01:33.040Z",
+  "pub_date": "2026-10-06T18:08:16.137Z",
   "exe": {
-    "sha256": "e66e846890923dca908f0edfd20a4eb67a7a1ce80f93152f0d269c2d3e755cd2",
-    "size": 27499520,
+    "sha256": "a1ea8012df74486bbb6305e9c5b421605f5169db210fcf779cf49b6fa6589e5c",
+    "size": 27509248,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.4/SpireForge-editor-v0.2.4.exe",
-      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.4/SpireForge-editor-v0.2.4.exe",
-      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.4/SpireForge-editor-v0.2.4.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.5/SpireForge-editor-v0.2.5.exe",
+      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.5/SpireForge-editor-v0.2.5.exe",
+      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.5/SpireForge-editor-v0.2.5.exe"
     ]
   }
 }
