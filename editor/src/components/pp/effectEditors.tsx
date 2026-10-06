@@ -90,41 +90,49 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
 
   return (
     <div className="mt-2 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTurns')}</span>
-        <NumInput
-          width="w-16"
-          value={e.turns}
-          onCommit={(n) => patch({ turns: Math.max(1, Math.round(n ?? 1)) } as Partial<EffectDef>)}
-        />
-        <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTiming')}</span>
-        <select
-          className={selectCls + ' w-28'}
-          value={e.timing ?? 'turn_end'}
-          onChange={(ev) => patch({ timing: ev.target.value } as Partial<EffectDef>)}
-        >
-          <option value="turn_end">{t('pp.delayedTurnEnd')}</option>
-          <option value="turn_start">{t('pp.delayedTurnStart')}</option>
-        </select>
-        <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.delayedSide')}</span>
-        <select
-          className={selectCls + ' w-28'}
-          value={e.side ?? 'player'}
-          onChange={(ev) => patch({ side: ev.target.value } as Partial<EffectDef>)}
-        >
-          <option value="player">{t('pp.sidePlayer')}</option>
-          <option value="enemy">{t('pp.sideEnemy')}</option>
-          <option value="both">{t('pp.sideBoth')}</option>
-        </select>
-        <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.delayedMode')}</span>
-        <select
-          className={selectCls + ' w-44'}
-          value={e.every_turn === false ? 'final' : 'every'}
-          onChange={(ev) => patch({ every_turn: ev.target.value === 'final' ? false : true } as Partial<EffectDef>)}
-        >
-          <option value="every">{t('pp.delayedEvery')}</option>
-          <option value="final">{t('pp.delayedFinal')}</option>
-        </select>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <label className="flex items-center gap-2">
+          <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTurns')}</span>
+          <NumInput
+            width="w-16"
+            value={e.turns}
+            onCommit={(n) => patch({ turns: Math.max(1, Math.round(n ?? 1)) } as Partial<EffectDef>)}
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTiming')}</span>
+          <select
+            className={selectCls + ' w-28'}
+            value={e.timing ?? 'turn_end'}
+            onChange={(ev) => patch({ timing: ev.target.value } as Partial<EffectDef>)}
+          >
+            <option value="turn_end">{t('pp.delayedTurnEnd')}</option>
+            <option value="turn_start">{t('pp.delayedTurnStart')}</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedSide')}</span>
+          <select
+            className={selectCls + ' w-28'}
+            value={e.side ?? 'player'}
+            onChange={(ev) => patch({ side: ev.target.value } as Partial<EffectDef>)}
+          >
+            <option value="player">{t('pp.sidePlayer')}</option>
+            <option value="enemy">{t('pp.sideEnemy')}</option>
+            <option value="both">{t('pp.sideBoth')}</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedMode')}</span>
+          <select
+            className={selectCls + ' w-44'}
+            value={e.every_turn === false ? 'final' : 'every'}
+            onChange={(ev) => patch({ every_turn: ev.target.value === 'final' ? false : true } as Partial<EffectDef>)}
+          >
+            <option value="every">{t('pp.delayedEvery')}</option>
+            <option value="final">{t('pp.delayedFinal')}</option>
+          </select>
+        </label>
       </div>
       <div className="rounded-md border border-white/10 bg-black/20 p-2">
         <div className="space-y-1.5">
@@ -432,107 +440,126 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
         const vf = e as { vfx: string; target?: string; sfx?: string; source?: string };
         const src = vf.source ?? '';
         const srcIsMonster = src !== '' && src !== 'self' && src !== 'target';
+        // 标签与控件包成不可拆分的单元，flex-wrap 只在单元之间换行（标签不与控件分离）
+        const unit = 'flex min-w-0 items-center gap-2';
         return (
           <div className="mt-2 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxLabel')}</span>
-              <Combobox
-                value={vf.vfx}
-                items={vfxCombo}
-                onChange={(v) => patch({ vfx: v } as Partial<EffectDef>)}
-                fallbackDisplay={vf.vfx}
-                searchPlaceholder={t('pp.vfxSearch')}
-                allowRaw
-                rawLabel={(raw) => t('pp.useRaw', { v: raw })}
-              />
-              <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
-              <select
-                className={selectCls + ' w-40'}
-                value={vf.target ?? 'random_enemy'}
-                onChange={(ev) => patch({ target: ev.target.value } as Partial<EffectDef>)}
-              >
-                <option value="random_enemy">{t('pp.vfxTargetRandom')}</option>
-                <option value="all_enemies">{t('pp.vfxTargetAll')}</option>
-                <option value="self">{t('pp.targetSelf')}</option>
-                <option value="side_enemy">{t('pp.vfxTargetSideEnemy')}</option>
-                <option value="side_player">{t('pp.vfxTargetSidePlayer')}</option>
-                <option value="screen">{t('pp.vfxTargetScreen')}</option>
-              </select>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxSource')}</span>
-              <select
-                className={selectCls + ' w-40'}
-                value={srcIsMonster ? '__monster' : (src || 'target')}
-                onChange={(ev) => {
-                  const v = ev.target.value;
-                  if (v === '__monster') {
-                    // 「指定怪物」只是 UI 态（source 需存怪物名）：首次选中落默认怪，
-                    // 让怪物下拉出现；已在怪物态则不动，避免把已填的名字抹掉
-                    if (!srcIsMonster) patch({ source: 'DampCultist' } as Partial<EffectDef>);
-                    return;
-                  }
-                  patch({ source: v === 'target' ? undefined : v } as Partial<EffectDef>);
-                }}
-              >
-                <option value="target">{t('pp.vfxSourceTarget')}</option>
-                <option value="self">{t('pp.vfxSourceSelf')}</option>
-                <option value="__monster">{t('pp.vfxSourceMonster')}</option>
-              </select>
-              {srcIsMonster && (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <label className={unit}>
+                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxLabel')}</span>
                 <Combobox
-                  value={src}
-                  items={monsterCombo}
-                  onChange={(v) => patch({ source: v } as Partial<EffectDef>)}
-                  fallbackDisplay={src}
-                  searchPlaceholder={t('pp.monsterSearch')}
+                  value={vf.vfx}
+                  items={vfxCombo}
+                  onChange={(v) => patch({ vfx: v } as Partial<EffectDef>)}
+                  fallbackDisplay={vf.vfx}
+                  searchPlaceholder={t('pp.vfxSearch')}
                   allowRaw
                   rawLabel={(raw) => t('pp.useRaw', { v: raw })}
                 />
+              </label>
+              <label className={unit}>
+                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
+                <select
+                  className={selectCls + ' w-40'}
+                  value={vf.target ?? 'random_enemy'}
+                  onChange={(ev) => patch({ target: ev.target.value } as Partial<EffectDef>)}
+                >
+                  <option value="random_enemy">{t('pp.vfxTargetRandom')}</option>
+                  <option value="all_enemies">{t('pp.vfxTargetAll')}</option>
+                  <option value="self">{t('pp.targetSelf')}</option>
+                  <option value="side_enemy">{t('pp.vfxTargetSideEnemy')}</option>
+                  <option value="side_player">{t('pp.vfxTargetSidePlayer')}</option>
+                  <option value="screen">{t('pp.vfxTargetScreen')}</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <label className={unit}>
+                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxSource')}</span>
+                <select
+                  className={selectCls + ' w-40'}
+                  value={srcIsMonster ? '__monster' : (src || 'target')}
+                  onChange={(ev) => {
+                    const v = ev.target.value;
+                    if (v === '__monster') {
+                      // 「指定怪物」只是 UI 态（source 需存怪物名）：首次选中落默认怪，
+                      // 让怪物下拉出现；已在怪物态则不动，避免把已填的名字抹掉
+                      if (!srcIsMonster) patch({ source: 'DampCultist' } as Partial<EffectDef>);
+                      return;
+                    }
+                    patch({ source: v === 'target' ? undefined : v } as Partial<EffectDef>);
+                  }}
+                >
+                  <option value="target">{t('pp.vfxSourceTarget')}</option>
+                  <option value="self">{t('pp.vfxSourceSelf')}</option>
+                  <option value="__monster">{t('pp.vfxSourceMonster')}</option>
+                </select>
+              </label>
+              {srcIsMonster && (
+                <label className={unit}>
+                  <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.monster')}</span>
+                  <Combobox
+                    value={src}
+                    items={monsterCombo}
+                    onChange={(v) => patch({ source: v } as Partial<EffectDef>)}
+                    fallbackDisplay={src}
+                    searchPlaceholder={t('pp.monsterSearch')}
+                    allowRaw
+                    rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+                  />
+                </label>
               )}
-              <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
-              <Combobox
-                value={vf.sfx ?? ''}
-                items={sfxCombo}
-                onChange={(v) => patch({ sfx: v || undefined } as Partial<EffectDef>)}
-                fallbackDisplay={vf.sfx ?? ''}
-                searchPlaceholder={t('pp.sfxSearch')}
-                allowRaw
-                rawLabel={(raw) => t('pp.useRaw', { v: raw })}
-              />
+              <label className={unit}>
+                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
+                <Combobox
+                  value={vf.sfx ?? ''}
+                  items={sfxCombo}
+                  onChange={(v) => patch({ sfx: v || undefined } as Partial<EffectDef>)}
+                  fallbackDisplay={vf.sfx ?? ''}
+                  searchPlaceholder={t('pp.sfxSearch')}
+                  allowRaw
+                  rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+                />
+              </label>
             </div>
           </div>
         );
       })()}
       {e.kind === 'damage' && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitVfx')}</span>
-            <Combobox
-              value={(e as { vfx?: string }).vfx ?? ''}
-              items={vfxCombo}
-              onChange={(v) => patch({ vfx: v || undefined } as Partial<EffectDef>)}
-              fallbackDisplay={(e as { vfx?: string }).vfx ?? ''}
-              searchPlaceholder={t('pp.vfxSearch')}
-              allowRaw
-              rawLabel={(raw) => t('pp.useRaw', { v: raw })}
-            />
-            <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitCount')}</span>
-            <NumInput
-              width="w-16"
-              value={(e as { hit_count?: number }).hit_count ?? 1}
-              onCommit={(n) => patch({ hit_count: (n ?? 1) > 1 ? Math.round(n!) : undefined } as Partial<EffectDef>)}
-            />
-            <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
-            <Combobox
-              value={(e as { sfx?: string }).sfx ?? ''}
-              items={sfxCombo}
-              onChange={(v) => patch({ sfx: v || undefined } as Partial<EffectDef>)}
-              fallbackDisplay={(e as { sfx?: string }).sfx ?? ''}
-              searchPlaceholder={t('pp.sfxSearch')}
-              allowRaw
-              rawLabel={(raw) => t('pp.useRaw', { v: raw })}
-            />
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <label className="flex min-w-0 items-center gap-2">
+              <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitVfx')}</span>
+              <Combobox
+                value={(e as { vfx?: string }).vfx ?? ''}
+                items={vfxCombo}
+                onChange={(v) => patch({ vfx: v || undefined } as Partial<EffectDef>)}
+                fallbackDisplay={(e as { vfx?: string }).vfx ?? ''}
+                searchPlaceholder={t('pp.vfxSearch')}
+                allowRaw
+                rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+              />
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitCount')}</span>
+              <NumInput
+                width="w-16"
+                value={(e as { hit_count?: number }).hit_count ?? 1}
+                onCommit={(n) => patch({ hit_count: (n ?? 1) > 1 ? Math.round(n!) : undefined } as Partial<EffectDef>)}
+              />
+            </label>
+            <label className="flex min-w-0 items-center gap-2">
+              <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
+              <Combobox
+                value={(e as { sfx?: string }).sfx ?? ''}
+                items={sfxCombo}
+                onChange={(v) => patch({ sfx: v || undefined } as Partial<EffectDef>)}
+                fallbackDisplay={(e as { sfx?: string }).sfx ?? ''}
+                searchPlaceholder={t('pp.sfxSearch')}
+                allowRaw
+                rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+              />
+            </label>
           </div>
           <div className="text-[10px] leading-relaxed text-slate-600">{t('pp.hitVfxHint')}</div>
         </>
