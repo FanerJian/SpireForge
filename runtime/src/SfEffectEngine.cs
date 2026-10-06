@@ -348,8 +348,11 @@ public static class SfEffectEngine
                 // amount = 生成个数；玩家一个栏位都没有时 Channel 自动先给 1 个
                 var count = System.Math.Max(1, (int)Amount(card, e, varName));
                 var orbName = (e.StringParam("orb") ?? "").Trim();
-                var orbType = SfOrbResolver.Find(orbName);
-                if (orbName.Length > 0 && orbType == null)
+                // "random"/空 = 显式随机（编辑器默认值），不是拼写错误——不记 ERROR
+                var random = orbName.Length == 0
+                    || orbName.Equals("random", System.StringComparison.OrdinalIgnoreCase);
+                var orbType = random ? null : SfOrbResolver.Find(orbName);
+                if (!random && orbType == null)
                 {
                     SfLog.Error("card " + card.Id + ": unknown orb '" + orbName + "', channeling random orbs instead");
                 }
