@@ -7,13 +7,21 @@ import { MONSTER_ZH } from './monsters';
 
 const PILE_ZH: Record<string, string> = { draw: '抽牌堆', hand: '手牌', discard: '弃牌堆' };
 
+/** 充能球官方中英名（zhs orbs.json：黑暗/冰霜/玻璃/闪电/等离子） */
+const ORB_ZH: Record<string, string> = {
+  lightning: '闪电', frost: '冰霜', dark: '黑暗', plasma: '等离子', glass: '玻璃',
+};
+const ORB_EN: Record<string, string> = {
+  lightning: 'Lightning', frost: 'Frost', dark: 'Dark', plasma: 'Plasma', glass: 'Glass',
+};
+
 /** 打出效果 → 描述占位符变量基名（与 Runtime SfVarNaming.BaseName 一致）。
  *  全部数值种类都走占位符——升级后描述（含卡面预览）自动更新。
  *  金币官方同款（贪婪之手：获得{Gold}金币）；失去金币（负数）保留字面，占位符会渲染「-5」。 */
 const VAR_BASE: Partial<Record<EffectDef['kind'], string>> = {
   damage: 'Damage', block: 'Block', draw: 'Cards', energy: 'Energy', heal: 'Heal',
   lose_hp: 'LoseHp', max_hp: 'MaxHp', discard: 'Discard', exhaust: 'Exhaust',
-  gold: 'Gold', spawn: 'Spawn', summon: 'Summon',
+  gold: 'Gold', spawn: 'Spawn', summon: 'Summon', orb: 'Orbs', orb_slot: 'OrbSlots',
 };
 
 /** 效果清单第 i 条的变量名：同种类第 n 条加序号后缀（Damage/Damage2…）。
@@ -148,6 +156,27 @@ function effectSentence(fx: EffectDef, varName: string | null, xCost: boolean): 
         zhs: `召唤 ${n} 只「${zh}」${hp}${xzh}。`,
         eng: `Summon ${n} ${fx.monster}${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP each` : ''}${xen}.`,
       };
+    }
+    case 'orb': {
+      // 官方句式（冰川：生成2个冰霜充能球；化废为宝：随机生成一个充能球）
+      const n = num(varName, Math.max(1, fx.amount));
+      const key = (fx.orb ?? 'random').toLowerCase();
+      if (ORB_ZH[key]) {
+        return {
+          zhs: `生成 ${n} 个${ORB_ZH[key]}充能球${xzh}。`,
+          eng: `Channel ${n} ${ORB_EN[key]} orb(s)${xen}.`,
+        };
+      }
+      return { zhs: `随机生成 ${n} 个充能球${xzh}。`, eng: `Channel ${n} random orb(s)${xen}.` };
+    }
+    case 'orb_slot': {
+      // 官方句式（扩容：获得2个充能球栏位）；负数移除
+      const a = fx.amount;
+      if (a >= 0) {
+        const n = num(varName, a);
+        return { zhs: `获得 ${n} 个充能球栏位${xzh}。`, eng: `Gain ${n} orb slot(s)${xen}.` };
+      }
+      return { zhs: `失去 ${-a} 个充能球栏位${xzh}。`, eng: `Lose ${-a} orb slot(s)${xen}.` };
     }
     case 'vfx':
       // 纯视觉演出：不入卡面文本（官方卡面也不描述打击特效）

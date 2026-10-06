@@ -58,6 +58,14 @@ export type EffectDef =
   | { kind: 'spawn'; amount: number; card_entry: string; pile?: string; upgrade_amount?: number }
   | { kind: 'summon'; amount: number; monster: string; hp?: number; upgrade_amount?: number }
   | {
+      /** 生成充能球（故障机器人）：lightning/frost/dark/plasma/glass，缺省 = 随机 */
+      kind: 'orb';
+      amount: number;
+      orb?: string;
+      upgrade_amount?: number;
+    }
+  | { kind: 'orb_slot'; amount: number; upgrade_amount?: number }
+  | {
       kind: 'delayed';
       turns: number;
       timing?: 'turn_start' | 'turn_end';

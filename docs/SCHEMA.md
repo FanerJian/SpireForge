@@ -128,14 +128,16 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 | `draw` | `amount: number` | `CardPileCmd.Draw` | |
 | `energy` | `amount: number` | `PlayerCmd.GainEnergy` | |
 | `heal` | `amount: number` | `CreatureCmd.Heal` | 回复自身生命 |
-| `discard` | `amount: number` | `CardCmd.Discard` | 随机弃 N 张手牌（CombatCardSelection RNG）；需选择上下文 |
-| `exhaust` | `amount: number` | `CardCmd.Exhaust` | 随机消耗 N 张手牌；需选择上下文 |
+| `discard` | `amount: number` | `CardCmd.Discard` | 随机弃 N 张手牌（CombatCardSelection RNG） |
+| `exhaust` | `amount: number` | `CardCmd.Exhaust` | 随机消耗 N 张手牌 |
 | `gold` | `amount: number` | `PlayerCmd.GainGold/LoseGold` | 负数 = 失去金币 |
-| `lose_hp` | `amount: number` | `CreatureCmd.Damage`（Unblockable\|Unpowered、无来源） | 自身失去生命；需选择上下文 |
+| `lose_hp` | `amount: number` | `CreatureCmd.Damage`（Unblockable\|Unpowered、无来源） | 自身失去生命 |
 | `max_hp` | `amount: number` | `CreatureCmd.GainMaxHp` | 生命上限 +N（正数） |
 | `power` | `amount`, `power: string`, `target?` | `PowerCmd.Apply<T>`（反射解析） | 施加增益/减益，见下 |
 | `spawn` | `amount`, `card_entry: string`, `pile?` | `ICombatState.CreateCard` + `CardPileCmd.AddGeneratedCardToCombat` | 生成卡牌，见下 |
-| `summon` | `amount`, `monster: string`, `hp?` | `CreatureCmd.Add`（随机遭遇站位落位） | 召唤敌人，见下 |
+| `summon` | `amount`, `monster: string`, `hp?` | `CombatState.CreateCreature` + `CreatureCmd.Add`（异常恢复+补首回合行动） | 召唤敌人，见下 |
+| `orb` | `amount`, `orb?` | `OrbCmd.Channel`（按名解析/随机） | 生成充能球（故障机器人），见下 |
+| `orb_slot` | `amount` | `OrbCmd.AddSlots/RemoveSlots` | 获得/移除充能球栏位（负数移除，上限 10） |
 | `delayed` | `turns: number`, `timing?`, `side?`, `every_turn?`, `effects: SfEffect[]` | `SfDelayedPower`（承载力量） | 延迟效果，见下 |
 | `vfx` | `vfx: string`, `target?`, `source?`, `sfx?` | `VfxCmd`（内置）或直接实例化（res:// 场景） | 播放视觉特效/音效（纯演出），见下 |
 | `custom` | `handler: string`, `amount?`, `target?`, `params?` | 由处理器定义 | 见下方「自定义效果」 |
@@ -168,13 +170,11 @@ props 自动回落直结 + 特效另补。`sfx` 以 `event:` 开头走 FMOD 事�
   不区分大小写），因此第三方 mod 自定义的力量同样可用
 - `target`：缺省 = 打出目标（钩子时随机敌人）；`self` = 给自己上（Strength/Focus 等增益用）；
   `all_enemies` = 全体敌人
-- 需要玩家选择上下文（on_enter_combat 不可用）
 
 **spawn（生成卡牌）**：
 - `card_entry` = 目标卡的 Entry（自定义卡 `SF_包ID_卡ID` 或原版 `BASH`；含第三方 mod 卡），
   经 `ICombatState.CreateCard` 正规生成（登记 Owner 进战斗状态，与 ForgeCmd/DualWield 同配方）
 - `pile`：`draw`（默认）/ `hand` / `discard`
-- 不需要选择上下文（on_enter_combat 可用）
 
 **summon（召唤敌人）**：
 - `monster` = 怪物类名或 Entry（`DampCultist` / `DAMP_CULTIST`，含 mod 怪物）；`hp` = 指定生命
@@ -184,7 +184,24 @@ props 自动回落直结 + 特效另补。`sfx` 以 `event:` 开头走 FMOD 事�
   连站位表都没有时（绝大多数遭遇 `Slots` 为空），召唤完成后按游戏
   `NCombatRoom.PositionEnemies` 同款算法把当前全部敌人横向等距重新铺开
   （2026-10-06 修复：此前无人给中途召唤的怪定位，多只全部叠在同一默认位置）
-- 不需要选择上下文（on_enter_combat 可用）
+
+- **进场钩子异常恢复**（2026-10-06 起）：怪物进场钩子依赖原版遭遇时（如女王的
+  `AfterAddedToRoom` 要找火把头聚合体，单独召唤必抛）不再卡死——引擎先
+  `CombatState.CreateCreature` 再 `CreatureCmd.Add`，钩子抛异常则记日志并
+  `PrepareForNextTurn` 补上首回合行动选择（不补的话敌人回合 `NextMove=null` →
+  回合循环死亡，战斗永久卡死），召唤照常完成
+
+**orb（生成充能球 —— 故障机器人）**：
+- `orb` = 球类型：`lightning`（闪电）/ `frost`（冰霜）/ `dark`（黑暗）/ `plasma`
+  （等离子）/ `glass`（玻璃），类名（`LightningOrb`）亦可；缺省/未知 = 随机
+  （`OrbModel.GetRandomOrb`，CombatOrbGeneration RNG，与 Chaos 同款）
+- `amount` = 生成个数；玩家一个栏位都没有时游戏自动先给 1 个（`OrbCmd.Channel` 内建）
+- 球类型解析扫全部已加载程序集的 `OrbModel` 子类（`ModelDb.Orbs` 只有 4 种缺玻璃），
+  mod 新增球同样可用
+
+**orb_slot（充能球栏位）**：
+- `amount` 正数 = `OrbCmd.AddSlots` 获得栏位（上限 10，扩容 Capacitor 同款）；
+  负数 = `OrbCmd.RemoveSlots` 移除（从队尾连球一起移除）
 
 **delayed（延迟效果 —— 打出后下几回合）**：
 - `turns` = 持续回合数（>=1）；`timing` = `turn_end`（默认）/ `turn_start`；
@@ -242,7 +259,7 @@ Runtime 常驻注册三个可组合处理器，编辑器的自定义效果下拉
 | `on_draw` | 此牌被抽到时（含开局起手抽牌） | 全部效果 |
 | `on_discard` | 此牌被弃置时 | 全部效果 |
 | `on_exhaust` | 此牌被消耗时（含 Ethereal 消耗） | 全部效果 |
-| `on_enter_combat` | 战斗开始此牌进入战斗时（在抽牌堆中也触发） | 仅 `block`/`heal`/`energy`/`custom`（游戏该钩子不带选择上下文） |
+| `on_enter_combat` | 战斗开始此牌进入战斗时（在抽牌堆中也触发；战斗中生成的副本进堆时同样触发） | 全部内建种类（引擎自动补 `BlockingPlayerChoiceContext`；开局手牌为空，随机弃牌/消耗无牌可选） |
 | `on_turn_end_in_hand` | 回合结束时若此牌在手中（配合 `Retain` 关键词） | 全部效果 |
 
 ```json

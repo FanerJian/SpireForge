@@ -4,24 +4,21 @@
 import type { EffectDef, UpgradeDef } from './types';
 import { POWER_DEBUFFS } from './powers';
 
-/** 需要玩家选择上下文的效果种类（on_enter_combat 钩子不可用） */
-export const NEEDS_CHOICE: EffectDef['kind'][] = ['damage', 'draw', 'lose_hp', 'power', 'discard', 'exhaust'];
-
 /** 效果目录分组：常用 / 进阶与扩展（效果页签底部按钮顺序） */
 export const CORE_KINDS: EffectDef['kind'][] = ['damage', 'block', 'draw', 'energy', 'heal'];
 export const EXTRA_KINDS: EffectDef['kind'][] = [
-  'power', 'discard', 'exhaust', 'gold', 'lose_hp', 'max_hp', 'spawn', 'summon', 'delayed', 'vfx', 'custom',
+  'power', 'discard', 'exhaust', 'gold', 'lose_hp', 'max_hp', 'spawn', 'summon', 'orb', 'orb_slot', 'delayed', 'vfx', 'custom',
 ];
 
 /** 延迟效果内嵌清单允许的种类（不带目标指定的核心种类 + 钩子取敌的伤害/失去生命/施加） */
 export const DELAYED_INNER_KINDS: EffectDef['kind'][] = [
-  'damage', 'block', 'draw', 'energy', 'heal', 'gold', 'lose_hp', 'power', 'vfx',
+  'damage', 'block', 'draw', 'energy', 'heal', 'gold', 'lose_hp', 'power', 'orb', 'orb_slot', 'vfx',
 ];
 
 /** 参与升级数值编辑的打出效果种类（custom/delayed 的数值语义由内嵌效果或处理器定义，不参与） */
 export const AMOUNT_KINDS: EffectDef['kind'][] = [
   'damage', 'block', 'draw', 'energy', 'heal', 'discard', 'exhaust',
-  'gold', 'lose_hp', 'max_hp', 'power', 'spawn', 'summon',
+  'gold', 'lose_hp', 'max_hp', 'power', 'spawn', 'summon', 'orb', 'orb_slot',
 ];
 
 /** 参与升级变量的旧五通道（effect.upgrade_amount 未设时回落；见 SfCardBase.OnUpgrade） */
@@ -45,6 +42,8 @@ export function defaultEffect(kind: EffectDef['kind']): EffectDef | null {
     case 'power': return { kind: 'power', amount: 2, power: 'Vulnerable' };
     case 'spawn': return { kind: 'spawn', amount: 1, card_entry: '' };
     case 'summon': return { kind: 'summon', amount: 1, monster: 'DampCultist', hp: 13 };
+    case 'orb': return { kind: 'orb', amount: 1, orb: 'random' };
+    case 'orb_slot': return { kind: 'orb_slot', amount: 1 };
     case 'delayed': return { kind: 'delayed', turns: 2, timing: 'turn_end', side: 'player', effects: [{ kind: 'block', amount: 4, props: ['Move'] }] };
     case 'vfx': return { kind: 'vfx', vfx: 'attack_slash', target: 'random_enemy' };
     case 'custom': return { kind: 'custom', handler: '' };

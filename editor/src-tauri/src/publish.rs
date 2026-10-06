@@ -385,15 +385,6 @@ pub fn preflight_with_pools(
         for fx in effect_lists {
             check_effect_refs(&c.id, fx, &mut issues);
         }
-        if c.on_enter_combat
-            .iter()
-            .any(|fx| matches!(fx, EffectDef::Damage { .. } | EffectDef::Draw { .. }))
-        {
-            issues.push(format!(
-                "卡 {} 的「战斗开始时」钩子含伤害/抽牌（该上下文无目标选择，Runtime 会跳过这两类）",
-                c.id
-            ));
-        }
         if c.name.zhs.is_empty() && c.name.eng.is_empty() {
             issues.push(format!("卡 {} 没有任何名称文本", c.id));
         } else if c.name.zhs.is_empty() {
@@ -703,6 +694,15 @@ mod tests {
                     upgrade_amount: 0.0,
                 }],
             },
+            EffectDef::Orb {
+                amount: 2,
+                orb: Some("lightning".into()),
+                upgrade_amount: 1.0,
+            },
+            EffectDef::OrbSlot {
+                amount: 1,
+                upgrade_amount: 0.0,
+            },
         ];
         card.pools = vec!["ironclad".into(), "silent".into()];
         let v = serde_json::to_value(&card).unwrap();
@@ -736,6 +736,11 @@ mod tests {
         assert_eq!(v["effects"][10]["timing"], "turn_end");
         assert_eq!(v["effects"][10]["every_turn"], json!(false));
         assert_eq!(v["effects"][10]["effects"][0]["kind"], "block");
+        // orb/orb_slot：蛇形 kind + orb 类型透传（缺省 None 不序列化 = 随机）
+        assert_eq!(v["effects"][11]["kind"], "orb");
+        assert_eq!(v["effects"][11]["orb"], "lightning");
+        assert_eq!(v["effects"][11]["amount"], json!(2));
+        assert_eq!(v["effects"][12]["kind"], "orb_slot");
         // 多池
         assert_eq!(v["pools"], json!(["ironclad", "silent"]));
         // 单池卡不序列化 pools（向后兼容）

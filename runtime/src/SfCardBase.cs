@@ -190,8 +190,8 @@ public abstract class SfCardBase : CardModel
         {
             return;
         }
-        // 游戏的 AfterCardEnteredCombat 分发不携带 PlayerChoiceContext，
-        // 因此仅支持无需上下文的效果（block/heal/energy/custom）
+        // 游戏的 AfterCardEnteredCombat 分发不携带 PlayerChoiceContext；
+        // 引擎会自动补 BlockingPlayerChoiceContext，全部内建种类均可用
         await RunHook("on_enter_combat", TryDef()?.OnEnterCombat, null);
     }
 

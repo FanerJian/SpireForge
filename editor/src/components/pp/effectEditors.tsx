@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Combobox, type ComboItem } from '../Combobox';
 import { NumInput, inputCls, selectCls } from '../ui';
-import { EFFECT_META, HOOK_TARGET_OPTIONS, pick, useLang, useT } from '../../lib/i18n';
+import { EFFECT_META, HOOK_TARGET_OPTIONS, ORB_OPTIONS, pick, useLang, useT } from '../../lib/i18n';
 import { AMOUNT_KINDS, DELAYED_INNER_KINDS, defaultEffect, LEGACY_UPGRADE } from '../../lib/effects';
 import { buildHandlerCombo, starterParamsFor, useRuntimeCatalog } from './catalogs';
 import type { CardDef, EffectDef, UpgradeDef } from '../../lib/types';
@@ -387,6 +387,20 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               <option value="draw">{lang === 'en' ? 'Draw pile' : '抽牌堆'}</option>
               <option value="hand">{lang === 'en' ? 'Hand' : '手牌'}</option>
               <option value="discard">{lang === 'en' ? 'Discard pile' : '弃牌堆'}</option>
+            </select>
+          </>
+        )}
+        {e.kind === 'orb' && (
+          <>
+            <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.orbType')}</span>
+            <select
+              className={selectCls + ' w-24'}
+              value={(e as { orb?: string }).orb ?? 'random'}
+              onChange={(ev) => patch({ orb: ev.target.value } as Partial<EffectDef>)}
+            >
+              {ORB_OPTIONS.map((o) => (
+                <option key={o.v} value={o.v}>{pick(o.label, lang)}</option>
+              ))}
             </select>
           </>
         )}

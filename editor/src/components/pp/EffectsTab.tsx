@@ -6,7 +6,7 @@ import { Field, NumInput, Segmented } from '../ui';
 import { EFFECT_META, TRIGGER_OPTIONS, pick, useLang, useT, type TriggerKey } from '../../lib/i18n';
 import type { CardDef, EffectDef } from '../../lib/types';
 import {
-  CORE_KINDS, EXTRA_KINDS, NEEDS_CHOICE, defaultEffect,
+  CORE_KINDS, EXTRA_KINDS, defaultEffect,
 } from '../../lib/effects';
 import { buildMonsterCombo, buildPowerCombo, buildHitVfxCombo, buildSfxCombo, buildSpawnCombo, buildVfxCombo, modMonsters, modPowers, useRuntimeCatalog, useVanillaCatalog } from './catalogs';
 import { useAppendHookDescription, useGenDescription } from './useDescription';
@@ -60,8 +60,6 @@ export default function EffectsTab({ card }: { card: CardDef }) {
 
   const isPlay = trigger === 'play';
   const hookCtx = !isPlay; // 钩子上下文：无玩家指定目标，需要 target 字段的效果走钩子取敌
-  const enterCombatUnsupported = trigger === 'on_enter_combat'
-    && list.some((e) => NEEDS_CHOICE.includes(e.kind));
 
   return (
     <div className="space-y-3">
@@ -80,12 +78,6 @@ export default function EffectsTab({ card }: { card: CardDef }) {
           </button>
         </div>
       </Field>
-
-      {enterCombatUnsupported && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
-          {t('pp.enterCombatWarn')}
-        </div>
-      )}
 
       {list.length === 0 && (
         <div className="rounded-lg border border-dashed border-white/10 px-3 py-6 text-center text-xs text-slate-600">

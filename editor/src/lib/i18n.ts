@@ -225,7 +225,6 @@ const STRINGS: Record<string, L> = {
   'pp.genDescEmpty': { zh: '该卡没有可生成描述的效果', en: 'This card has no effects to generate a description from' },
   'pp.genDescHookEmpty': { zh: '该触发时机尚无效果', en: 'No effects on this trigger yet' },
   'pp.triggerLabel': { zh: '触发时机', en: 'Trigger' },
-  'pp.enterCombatWarn': { zh: '「战斗开始时」不含玩家选择：伤害 / 抽牌 / 弃牌 / 消耗 / 施加效果 / 失去生命无法执行，保存后将被跳过。', en: 'The combat-start hook has no player-choice context: damage / draw / discard / exhaust / power / lose-hp can\'t run and will be skipped.' },
   'pp.noEffects': { zh: '尚无效果，请从下方添加', en: 'No effects yet — add them from the catalog below' },
   'pp.handler': { zh: '处理器', en: 'Handler' },
   'pp.handlerPh': { zh: '搜索处理器或输入新名称', en: 'search handlers, or type a new name' },
@@ -259,6 +258,7 @@ const STRINGS: Record<string, L> = {
   'pp.targetSelf': { zh: '自身', en: 'Self' },
   'pp.targetAllEnemies': { zh: '全体敌人', en: 'All enemies' },
   'pp.spawnEntry': { zh: '卡牌 Entry', en: 'Card Entry' },
+  'pp.orbType': { zh: '球类型', en: 'Orb type' },
   'pp.monster': { zh: '怪物', en: 'Monster' },
   'pp.summonHp': { zh: '生命', en: 'HP' },
   'pp.powerSearch': { zh: '搜索能力（中英文均可）', en: 'Search powers (either language)' },
@@ -452,6 +452,8 @@ export const EFFECT_META: Record<string, { label: L; varName: string; desc: L }>
   power: { label: { zh: '施加能力', en: 'Apply power' }, varName: '', desc: { zh: '对目标施加所选能力', en: 'Apply the chosen power to the target' } },
   spawn: { label: { zh: '生成卡牌', en: 'Spawn card' }, varName: 'Spawn', desc: { zh: '将卡牌加入抽牌堆 / 手牌 / 弃牌堆', en: 'Put a card into the draw pile, hand, or discard pile' } },
   summon: { label: { zh: '召唤敌人', en: 'Summon enemy' }, varName: 'Summon', desc: { zh: '在敌方召唤一只怪物，生命留空时使用原生值', en: 'Summon a monster on the enemy side; leave HP empty for its native value' } },
+  orb: { label: { zh: '生成充能球', en: 'Channel orb' }, varName: 'Orbs', desc: { zh: '生成指定类型或随机的充能球（故障机器人）', en: 'Channel an orb of the chosen type, or a random one (Defect)' } },
+  orb_slot: { label: { zh: '充能球栏位', en: 'Orb slots' }, varName: 'OrbSlots', desc: { zh: '获得 N 个充能球栏位，负数则移除', en: 'Gain N orb slots; negative removes them' } },
   delayed: { label: { zh: '延迟·下几回合', en: 'Delayed (next N turns)' }, varName: '', desc: { zh: '在接下来 N 个回合的开始或结束时执行内嵌效果，也可改为仅最后一回合触发一次', en: 'Run the nested effects at the start/end of each of the next N turns, or only once on the final turn' } },
   custom: { label: { zh: '自定义', en: 'Custom' }, varName: '', desc: { zh: '调用内置或 mod 注册的处理器', en: 'Invoke a built-in or mod-registered handler' } },
   vfx: { label: { zh: '播放特效', en: 'Play VFX' }, varName: '', desc: { zh: '播放视觉特效，不影响数值', en: 'Play a visual effect; no gameplay impact' } },
@@ -474,4 +476,14 @@ export const HOOK_TARGET_OPTIONS: { v: string; label: L }[] = [
   { v: 'random_enemy', label: { zh: '随机敌人', en: 'Random enemy' } },
   { v: 'self', label: { zh: '自身', en: 'Self' } },
   { v: 'all_enemies', label: { zh: '全体敌人', en: 'All enemies' } },
+];
+
+/** 充能球类型（orb 效果；random/缺省 = 随机） */
+export const ORB_OPTIONS: { v: string; label: L }[] = [
+  { v: 'random', label: { zh: '随机', en: 'Random' } },
+  { v: 'lightning', label: { zh: '闪电', en: 'Lightning' } },
+  { v: 'frost', label: { zh: '冰霜', en: 'Frost' } },
+  { v: 'dark', label: { zh: '黑暗', en: 'Dark' } },
+  { v: 'plasma', label: { zh: '等离子', en: 'Plasma' } },
+  { v: 'glass', label: { zh: '玻璃', en: 'Glass' } },
 ];

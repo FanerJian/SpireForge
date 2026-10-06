@@ -21,14 +21,9 @@ namespace SpireForge.Runtime;
 /// </summary>
 public static class SfEffectEngine
 {
-    /// <summary>需要 PlayerChoiceContext 的种类（on_enter_combat 上下文为 null，不可用）</summary>
-    private static readonly SfEffectKind[] NeedsChoice =
-    [
-        SfEffectKind.Damage, SfEffectKind.Draw, SfEffectKind.LoseHp,
-        SfEffectKind.Power, SfEffectKind.Discard, SfEffectKind.Exhaust,
-    ];
-
-    /// <summary>按清单顺序执行效果。ctx 为 null 的上下文（on_enter_combat）禁用需要选择的目标类效果。
+    /// <summary>按清单顺序执行效果。ctx 为 null 的钩子（on_enter_combat）自动补官方
+    /// BlockingPlayerChoiceContext——内建种类的目标均由 target 字段解析（不需要真实玩家选择），
+    /// 因此伤害/抽牌/弃牌/消耗/施加/失去生命在战斗开始时同样可执行。
     /// useVarBinding=false 时效果一律取字面数值（delayed 内嵌清单：变量属于打出效果，内嵌不该借用；
     /// 原版覆盖卡：编辑器数值是字面语义，不得错绑原版同名变量——覆盖 STRIKE 后伤害 15 会被
     /// 原版 Damage=6 变量静默顶掉，游戏日志实锤）。
@@ -37,6 +32,8 @@ public static class SfEffectEngine
         CardModel card, List<SfEffect> effects, PlayerChoiceContext? ctx, CardPlay? play, string trigger,
         bool useVarBinding = true)
     {
+        // OstyCmd.Summon 同款兜底：无上下文钩子给一个不阻塞、不信号选择的官方上下文
+        ctx ??= new BlockingPlayerChoiceContext();
         var xTimes = 1;
         if (play != null && card.EnergyCost != null && card.EnergyCost.CostsX)
         {
@@ -45,12 +42,6 @@ public static class SfEffectEngine
         for (var i = 0; i < effects.Count; i++)
         {
             var e = effects[i];
-            if (ctx == null && NeedsChoice.Contains(e.Kind))
-            {
-                SfLog.Error("card " + card.Id + ": effect " + e.KindName +
-                            " needs a choice context (on_enter_combat unsupported)");
-                continue;
-            }
             for (var rep = 0; rep < xTimes; rep++)
             {
                 try
@@ -298,10 +289,29 @@ public static class SfEffectEngine
                     // 没有空位时随机复用既有站位，连站位表都没有时才落回默认位置
                     var slot = PickSummonSlot(combat, card);
                     usedSlots |= slot != null;
-                    var creature = slot != null
-                        ? await CreatureCmd.Add(model, combat, MegaCrit.Sts2.Core.Combat.CombatSide.Enemy, slot)
-                        : await CreatureCmd.Add(model, combat);
-                    if (hp is > 0)
+                    // 先 CreateCreature 再入战：Add 内部的进场钩子（AfterAddedToRoom）可能依赖
+                    // 原版遭遇——女王要找火把头聚合体，单独召唤时 First() 直接抛；此时怪物本体
+                    // 已进战斗与房间，中断只跳过了首回合行动选择。不补上的话敌人回合
+                    // PerformIntent 读到 null NextMove → 回合循环死亡（战斗永久卡死，日志
+                    // "turn loop died while its combat is in progress"）
+                    var creature = combat.CreateCreature(model, MegaCrit.Sts2.Core.Combat.CombatSide.Enemy, slot);
+                    var added = false;
+                    try
+                    {
+                        await CreatureCmd.Add(creature);
+                        added = true;
+                    }
+                    catch (System.Exception ex)
+                    {
+                        SfLog.Warn("card " + card.Id + ": summon '" + monsterName +
+                                   "' after-added hook failed, recovering: " + ex.Message);
+                        if (combat.ContainsCreature(creature))
+                        {
+                            added = true;
+                            creature.PrepareForNextTurn(combat.Players.Select(p => p.Creature));
+                        }
+                    }
+                    if (added && hp is > 0)
                     {
                         await CreatureCmd.SetMaxAndCurrentHp(creature, hp.Value);
                     }
@@ -311,6 +321,53 @@ public static class SfEffectEngine
                     // 绝大多数遭遇没有站位表，此时游戏不会给中途召唤的怪定位
                     // （初始排版只发生在战斗开始）——按游戏同款算法重新铺开全部敌人
                     SfSummonLayout.SpreadEnemies(combat);
+                }
+                break;
+            }
+
+            case SfEffectKind.OrbSlot:
+            {
+                // 充能球栏位（扩容 Capacitor 同款）：正数获得、负数移除（从队尾连球一起移除）
+                var n = (int)Amount(card, e, varName);
+                if (n >= 0)
+                {
+                    await OrbCmd.AddSlots(card.Owner, n);
+                }
+                else
+                {
+                    OrbCmd.RemoveSlots(card.Owner, -n);
+                }
+                break;
+            }
+
+            case SfEffectKind.Orb:
+            {
+                // 生成充能球（BallLightning/Chaos 同款）：params.orb / 顶层 orb =
+                // 闪电/冰霜/黑暗/等离子/玻璃的类名或通名（lightning/frost/dark/plasma/glass），
+                // 缺省/未知 = 随机（GetRandomOrb，CombatOrbGeneration RNG）；
+                // amount = 生成个数；玩家一个栏位都没有时 Channel 自动先给 1 个
+                var count = System.Math.Max(1, (int)Amount(card, e, varName));
+                var orbName = (e.StringParam("orb") ?? "").Trim();
+                var orbType = SfOrbResolver.Find(orbName);
+                if (orbName.Length > 0 && orbType == null)
+                {
+                    SfLog.Error("card " + card.Id + ": unknown orb '" + orbName + "', channeling random orbs instead");
+                }
+                var rng = card.Owner.RunState?.Rng.CombatOrbGeneration;
+                if (orbType == null && rng == null)
+                {
+                    SfLog.Error("card " + card.Id + ": no orb generation rng, orb effect skipped");
+                    break;
+                }
+                for (var i = 0; i < count; i++)
+                {
+                    var canonical = orbType != null ? ModelDb.DebugOrb(orbType) : null;
+                    if (orbType != null && canonical == null)
+                    {
+                        SfLog.Warn("card " + card.Id + ": orb type '" + orbName + "' not registered, using random orb");
+                    }
+                    var orb = (canonical ?? OrbModel.GetRandomOrb(rng!)).ToMutable();
+                    await OrbCmd.Channel(ctx!, orb, card.Owner);
                 }
                 break;
             }
@@ -638,6 +695,8 @@ internal static class SfVarNaming
         SfEffectKind.Exhaust => "Exhaust",
         SfEffectKind.Spawn => "Spawn",
         SfEffectKind.Summon => "Summon",
+        SfEffectKind.Orb => "Orbs",
+        SfEffectKind.OrbSlot => "OrbSlots",
         _ => "",
     };
 
@@ -684,6 +743,59 @@ internal static class SfMonsterResolver
             }
         }
         return null;
+    }
+}
+
+/// <summary>
+/// 球名 → OrbModel 子类 解析（orb 效果用）。扫描全部已加载程序集的具体 OrbModel 子类，
+/// 名字匹配规则：完整类名（LightningOrb）或去掉 Orb 后缀（Lightning），不区分大小写。
+/// 不能用 ModelDb.Orbs——它只有 4 种（缺玻璃球），扫描覆盖 GlassOrb 与 mod 新增球。
+/// 空/未知返回 null（引擎回落随机球）。
+/// </summary>
+internal static class SfOrbResolver
+{
+    private static readonly Dictionary<string, System.Type> Cache =
+        new(System.StringComparer.OrdinalIgnoreCase);
+    private static bool _scanned;
+
+    public static System.Type? Find(string name)
+    {
+        EnsureScan();
+        return Cache.TryGetValue(name.Trim(), out var t) ? t : null;
+    }
+
+    private static void EnsureScan()
+    {
+        if (_scanned)
+        {
+            return;
+        }
+        _scanned = true;
+        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            System.Type[] types;
+            try
+            {
+                types = asm.GetTypes();
+            }
+            catch (System.Exception)
+            {
+                continue; // 动态/受限程序集跳过
+            }
+            foreach (var t in types)
+            {
+                if (t.IsAbstract || !typeof(OrbModel).IsAssignableFrom(t))
+                {
+                    continue;
+                }
+                var n = t.Name;
+                Cache[n] = t;
+                if (n.Length > 3 && n.EndsWith("Orb", System.StringComparison.Ordinal))
+                {
+                    Cache[n[..^3]] = t;
+                }
+            }
+        }
     }
 }
 

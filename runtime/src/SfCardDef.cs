@@ -22,6 +22,8 @@ public enum SfEffectKind
     Power,
     Spawn,
     Summon,
+    Orb,
+    OrbSlot,
     Delayed,
     Vfx,
     Custom,
@@ -87,6 +89,11 @@ public sealed class SfEffect
     /// <summary>召唤敌人：自定义生命（编辑器顶层字段；params.hp 亦可）。</summary>
     [JsonPropertyName("hp")]
     public decimal? Hp { get; set; }
+
+    /// <summary>生成充能球：lightning/frost/dark/plasma/glass（类名或通名均可），
+    /// 缺省/未知 = 随机（编辑器顶层字段；params.orb 亦可）。</summary>
+    [JsonPropertyName("orb")]
+    public string Orb { get; set; } = "";
 
     /// <summary>打击特效（damage）：VfxCmd 特效名（attack_blunt 等）、vfx/… 内路径或 res://…
     /// 完整路径；缺省 = 游戏默认受击表现（编辑器顶层字段；params.vfx 亦可）。</summary>
@@ -155,6 +162,8 @@ public sealed class SfEffect
         "power" => SfEffectKind.Power,
         "spawn" => SfEffectKind.Spawn,
         "summon" => SfEffectKind.Summon,
+        "orb" => SfEffectKind.Orb,
+        "orb_slot" => SfEffectKind.OrbSlot,
         "delayed" => SfEffectKind.Delayed,
         "vfx" => SfEffectKind.Vfx,
         _ => SfEffectKind.Custom,
@@ -171,11 +180,12 @@ public sealed class SfEffect
         }
         return key switch
         {
-            "power" => Power,
-            "card_entry" => CardEntry,
-            "pile" => Pile,
-            "monster" => Monster,
-            "vfx" => Vfx,
+        "power" => Power,
+        "card_entry" => CardEntry,
+        "pile" => Pile,
+        "monster" => Monster,
+        "orb" => Orb,
+        "vfx" => Vfx,
             "sfx" => Sfx,
             "attacker_vfx" => AttackerVfx,
             "source" => Source,
@@ -294,7 +304,8 @@ public sealed class SfCardDef
     [JsonPropertyName("on_exhaust")]
     public List<SfEffect> OnExhaust { get; set; } = [];
 
-    /// <summary>战斗开始此牌进入战斗时（在抽牌堆中也会触发；仅支持 block/heal/energy/custom）。</summary>
+    /// <summary>战斗开始此牌进入战斗时（在抽牌堆中也会触发；战斗中生成的副本进入战斗堆时同样触发）。
+    /// 引擎自动补 BlockingPlayerChoiceContext，全部内建种类均可用（开局手牌为空，随机弃牌/消耗无牌可选）。</summary>
     [JsonPropertyName("on_enter_combat")]
     public List<SfEffect> OnEnterCombat { get; set; } = [];
 

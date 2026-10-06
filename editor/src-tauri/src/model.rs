@@ -165,7 +165,7 @@ pub enum EffectDef {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         params: Option<serde_json::Map<String, serde_json::Value>>,
     },
-    /// 随机弃 N 张手牌（需要玩家选择上下文）
+    /// 随机弃 N 张手牌（随机选牌，无需玩家指定）
     Discard {
         #[serde(default = "default_amount")]
         amount: f64,
@@ -173,7 +173,7 @@ pub enum EffectDef {
         #[serde(default, skip_serializing_if = "is_zero_f64")]
         upgrade_amount: f64,
     },
-    /// 随机消耗 N 张手牌（需要玩家选择上下文）
+    /// 随机消耗 N 张手牌（随机选牌，无需玩家指定）
     Exhaust {
         #[serde(default = "default_amount")]
         amount: f64,
@@ -189,7 +189,7 @@ pub enum EffectDef {
         #[serde(default, skip_serializing_if = "is_zero_f64")]
         upgrade_amount: f64,
     },
-    /// 失去生命（无来源、不可格挡、不受力量修正；需要玩家选择上下文）
+    /// 失去生命（无来源、不可格挡、不受力量修正）
     LoseHp {
         #[serde(default = "default_amount")]
         amount: f64,
@@ -239,6 +239,25 @@ pub enum EffectDef {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         hp: Option<f64>,
         /// 升级增量（= 每次升级多召唤的只数）
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
+    },
+    /// 生成充能球（故障机器人）：orb = lightning/frost/dark/plasma/glass（类名或通名均可），
+    /// 缺省/未知 = 随机；amount = 生成个数（玩家无栏位时游戏自动先给 1 个）
+    Orb {
+        #[serde(default = "default_amount_int")]
+        amount: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        orb: Option<String>,
+        /// 升级增量（= 每次升级多生成的球数）
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        upgrade_amount: f64,
+    },
+    /// 充能球栏位（扩容同款）：正数获得、负数移除（上限 10）
+    OrbSlot {
+        #[serde(default = "default_amount_int")]
+        amount: i64,
+        /// 升级增量（= 每次升级多获得的栏位数）
         #[serde(default, skip_serializing_if = "is_zero_f64")]
         upgrade_amount: f64,
     },
@@ -341,7 +360,7 @@ pub struct CardDef {
     /// 此牌被消耗时
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub on_exhaust: Vec<EffectDef>,
-    /// 战斗开始时（仅支持 block/heal/energy/custom）
+    /// 战斗开始时（引擎自动补 BlockingPlayerChoiceContext，全部内建种类均可用）
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub on_enter_combat: Vec<EffectDef>,
     /// 回合结束此牌在手中时（配合 Retain）
