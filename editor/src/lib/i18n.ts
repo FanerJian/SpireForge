@@ -256,6 +256,7 @@ const STRINGS: Record<string, L> = {
   'pp.hitCount': { zh: '段数', en: 'Hits' },
   'pp.hitSfx': { zh: '音效', en: 'SFX' },
   'pp.hitSfxPh': { zh: 'blunt_attack.mp3 或 event:/…', en: 'blunt_attack.mp3 or event:/…' },
+  'pp.sfxSearch': { zh: '搜索音效（中英文卡名/怪名均可），或输入 event:/… / 文件名', en: 'search SFX (card/monster names work), or type event:/… / a file name' },
   'pp.hitVfxHint': { zh: '打击特效/音效只改演出，不改数值；留空 = 游戏默认受击表现。段数 = 每次打 N 段（总伤害 = 数值 × 段数，升级加的是每段数值），描述请手写总伤。卡包里的特效来自游戏内置目录；mod 自带特效填 res://包名/vfx/特效.tscn', en: 'Hit VFX/SFX change presentation only; leave empty for the vanilla hit reaction. Hits = play N segments per attack (total = amount × hits; upgrades apply per segment), write the total in the description yourself. Built-in VFX come from the game catalog; mod VFX take a res://modid/vfx/name.tscn path' },
   'pp.amount': { zh: '数值', en: 'Amount' },
   'pp.amountOpt': { zh: '可选 · 含义由处理器定义', en: 'optional · meaning defined by the handler' },

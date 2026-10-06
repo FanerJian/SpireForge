@@ -10,6 +10,7 @@ import type {
 import type { ComboItem } from '../Combobox';
 import { MONSTERS } from '../../lib/monsters';
 import { POWERS } from '../../lib/powers';
+import { SFX_USERS, VFX_USERS, type OriginUser } from '../../lib/vfxOrigin';
 import { cardEntry } from '../../lib/entry';
 import { TYPE_LABEL, pick, type Lang } from '../../lib/i18n';
 
@@ -170,7 +171,31 @@ export function buildHandlerCombo(lang: Lang, runtime: RuntimeCatalog | null): C
   return items;
 }
 
-// ---- 视觉特效（VfxCmd / mod 场景）----
+// ---- 视觉特效 / 音效（VfxCmd / mod 场景 / FMOD 事件与音频文件）----
+
+/** 原版使用者行的种类标签 */
+const ORIGIN_KIND_LABEL: Record<OriginUser['kind'], { zh: string; en: string }> = {
+  card: { zh: '卡牌', en: 'Card' },
+  monster: { zh: '怪物', en: 'Monster' },
+  power: { zh: '力量', en: 'Power' },
+  relic: { zh: '遗物', en: 'Relic' },
+};
+
+/** 使用者清单 → 一行摘要：前 3 个官方名 + 剩余数量（搜索词里含全部使用者） */
+function originSummary(users: OriginUser[], lang: Lang): string {
+  const name = (u: OriginUser) => {
+    const label = pick(ORIGIN_KIND_LABEL[u.kind], lang);
+    return `${label} ${lang === 'en' ? u.en : u.zh}`;
+  };
+  const head = users.slice(0, 3).map(name).join('、');
+  const rest = users.length - 3;
+  return rest > 0 ? `${head} 等 ${users.length} 处` : head;
+}
+
+/** 使用者全部名字（当前语言显示名 + 反向语言名 + 类名）→ 下拉搜索词 */
+function originKeywords(users: OriginUser[]): string {
+  return users.map((u) => `${u.zh} ${u.en} ${u.cls}`).join(' ');
+}
 
 /** 内置特效兜底表（官方高频项；Runtime ≥ 0.1.8 的目录会带全量并含 mod 场景） */
 const BUILTIN_VFX: RuntimeVfx[] = [
@@ -181,20 +206,22 @@ const BUILTIN_VFX: RuntimeVfx[] = [
   'bloody_impact', 'rock_shatter', 'sandy_impact', 'slime_impact', 'starry_impact', 'adrenaline',
 ].map((n) => ({ name: n, path: `vfx/vfx_${n}`, source: 'sts2' }));
 
-/** 特效下拉：目录快照（内置全量 + mod 松散场景）优先，官方高频兜底表去重合并 */
+/** 特效下拉：目录快照（内置全量 + mod 松散场景）优先，官方高频兜底表去重合并。
+ *  内置条目的次要行 = 原版使用者（哪张卡/哪只怪在用它），搜索词含全部使用者名。 */
 export function buildVfxCombo(lang: Lang, runtime: RuntimeCatalog | null): ComboItem[] {
   const items: ComboItem[] = [];
   const seen = new Set<string>();
   const push = (v: RuntimeVfx, badge: string) => {
     if (!v.name || seen.has(v.name.toLowerCase())) return;
     seen.add(v.name.toLowerCase());
+    const users = v.source === 'sts2' ? VFX_USERS[v.path] : undefined;
     items.push({
       value: v.name,
       primary: v.name,
-      secondary: v.source === 'sts2' ? undefined : v.path,
+      secondary: users?.length ? originSummary(users, lang) : (v.source === 'sts2' ? undefined : v.path),
       badge,
       badgeTone: badge === 'MOD' ? ('neutral' as const) : ('safe' as const),
-      keywords: [v.name, v.path, v.source].filter(Boolean).join(' '),
+      keywords: [v.name, v.path, v.source, ...(users ? [originKeywords(users)] : [])].filter(Boolean).join(' '),
     });
   };
   for (const v of runtime?.vfx ?? []) {
@@ -204,6 +231,24 @@ export function buildVfxCombo(lang: Lang, runtime: RuntimeCatalog | null): Combo
     push(v, lang === 'en' ? 'Built-in' : '内置');
   }
   return items;
+}
+
+/** 音效下拉：反编译源码里被卡牌/怪物/力量/遗物用过的全部音效
+ *  （FMOD event:/ 事件与临时音频文件），次要行 = 原版使用者；允许自由输入其它值。 */
+export function buildSfxCombo(lang: Lang): ComboItem[] {
+  const keys = Object.keys(SFX_USERS).sort();
+  return keys.map((k) => {
+    const users = SFX_USERS[k] ?? [];
+    const short = k.startsWith('event:') ? k.split('/').slice(-1)[0] : k;
+    return {
+      value: k,
+      primary: short,
+      secondary: users.length ? originSummary(users, lang) : k,
+      badge: lang === 'en' ? 'Built-in' : '内置',
+      badgeTone: 'safe' as const,
+      keywords: [k, ...(users.length ? [originKeywords(users)] : [])].filter(Boolean).join(' '),
+    };
+  });
 }
 
 

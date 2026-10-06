@@ -8,7 +8,7 @@ import type { CardDef, EffectDef } from '../../lib/types';
 import {
   CORE_KINDS, EXTRA_KINDS, NEEDS_CHOICE, defaultEffect,
 } from '../../lib/effects';
-import { buildMonsterCombo, buildPowerCombo, buildSpawnCombo, buildVfxCombo, modMonsters, modPowers, useRuntimeCatalog, useVanillaCatalog } from './catalogs';
+import { buildMonsterCombo, buildPowerCombo, buildSfxCombo, buildSpawnCombo, buildVfxCombo, modMonsters, modPowers, useRuntimeCatalog, useVanillaCatalog } from './catalogs';
 import { useAppendHookDescription, useGenDescription } from './useDescription';
 import { CustomEffectBody, DelayedEffectBody, StandardEffectBody, effectMetaOf } from './effectEditors';
 
@@ -33,6 +33,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
     [cards, vanilla, runtime, lang, meta?.pack_id, card.id],
   );
   const vfxCombo = useMemo(() => buildVfxCombo(lang, runtime), [lang, runtime]);
+  const sfxCombo = useMemo(() => buildSfxCombo(lang), [lang]);
 
   const list: EffectDef[] = trigger === 'play' ? card.effects : (card[trigger] ?? []);
   const setList = (fx: EffectDef[]) => {
@@ -133,6 +134,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
                 upgrades={u}
                 powerCombo={powerCombo}
                 vfxCombo={vfxCombo}
+                sfxCombo={sfxCombo}
                 monsterCombo={monsterCombo}
                 spawnCombo={spawnCombo}
               />

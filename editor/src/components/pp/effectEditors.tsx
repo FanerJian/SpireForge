@@ -321,7 +321,7 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
 }
 
 /** 标准效果（delayed/custom 以外全部）：数值/力量/生成/召唤/目标/不受 buff/升级增量 */
-export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, vfxCombo, monsterCombo, spawnCombo }: {
+export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, vfxCombo, sfxCombo, monsterCombo, spawnCombo }: {
   e: EffectDef;
   patch: RowPatch;
   updateCard: (patch: Partial<CardDef>) => void;
@@ -330,6 +330,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
   upgrades: UpgradeDef;
   powerCombo: ComboItem[];
   vfxCombo: ComboItem[];
+  sfxCombo: ComboItem[];
   monsterCombo: ComboItem[];
   spawnCombo: ComboItem[];
 }) {
@@ -483,11 +484,14 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
                 />
               )}
               <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
-              <input
-                className={inputCls + ' w-44 font-mono text-xs'}
-                placeholder={t('pp.hitSfxPh')}
+              <Combobox
                 value={vf.sfx ?? ''}
-                onChange={(ev) => patch({ sfx: ev.target.value || undefined } as Partial<EffectDef>)}
+                items={sfxCombo}
+                onChange={(v) => patch({ sfx: v || undefined } as Partial<EffectDef>)}
+                fallbackDisplay={vf.sfx ?? ''}
+                searchPlaceholder={t('pp.sfxSearch')}
+                allowRaw
+                rawLabel={(raw) => t('pp.useRaw', { v: raw })}
               />
             </div>
           </div>
@@ -513,11 +517,14 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               onCommit={(n) => patch({ hit_count: (n ?? 1) > 1 ? Math.round(n!) : undefined } as Partial<EffectDef>)}
             />
             <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
-            <input
-              className={inputCls + ' w-44 font-mono text-xs'}
-              placeholder={t('pp.hitSfxPh')}
+            <Combobox
               value={(e as { sfx?: string }).sfx ?? ''}
-              onChange={(ev) => patch({ sfx: ev.target.value || undefined } as Partial<EffectDef>)}
+              items={sfxCombo}
+              onChange={(v) => patch({ sfx: v || undefined } as Partial<EffectDef>)}
+              fallbackDisplay={(e as { sfx?: string }).sfx ?? ''}
+              searchPlaceholder={t('pp.sfxSearch')}
+              allowRaw
+              rawLabel={(raw) => t('pp.useRaw', { v: raw })}
             />
           </div>
           <div className="text-[10px] leading-relaxed text-slate-600">{t('pp.hitVfxHint')}</div>
