@@ -31,10 +31,12 @@ internal static class SfAttacks
         }
     }
 
-    /// <summary>单目标执行。play != null = 打出（默认编排，原版演出）；play == null = 钩子（默认直结）。</summary>
+    /// <summary>单目标执行。play != null = 打出（默认编排，原版演出）；play == null = 钩子（默认直结）。
+    /// allOpponents = 全体攻击：TargetingAllOpponents 每次 hit 刷新目标清单（战斗中途召唤的怪
+    /// 也会被打到），此时 targets 传 null。</summary>
     public static async Task RunCardAttack(
-        CardModel card, List<Creature> targets, decimal amount, SfEffect e,
-        PlayerChoiceContext? ctx, CardPlay? play, Creature visualTarget)
+        CardModel card, List<Creature>? targets, decimal amount, SfEffect e,
+        PlayerChoiceContext? ctx, CardPlay? play, Creature? visualTarget, bool allOpponents = false)
     {
         var props = SfEffectEngine.ParseProps(e.Props);
         var vfx = e.StringParam("vfx");
@@ -55,10 +57,21 @@ internal static class SfAttacks
             || SfVfx.Resolve(attackerVfx)?.StartsWith("res://scenes/", StringComparison.Ordinal) == true;
         if (!choreograph || !plainProps || !officialVfx || !officialAttacker)
         {
-            await CreatureCmd.Damage(ctx!, targets, amount, props, card.Owner.Creature, card, play);
+            // 直结兜底。全体路径对当前可被打的敌人（快照）逐一直结。
+            List<Creature> direct;
+            if (allOpponents)
+            {
+                var cs = card.Owner.Creature.CombatState;
+                direct = cs != null ? new List<Creature>(cs.HittableEnemies) : new List<Creature>();
+            }
+            else
+            {
+                direct = targets!;
+            }
+            await CreatureCmd.Damage(ctx!, direct, amount, props, card.Owner.Creature, card, play);
             if (!string.IsNullOrWhiteSpace(vfx))
             {
-                foreach (var t in targets)
+                foreach (var t in direct)
                 {
                     SfVfx.PlayOnCreature(t, vfx);
                 }
@@ -69,8 +82,20 @@ internal static class SfAttacks
         try
         {
             var cmd = DamageCmd.Attack(amount)
-                .FromCard(card, play)
-                .Targeting(targets[0]);
+                .FromCard(card, play);
+            if (allOpponents)
+            {
+                // 全体：TargetingAllOpponents 每次 hit 刷新目标清单（中途召唤的怪也会被打到）；
+                // 原版 AoE 卡同款（AstralPulse）：受击特效逐只播放而非阵营中心一次。
+                // CombatState 缺失属异常情形 → 抛出走下方 catch 的直结兜底。
+                var combat = card.Owner.Creature.CombatState
+                    ?? throw new InvalidOperationException("no combat state for AoE attack");
+                cmd = cmd.TargetingAllOpponents(combat).SpawningHitVfxOnEachCreature();
+            }
+            else
+            {
+                cmd = cmd.Targeting(targets![0]);
+            }
             if (props.HasFlag(ValueProp.Unpowered))
             {
                 cmd = cmd.Unpowered();

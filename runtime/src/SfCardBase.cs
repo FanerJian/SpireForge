@@ -69,6 +69,10 @@ public abstract class SfCardBase : CardModel
 
     public override bool GainsBlock => TryDef()?.HasBlock ?? false;
 
+    /// <summary>X 费卡（编辑器「X 费卡」勾选）。基类构造器建 CardEnergyCost 时读本虚属性；
+    /// 打出时引擎按 X（消耗的能量，含 ChemicalX 等 X 值修正）把效果整段重复 X 次。</summary>
+    protected override bool HasEnergyCostX => TryDef()?.CostsX ?? false;
+
     public override int MaxUpgradeLevel => TryDef()?.MaxUpgradeLevel ?? 1;
 
     public override IEnumerable<CardKeyword> CanonicalKeywords

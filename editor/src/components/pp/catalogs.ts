@@ -234,10 +234,17 @@ export function buildVfxCombo(lang: Lang, runtime: RuntimeCatalog | null): Combo
 }
 
 /** 音效下拉：反编译源码里被卡牌/怪物/力量/遗物用过的全部音效
- *  （FMOD event:/ 事件与临时音频文件），次要行 = 原版使用者；允许自由输入其它值。 */
+ *  （FMOD event:/ 事件与临时音频文件），次要行 = 原版使用者；允许自由输入其它值。
+ *  首项「（无）」= 清空已选音效（damage 打击音效与 vfx 同步音效都允许不播）。 */
 export function buildSfxCombo(lang: Lang): ComboItem[] {
+  const none: ComboItem = {
+    value: '',
+    primary: lang === 'en' ? '(none)' : '（无）',
+    secondary: lang === 'en' ? 'No sound' : '不播放音效',
+    keywords: lang === 'en' ? '无 none clear 空' : 'none clear 无 不播放',
+  };
   const keys = Object.keys(SFX_USERS).sort();
-  return keys.map((k) => {
+  const items = keys.map((k) => {
     const users = SFX_USERS[k] ?? [];
     const short = k.startsWith('event:') ? k.split('/').slice(-1)[0] : k;
     return {
@@ -249,6 +256,19 @@ export function buildSfxCombo(lang: Lang): ComboItem[] {
       keywords: [k, ...(users.length ? [originKeywords(users)] : [])].filter(Boolean).join(' '),
     };
   });
+  return [none, ...items];
+}
+
+/** 打击特效下拉（damage 行）可选「（无）」= 恢复游戏默认受击表现；
+ *  vfx 效果本体必须指定特效，不用这个包装。 */
+export function buildHitVfxCombo(lang: Lang, vfxItems: ComboItem[]): ComboItem[] {
+  const none: ComboItem = {
+    value: '',
+    primary: lang === 'en' ? '(none)' : '（无）',
+    secondary: lang === 'en' ? 'Default hit VFX' : '游戏默认受击表现',
+    keywords: lang === 'en' ? '无 none clear 默认 default' : 'none clear 无 默认',
+  };
+  return [none, ...vfxItems];
 }
 
 

@@ -408,7 +408,9 @@ public static class SfVanillaOverride
         }
     }
 
-    /// <summary>OnPlay 替换前缀：返回 false 跳过原实现，效果清单转交 SfEffectEngine。</summary>
+    /// <summary>OnPlay 替换前缀：返回 false 跳过原实现，效果清单转交 SfEffectEngine。
+    /// useVarBinding=false：编辑器效果数值是字面语义——绑定同名变量会把效果数值静默
+    /// 顶成原版变量值（覆盖打击填伤害 15，被原版 Damage=6 变量顶掉，日志实锤）。</summary>
     private static bool PlayPrefix(
         ref Task __result, CardModel __instance, PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
@@ -416,7 +418,8 @@ public static class SfVanillaOverride
         {
             return true;
         }
-        __result = SfEffectEngine.RunAsync(__instance, def.Effects, choiceContext, cardPlay, "play");
+        __result = SfEffectEngine.RunAsync(__instance, def.Effects, choiceContext, cardPlay, "play",
+            useVarBinding: false);
         return false;
     }
 

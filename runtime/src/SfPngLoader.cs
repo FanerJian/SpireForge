@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 
 namespace SpireForge.Runtime;
@@ -12,6 +13,18 @@ public sealed partial class SfPngLoader : ResourceFormatLoader
 {
     /// <summary>静态引用防止托管对象被 GC（引擎持有原生引用，但保险起见）。</summary>
     public static SfPngLoader? Instance;
+
+    /// <summary>额外放行的包命名空间。原版覆盖包可能只有覆盖卡——覆盖定义不进
+    /// PackLoader.PackOf，命名空间不登记的话立绘 PNG 会被本加载器拒认
+    /// （ResourceLoader.Exists=false → 立绘空白，日志实锤）。PackLoader 扫到
+    /// 覆盖定义时把 modId 登记进来。</summary>
+    private static readonly HashSet<string> ExtraNamespaces = new();
+
+    /// <summary>放行一个包命名空间（幂等）。</summary>
+    public static void AllowNamespace(string modId) => ExtraNamespaces.Add(modId);
+
+    /// <summary>重扫卡包前清空（ScanAllMods 入口调用，保持与扫描结果一致）。</summary>
+    public static void ResetNamespaces() => ExtraNamespaces.Clear();
 
     private static readonly StringName TypeTexture2D = new("Texture2D");
     private static readonly StringName TypeResource = new("Resource");
@@ -44,7 +57,8 @@ public sealed partial class SfPngLoader : ResourceFormatLoader
         return IsOurPng(path) && Godot.FileAccess.FileExists(path);
     }
 
-    /// <summary>路径属于某个已扫描到的 SpireForge 卡包（PackLoader.PackOf 的 modId 集合）。</summary>
+    /// <summary>路径属于某个已扫描到的 SpireForge 卡包：PackLoader.PackOf 的 modId 集合
+    /// （普通卡包）+ 覆盖定义登记的 ExtraNamespaces（纯覆盖卡包）。</summary>
     private static bool IsOurPng(string path)
     {
         if (!path.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase)
@@ -58,6 +72,10 @@ public sealed partial class SfPngLoader : ResourceFormatLoader
             return false;
         }
         string ns = path.Substring(6, slash - 6);
+        if (ExtraNamespaces.Contains(ns))
+        {
+            return true;
+        }
         foreach (var packId in PackLoader.PackOf.Values)
         {
             if (ns == packId)

@@ -329,7 +329,7 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
 }
 
 /** 标准效果（delayed/custom 以外全部）：数值/力量/生成/召唤/目标/不受 buff/升级增量 */
-export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, vfxCombo, sfxCombo, monsterCombo, spawnCombo }: {
+export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, vfxCombo, hitVfxCombo, sfxCombo, monsterCombo, spawnCombo }: {
   e: EffectDef;
   patch: RowPatch;
   updateCard: (patch: Partial<CardDef>) => void;
@@ -338,6 +338,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
   upgrades: UpgradeDef;
   powerCombo: ComboItem[];
   vfxCombo: ComboItem[];
+  hitVfxCombo: ComboItem[];
   sfxCombo: ComboItem[];
   monsterCombo: ComboItem[];
   spawnCombo: ComboItem[];
@@ -510,7 +511,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
                 </label>
               )}
               <label className={unit}>
-                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
+                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.sfxLabel')}</span>
                 <Combobox
                   value={vf.sfx ?? ''}
                   items={sfxCombo}
@@ -522,17 +523,31 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
                 />
               </label>
             </div>
+            <div className="text-[10px] leading-relaxed text-slate-600">{t('pp.vfxHint')}</div>
           </div>
         );
       })()}
       {e.kind === 'damage' && (
         <>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            {isPlay && (
+              <label className="flex items-center gap-2">
+                <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
+                <select
+                  className={selectCls + ' w-36'}
+                  value={(e as { target?: string }).target ?? ''}
+                  onChange={(ev) => patch({ target: ev.target.value || undefined } as Partial<EffectDef>)}
+                >
+                  <option value="">{t('pp.damageTargetDefault')}</option>
+                  <option value="all_enemies">{t('pp.targetAllEnemies')}</option>
+                </select>
+              </label>
+            )}
             <label className="flex min-w-0 items-center gap-2">
               <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitVfx')}</span>
               <Combobox
                 value={(e as { vfx?: string }).vfx ?? ''}
-                items={vfxCombo}
+                items={hitVfxCombo}
                 onChange={(v) => patch({ vfx: v || undefined } as Partial<EffectDef>)}
                 fallbackDisplay={(e as { vfx?: string }).vfx ?? ''}
                 searchPlaceholder={t('pp.vfxSearch')}
@@ -603,8 +618,8 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               if (lk && (u?.[lk] ?? 0) !== 0) updateCard({ upgrades: { ...u, [lk]: 0 } });
             }}
           />
-          {(e.kind === 'spawn' || e.kind === 'summon' || e.kind === 'gold') && (
-            <span className="text-[10px] text-slate-600">{t('pp.upgradeLiteralHint')}</span>
+          {(e.kind === 'spawn' || e.kind === 'summon') && (
+            <span className="text-[10px] text-slate-600">{t('pp.upgradeAmountHint')}</span>
           )}
         </div>
       )}

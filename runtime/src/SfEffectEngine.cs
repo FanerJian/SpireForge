@@ -29,11 +29,19 @@ public static class SfEffectEngine
     ];
 
     /// <summary>按清单顺序执行效果。ctx 为 null 的上下文（on_enter_combat）禁用需要选择的目标类效果。
-    /// useVarBinding=false 时效果一律取字面数值（delayed 内嵌清单：变量属于打出效果，内嵌不该借用）。</summary>
+    /// useVarBinding=false 时效果一律取字面数值（delayed 内嵌清单：变量属于打出效果，内嵌不该借用；
+    /// 原版覆盖卡：编辑器数值是字面语义，不得错绑原版同名变量——覆盖 STRIKE 后伤害 15 会被
+    /// 原版 Damage=6 变量静默顶掉，游戏日志实锤）。
+    /// X 费卡打出时效果整段重复 X 次（官方惯例：串刺/旋风斩「造成N点伤害X次」，X 含修正）。</summary>
     public static async Task RunAsync(
         CardModel card, List<SfEffect> effects, PlayerChoiceContext? ctx, CardPlay? play, string trigger,
         bool useVarBinding = true)
     {
+        var xTimes = 1;
+        if (play != null && card.EnergyCost != null && card.EnergyCost.CostsX)
+        {
+            xTimes = System.Math.Max(0, card.ResolveEnergyXValue());
+        }
         for (var i = 0; i < effects.Count; i++)
         {
             var e = effects[i];
@@ -43,14 +51,17 @@ public static class SfEffectEngine
                             " needs a choice context (on_enter_combat unsupported)");
                 continue;
             }
-            try
+            for (var rep = 0; rep < xTimes; rep++)
             {
-                await RunOne(card, e, ctx, play, trigger,
-                    useVarBinding ? SfVarNaming.Name(effects, i) : null);
-            }
-            catch (System.Exception ex)
-            {
-                SfLog.Error("card " + card.Id + ": effect " + e.KindName + " failed on " + trigger + ": " + ex.Message);
+                try
+                {
+                    await RunOne(card, e, ctx, play, trigger,
+                        useVarBinding ? SfVarNaming.Name(effects, i) : null);
+                }
+                catch (System.Exception ex)
+                {
+                    SfLog.Error("card " + card.Id + ": effect " + e.KindName + " failed on " + trigger + ": " + ex.Message);
+                }
             }
         }
     }
@@ -75,11 +86,21 @@ public static class SfEffectEngine
         {
             case SfEffectKind.Damage:
             {
+                var fxTarget = (e.Target ?? "").Trim();
                 if (play != null)
                 {
-                    if (play.Target == null)
+                    if (fxTarget.Equals("self", System.StringComparison.OrdinalIgnoreCase))
                     {
-                        SfLog.Error("card " + card.Id + " requires a target, damage skipped");
+                        await SfAttacks.RunTargetsAttack(card, [card.Owner.Creature], Amount(card, e, varName), e, ctx);
+                        break;
+                    }
+                    if (fxTarget.Equals("all_enemies", System.StringComparison.OrdinalIgnoreCase)
+                        || play.Target == null)
+                    {
+                        // 全体（或卡牌目标类型不要求选人——AllEnemies/None，此前直接跳过伤害，
+                        // 是「目标设为全体则无效」的根因）：AoE 编排，每次 hit 刷新目标清单
+                        await SfAttacks.RunCardAttack(card, null, Amount(card, e, varName), e, ctx, play, null,
+                            allOpponents: true);
                         break;
                     }
                     // 打出：走原版 AttackCommand 编排（攻击者前摇动画 + 打击特效/音效 + 多段），
@@ -249,6 +270,18 @@ public static class SfEffectEngine
                     break;
                 }
                 var monsterName = e.StringParam("monster");
+                // 奥斯提是玩家宠物（不在任何遭遇名单 → ModelDb.Monsters 查不到，普通召唤必然失败），
+                // 走官方 OstyCmd.Summon（Bodyguard 同款）：已有奥斯提则加生命上限、死亡后复活；
+                // 数量语义 = 生命（hp 参数优先，否则用 amount）
+                if (monsterName.Trim().Equals("Osty", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    var ostyHp = e.DecimalParam("hp") is > 0
+                        ? e.DecimalParam("hp")!.Value
+                        : System.Math.Max(1, Amount(card, e, varName));
+                    await OstyCmd.Summon(
+                        ctx ?? new BlockingPlayerChoiceContext(), card.Owner, ostyHp, card);
+                    break;
+                }
                 var template = SfMonsterResolver.Find(monsterName);
                 if (template == null)
                 {
@@ -446,12 +479,25 @@ public static class SfEffectEngine
         return picked;
     }
 
-    /// <summary>power 效果的目标集合：
-    /// 打出时 target=self 或钩子上下文按 target 字段解析；否则用玩家指定目标。</summary>
+    /// <summary>power/vfx 等的目标集合：
+    /// all_enemies（打出也生效）/ self / 打出时玩家指定目标 / 钩子上下文按 target 字段解析。</summary>
     private static IReadOnlyList<Creature> ResolveTargetList(CardModel card, SfEffect e, CardPlay? play)
     {
-        var self = string.Equals((e.Target ?? "").Trim(), "self", System.StringComparison.OrdinalIgnoreCase);
-        if (play != null && play.Target != null && !self)
+        var t = (e.Target ?? "").Trim();
+        // 全体敌人（打出也生效：power AoE / vfx 全体——此前打出时只会打选中的那一个）
+        if (t.Equals("all_enemies", System.StringComparison.OrdinalIgnoreCase))
+        {
+            var combat = card.Owner.Creature.CombatState;
+            if (combat != null)
+            {
+                return combat.HittableEnemies;
+            }
+        }
+        if (t.Equals("self", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return [card.Owner.Creature];
+        }
+        if (play != null && play.Target != null)
         {
             return [play.Target];
         }

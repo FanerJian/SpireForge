@@ -33,6 +33,7 @@ public static class PackLoader
     {
         Defs.Clear();
         PackOf.Clear();
+        SfPngLoader.ResetNamespaces();
         var seen = new HashSet<string>();
         foreach (var mod in ModManager.GetLoadedMods())
         {
@@ -78,7 +79,9 @@ public static class PackLoader
                     else if (!string.IsNullOrWhiteSpace(def.VanillaId))
                     {
                         // 原版卡覆盖：不 Emit、不入池，交给 SfVanillaOverride 在 ModelDb 就绪后应用
-                        // （modId 一并带上：覆盖卡不进 PackOf，立绘 res:// 路径要用它拼接）
+                        // （modId 一并带上：覆盖卡不进 PackOf，立绘 res:// 路径要用它拼接）；
+                        // 纯覆盖包的命名空间必须放行 PNG 加载，否则立绘加载器拒认 → 立绘空白
+                        SfPngLoader.AllowNamespace(modId);
                         if (SfVanillaOverride.Collect(def, modId))
                         {
                             SfLog.Info("vanilla override queued: " + def.VanillaId + " <- " + name);
