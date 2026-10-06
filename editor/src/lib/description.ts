@@ -34,7 +34,8 @@ export function previewEffectVars(card: CardDef, upgraded: boolean): Record<stri
     if (!name) return;
     const own = (e as { upgrade_amount?: number }).upgrade_amount;
     const lk = LEGACY_UPGRADE[e.kind];
-    const up = own ?? (lk ? card.upgrades[lk] : 0);
+    // card.upgrades 缺字段时兜底（外部导入的 JSON 可能不带 upgrades）
+    const up = own ?? (lk ? (card.upgrades?.[lk] ?? 0) : 0);
     const shown = String((e as { amount?: number }).amount ?? 0);
     vars[name] = upgraded && up ? `${shown}+${up}` : shown;
   });
@@ -119,6 +120,9 @@ function effectSentence(fx: EffectDef, varName: string | null): { zhs: string; e
           : `Summon a ${fx.monster}${fx.hp && fx.hp > 0 ? ` with ${fx.hp} HP` : ''}.`,
       };
     }
+    case 'vfx':
+      // 纯视觉演出：不入卡面文本（官方卡面也不描述打击特效）
+      return { zhs: '', eng: '' };
     case 'custom':
       return { zhs: `【${fx.handler || '自定义效果'}】`, eng: `[custom:${fx.handler || '?'}]` };
     case 'delayed': {
@@ -158,8 +162,10 @@ function composeListDescription(list: EffectDef[], useVars: boolean): { zhs: str
   const e: string[] = [];
   list.forEach((fx, i) => {
     const s = effectSentence(fx, useVars ? effectVarName(list, i) : null);
-    z.push(s.zhs);
-    e.push(s.eng);
+    if (s.zhs || s.eng) {
+      z.push(s.zhs);
+      e.push(s.eng);
+    }
   });
   if (z.length === 0) return null;
   return { zhs: z.join('\n'), eng: e.join('\n') };

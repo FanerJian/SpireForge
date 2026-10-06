@@ -66,6 +66,16 @@ pub struct RuntimeCustomEffect {
     pub desc_en: String,
 }
 
+/// 视觉特效条目（游戏内置 VfxCmd/*Vfx 节点 + mods/*/vfx 松散场景）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeVfx {
+    pub name: String,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub source: String,
+}
+
 /// 发给前端的目录（format_version 校验通过后不再外传）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeCatalog {
@@ -81,6 +91,8 @@ pub struct RuntimeCatalog {
     pub cards: Vec<RuntimeCard>,
     #[serde(default, rename = "custom_effects")]
     pub custom_effects: Vec<RuntimeCustomEffect>,
+    #[serde(default)]
+    pub vfx: Vec<RuntimeVfx>,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +110,8 @@ struct CatalogFile {
     cards: Vec<RuntimeCard>,
     #[serde(default, rename = "custom_effects")]
     custom_effects: Vec<RuntimeCustomEffect>,
+    #[serde(default)]
+    vfx: Vec<RuntimeVfx>,
 }
 
 /// 宽容解析：词条缺文本给空串即可（前端回落显示规范名），只对版本与规模把关。
@@ -120,12 +134,14 @@ pub fn parse_catalog(raw: &str) -> Result<RuntimeCatalog, String> {
         monsters: file.monsters,
         cards: file.cards,
         custom_effects: file.custom_effects,
+        vfx: file.vfx,
     };
     // 条目规模限制：异常 mod 不至于把前端下拉撑爆
     catalog.powers.truncate(MAX_PER_KIND);
     catalog.monsters.truncate(MAX_PER_KIND);
     catalog.cards.truncate(MAX_PER_KIND);
     catalog.custom_effects.truncate(MAX_PER_KIND);
+    catalog.vfx.truncate(MAX_PER_KIND);
     // 规范名兜底：力量缺 name 时用 class_name/entry，其余缺 entry 用 name；处理器名去空白
     for p in &mut catalog.powers {
         if p.name.is_empty() {

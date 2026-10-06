@@ -82,22 +82,14 @@ public static class SfEffectEngine
                         SfLog.Error("card " + card.Id + " requires a target, damage skipped");
                         break;
                     }
-                    if (varName != null && card.DynamicVars != null
-                        && card.DynamicVars.TryGetValue(varName, out var v) && v is DamageVar damageVar)
-                    {
-                        // 走卡牌自带的 Damage 变量：保留力量/易伤等修正链与升级（原版语义）
-                        await CreatureCmd.Damage(ctx!, play.Target, damageVar, card, play);
-                    }
-                    else
-                    {
-                        // 被覆盖的原版卡可能没有 Damage 变量：按字面数值直接结算
-                        await CreatureCmd.Damage(ctx!, play.Target, Amount(card, e, varName), ParseProps(e.Props), card, play);
-                    }
+                    // 打出：走原版 AttackCommand 编排（攻击者前摇动画 + 打击特效/音效 + 多段），
+                    // 与原版攻击卡（Bash 等）同款；未指定特效时也有标准的出手/受击演出。
+                    await SfAttacks.RunCardAttack(card, [play.Target], Amount(card, e, varName), e, ctx, play,
+                        play.Target);
                 }
                 else
                 {
-                    await CreatureCmd.Damage(ctx!, ResolveTargets(card, e), Amount(card, e, varName), ParseProps(e.Props),
-                        card.Owner.Creature);
+                    await SfAttacks.RunTargetsAttack(card, ResolveTargets(card, e), Amount(card, e, varName), e, ctx);
                 }
                 break;
             }
@@ -303,6 +295,37 @@ public static class SfEffectEngine
                 break;
             }
 
+            case SfEffectKind.Vfx:
+            {
+                // 播放视觉特效（纯演出，不影响数值）：params.vfx / 顶层 vfx = 特效 spec，
+                // target：random_enemy（默认）/ all_enemies（阵营中心一次）/ self / screen
+                var spec = e.StringParam("vfx");
+                if (string.IsNullOrWhiteSpace(spec))
+                {
+                    SfLog.Error("card " + card.Id + ": vfx effect missing params.vfx");
+                    break;
+                }
+                switch ((e.Target ?? "").Trim().ToLowerInvariant())
+                {
+                    case "screen":
+                        SfVfx.PlayFullScreen(spec, card.Owner?.Creature);
+                        break;
+                    case "side_player":
+                        if (RequireCombat(card) is { } pc) SfVfx.PlayOnSide(MegaCrit.Sts2.Core.Combat.CombatSide.Player, spec, pc);
+                        break;
+                    case "side_enemy":
+                        if (RequireCombat(card) is { } ec) SfVfx.PlayOnSide(MegaCrit.Sts2.Core.Combat.CombatSide.Enemy, spec, ec);
+                        break;
+                    default:
+                        foreach (var t in ResolveTargetList(card, e, play))
+                        {
+                            SfVfx.PlayOnCreature(t, spec);
+                        }
+                        break;
+                }
+                break;
+            }
+
             case SfEffectKind.Custom:
             {
                 Creature? target = play?.Target;
@@ -426,6 +449,17 @@ public static class SfEffectEngine
     {
         var picked = card.Owner.RunState?.Rng.CombatTargets.NextItem(combat.HittableEnemies);
         return picked != null ? [picked] : [];
+    }
+
+    /// <summary>钩子/特效播放用的战斗状态（缺失记日志并返回 null，调用方自行跳过）。</summary>
+    private static MegaCrit.Sts2.Core.Combat.ICombatState? RequireCombat(CardModel card)
+    {
+        var combat = card.Owner?.Creature?.CombatState;
+        if (combat == null)
+        {
+            SfLog.Warn("card " + card.Id + ": no combat state for vfx, skipped");
+        }
+        return combat;
     }
 
     /// <summary>ValueProp 是位标志（Unblockable=2, Unpowered=4, Move=8, SkipHurtAnim=0x10）。

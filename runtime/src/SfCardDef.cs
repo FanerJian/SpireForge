@@ -23,6 +23,7 @@ public enum SfEffectKind
     Spawn,
     Summon,
     Delayed,
+    Vfx,
     Custom,
 }
 
@@ -87,6 +88,24 @@ public sealed class SfEffect
     [JsonPropertyName("hp")]
     public decimal? Hp { get; set; }
 
+    /// <summary>打击特效（damage）：VfxCmd 特效名（attack_blunt 等）、vfx/… 内路径或 res://…
+    /// 完整路径；缺省 = 游戏默认受击表现（编辑器顶层字段；params.vfx 亦可）。</summary>
+    [JsonPropertyName("vfx")]
+    public string Vfx { get; set; } = "";
+
+    /// <summary>打击音效（damage）："event:/sfx/…" 走 FMOD，其余按音频文件名（如 blunt_attack.mp3）
+    /// 临时播放（编辑器顶层字段；params.sfx 亦可）。</summary>
+    [JsonPropertyName("sfx")]
+    public string Sfx { get; set; } = "";
+
+    /// <summary>攻击者侧特效（damage，如出手投掷物）（编辑器顶层字段；params.attacker_vfx 亦可）。</summary>
+    [JsonPropertyName("attacker_vfx")]
+    public string AttackerVfx { get; set; } = "";
+
+    /// <summary>多段打击（damage）：总伤害 = 数值 × 段数，每段各带打击特效（params.hit_count 亦可）。</summary>
+    [JsonPropertyName("hit_count")]
+    public decimal? HitCount { get; set; }
+
     /// <summary>延迟效果（delayed）：持续回合数（>=1）。</summary>
     [JsonPropertyName("turns")]
     public decimal? Turns { get; set; }
@@ -127,6 +146,7 @@ public sealed class SfEffect
         "spawn" => SfEffectKind.Spawn,
         "summon" => SfEffectKind.Summon,
         "delayed" => SfEffectKind.Delayed,
+        "vfx" => SfEffectKind.Vfx,
         _ => SfEffectKind.Custom,
     };
 
@@ -145,6 +165,9 @@ public sealed class SfEffect
             "card_entry" => CardEntry,
             "pile" => Pile,
             "monster" => Monster,
+            "vfx" => Vfx,
+            "sfx" => Sfx,
+            "attacker_vfx" => AttackerVfx,
             _ => "",
         };
     }
@@ -168,6 +191,7 @@ public sealed class SfEffect
         {
             "hp" => Hp,
             "turns" => Turns,
+            "hit_count" => HitCount,
             _ => null,
         };
     }

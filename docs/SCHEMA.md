@@ -137,10 +137,26 @@ mod 怪物、mod 卡牌会出现在效果下拉框中并带 `MOD` 徽章；文�
 | `spawn` | `amount`, `card_entry: string`, `pile?` | `ICombatState.CreateCard` + `CardPileCmd.AddGeneratedCardToCombat` | 生成卡牌，见下 |
 | `summon` | `amount`, `monster: string`, `hp?` | `CreatureCmd.Add`（随机遭遇站位落位） | 召唤敌人，见下 |
 | `delayed` | `turns: number`, `timing?`, `every_turn?`, `effects: SfEffect[]` | `SfDelayedPower`（承载力量） | 延迟效果，见下 |
+| `vfx` | `vfx: string`, `target?` | `VfxCmd`（内置）或直接实例化（res:// 场景） | 播放视觉特效（纯演出），见下 |
 | `custom` | `handler: string`, `amount?`, `target?`, `params?` | 由处理器定义 | 见下方「自定义效果」 |
 
 `damage.target` 只在钩子上下文生效（打出时永远以玩家指定目标为准）：
 `random_enemy`（默认，游戏 CombatTargets RNG 与 Tingsha 同款）/ `self` / `all_enemies`。
+
+**damage 动画演出（2026-10-06 起）**：可选 `vfx`（打击特效）/ `sfx`（打击音效）/
+`attacker_vfx`（攻击者侧特效，如投掷物）/ `hit_count`（多段）。打出时整体走游戏原生
+`DamageCmd.Attack` 编排（与原版攻击卡同款：攻击者前摇动画 + 打击特效），钩子触发与原版
+Tingsha 同款直结、仅显式请求特效/多段时才编排；`Unblockable` 等 AttackCommand 表达不了的
+props 自动回落直结 + 特效另补。`sfx` 以 `event:` 开头走 FMOD 事件，其余按音频文件名
+（如 `blunt_attack.mp3`）临时播放。`hit_count > 1` 时总伤害 = 数值 × 段数（升级加的是每段）。
+
+**vfx（播放视觉特效）**：`vfx` = 特效 spec——友好名（`attack_slash`/`attack_blunt`/
+`cross_heal`/`lightning`/`coin_explosion_regular`…，目录见 `spireforge-catalog.json` 的
+`vfx` 段）、`vfx/vfx_x` 内路径、或 `res://<modId>/vfx/x.tscn` 完整路径（mod 自带特效）。
+`target`：`random_enemy`（默认）/ `all_enemies`（敌人阵营中心一次）/ `self` /
+`side_enemy` / `side_player` / `screen`。目录 = VfxCmd consts + 游戏程序集里全部
+`*Vfx` 节点类（反射，随游戏更新自动扩展）+ mods/*/{vfx} 松散场景。纯演出不改数值，
+卡面描述不生成对应文本。
 
 **power（施加增益/减益）**：
 - `power` = 力量名：`Vulnerable` / `Weak` / `Poison` / `Strength` / `Focus` 等——

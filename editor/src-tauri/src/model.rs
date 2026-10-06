@@ -86,9 +86,29 @@ pub enum EffectDef {
         /// 钩子上下文取敌：self / random_enemy / all_enemies（默认 random_enemy）
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
+        /// 打击特效：VfxCmd 友好名（attack_blunt）/ vfx/… 内路径 / res://… mod 场景
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        vfx: Option<String>,
+        /// 打击音效："event:/sfx/…"（FMOD）或音频文件名（blunt_attack.mp3）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sfx: Option<String>,
+        /// 攻击者侧特效（出手演出，如投掷物）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attacker_vfx: Option<String>,
+        /// 多段打击：总伤害 = 数值 × 段数，每段各带打击特效
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hit_count: Option<f64>,
         /// 升级增量（升级时对绑定变量 UpgradeValueBy）；缺省/0 = 回落 upgrades.* 旧通道
         #[serde(default, skip_serializing_if = "is_zero_f64")]
         upgrade_amount: f64,
+    },
+    /// 播放视觉特效（纯演出，不影响数值）：vfx = 特效名/vfx内路径/res://路径，
+    /// target：random_enemy（默认）/ all_enemies（阵营中心）/ self / screen / side_enemy / side_player
+    Vfx {
+        #[serde(default)]
+        vfx: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<String>,
     },
     /// 获得格挡（BlockVar）
     Block {

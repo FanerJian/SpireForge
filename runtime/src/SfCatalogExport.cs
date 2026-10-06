@@ -131,6 +131,18 @@ public static class SfCatalogExport
                 });
             }
 
+            // 视觉特效目录：游戏内置（VfxCmd consts + *Vfx 节点反射）+ mod 松散场景（mods/*/vfx/**.tscn）
+            var vfx = new List<object>();
+            var modsRoot = Path.GetDirectoryName(Path.GetDirectoryName(typeof(SfCatalogExport).Assembly.Location));
+            foreach (var v in SfVfx.BuiltIn.Take(MaxPerKind))
+            {
+                vfx.Add(new { name = v.Name, path = v.Path, source = v.Source });
+            }
+            foreach (var v in SfVfx.ModScenes(modsRoot ?? "").Take(MaxPerKind))
+            {
+                vfx.Add(new { name = v.Name, path = v.Path, source = v.Source });
+            }
+
             var catalog = new
             {
                 format_version = 1,
@@ -140,6 +152,7 @@ public static class SfCatalogExport
                 monsters,
                 cards,
                 custom_effects = customs,
+                vfx,
             };
             var options = new System.Text.Json.JsonSerializerOptions
             {
@@ -154,7 +167,7 @@ public static class SfCatalogExport
             tempPath = null;
             SfLog.Info("catalog: exported " + powers.Count + " power(s), " + monsters.Count +
                        " monster(s), " + cards.Count + " card(s), " + customs.Count +
-                       " custom effect(s) to " + targetPath);
+                       " custom effect(s), " + vfx.Count + " vfx to " + targetPath);
         }
         catch (Exception e)
         {

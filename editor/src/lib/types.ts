@@ -30,7 +30,21 @@ export interface LocText {
 export const OFFICIAL_RUNTIME_WORKSHOP_ID = 3812654552;
 
 export type EffectDef =
-  | { kind: 'damage'; amount: number; props: string[]; target?: string; upgrade_amount?: number }
+  | {
+      kind: 'damage';
+      amount: number;
+      props: string[];
+      target?: string;
+      /** 打击特效（VfxCmd 友好名 / vfx内路径 / res://mod场景；空 = 游戏默认受击表现） */
+      vfx?: string;
+      /** 打击音效："event:/sfx/…"（FMOD）或音频文件名（blunt_attack.mp3） */
+      sfx?: string;
+      /** 攻击者侧特效（出手演出，如投掷物） */
+      attacker_vfx?: string;
+      /** 多段打击：总伤害 = 数值 × 段数 */
+      hit_count?: number;
+      upgrade_amount?: number;
+    }
   | { kind: 'block'; amount: number; props: string[]; upgrade_amount?: number }
   | { kind: 'draw'; amount: number; upgrade_amount?: number }
   | { kind: 'energy'; amount: number; upgrade_amount?: number }
@@ -44,6 +58,7 @@ export type EffectDef =
   | { kind: 'spawn'; amount: number; card_entry: string; pile?: string; upgrade_amount?: number }
   | { kind: 'summon'; amount: number; monster: string; hp?: number; upgrade_amount?: number }
   | { kind: 'delayed'; turns: number; timing?: 'turn_start' | 'turn_end'; every_turn?: boolean; effects?: EffectDef[] }
+  | { kind: 'vfx'; vfx: string; target?: string }
   | { kind: 'custom'; handler: string; amount?: number; target?: string; params?: Record<string, unknown> };
 
 /** 生命周期钩子字段名（与 CardDef 上的可选 EffectDef[] 字段一致） */
@@ -185,6 +200,13 @@ export interface RuntimeCustomEffect {
   desc_en: string;
 }
 
+/** 视觉特效条目（游戏内置 VfxCmd 与各 Vfx 节点类 + mod 目录下的松散场景） */
+export interface RuntimeVfx {
+  name: string;
+  path: string;
+  source: string;
+}
+
 /** 游戏内容目录（mods/SpireForgeRuntime/spireforge-catalog.json；读取失败时为 null） */
 export interface RuntimeCatalog {
   language: string;
@@ -194,6 +216,8 @@ export interface RuntimeCatalog {
   cards: RuntimeCard[];
   /** Runtime < 0.1.7 没有此段（旧目录文件读取后为 undefined） */
   custom_effects?: RuntimeCustomEffect[];
+  /** Runtime < 0.1.8 没有此段（旧目录文件读取后为 undefined） */
+  vfx?: RuntimeVfx[];
 }
 
 export function newCard(id: string): CardDef {

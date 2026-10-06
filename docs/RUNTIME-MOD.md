@@ -31,6 +31,8 @@ Godot 源生成器缺失 → 引擎回调（`ResourceFormatLoader._Load` 等 GDV
 | `SfEffectEngine.cs` | 静态效果解释器：SfCardBase 与原版卡覆盖（Harmony 前缀）共用同一执行逻辑 |
 | `SfVanillaOverride.cs` | 原版卡覆盖：改模板费用/类型/稀有度/目标/数值 + Harmony 替换 OnPlay/OnUpgrade + 生命周期钩子（on_draw 等，沿继承链补声明方法） |
 | `SfBuiltinEffects.cs` | 内置可组合自定义效果：sf_repeat/sf_random/sf_cond（无需写 mod 的"自定义特效"，Docs 表供目录导出） |
+| `SfVfx.cs` | 视觉特效解析/目录/播放：友好名 + vfx内路径 + res:// mod 场景；内置目录 = VfxCmd consts + *Vfx 节点反射 |
+| `SfAttacks.cs` | 伤害编排：打出走 DamageCmd.Attack（打击特效/音效/多段/攻击者特效），钩子默认 Tingsha 直结；异常回落直结 |
 | `SfEffects.cs` | 对外扩展 API（`SpireForge.Api`）：自定义效果注册表、卡包查询、日志 |
 | `SfEvents.cs` | 对外扩展 API：生命周期事件总线（BeforeEffect/AfterEffect/CardGranted，订阅者异常隔离） |
 | `SfGrant.cs` | 「添加至卡组」文件桥：sf_grant.json 排队、Runtime 每帧轮询即时消费（战斗外入组 / 战斗中额外塞手牌；启动时清上个会话的遗留清单，登记不跨会话） |

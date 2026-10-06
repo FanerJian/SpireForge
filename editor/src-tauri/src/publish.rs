@@ -422,6 +422,9 @@ fn check_effect_refs(card_id: &str, fx: &EffectDef, issues: &mut Vec<String>) {
         EffectDef::Summon { monster, .. } if monster.trim().is_empty() => {
             issues.push(format!("卡 {card_id} 的召唤效果未填怪物名（运行时会跳过）"));
         }
+        EffectDef::Vfx { vfx, .. } if vfx.trim().is_empty() => {
+            issues.push(format!("卡 {card_id} 的播放特效未填特效名（运行时会跳过）"));
+        }
         EffectDef::Delayed { turns, effects, .. } => {
             if *turns < 1 {
                 issues.push(format!(
@@ -650,6 +653,17 @@ mod tests {
             ..CardDef::default()
         };
         card.effects = vec![
+            EffectDef::Damage {
+                amount: 8.0,
+                props: vec!["Move".into()],
+                target: None,
+                vfx: Some("attack_blunt".into()),
+                sfx: Some("blunt_attack.mp3".into()),
+                attacker_vfx: None,
+                hit_count: Some(2.0),
+                upgrade_amount: 0.0,
+            },
+            EffectDef::Vfx { vfx: "vfx/vfx_chain".into(), target: Some("screen".into()) },
             EffectDef::Discard { amount: 1.0, upgrade_amount: 0.0 },
             EffectDef::Exhaust { amount: 2.0, upgrade_amount: 0.0 },
             EffectDef::Gold { amount: 10.0, upgrade_amount: 0.0 },
@@ -688,26 +702,34 @@ mod tests {
         let v = serde_json::to_value(&card).unwrap();
 
         // kind 蛇形命名与 Runtime 端 SfEffect.Kind 解析一致
-        assert_eq!(v["effects"][0]["kind"], "discard");
-        assert_eq!(v["effects"][3]["kind"], "lose_hp");
-        assert_eq!(v["effects"][5]["kind"], "power");
-        assert_eq!(v["effects"][5]["power"], "Vulnerable");
+        assert_eq!(v["effects"][2]["kind"], "discard");
+        assert_eq!(v["effects"][5]["kind"], "lose_hp");
+        assert_eq!(v["effects"][7]["kind"], "power");
+        assert_eq!(v["effects"][7]["power"], "Vulnerable");
         assert!(
             v["effects"][5].get("target").is_none(),
             "target=None 不序列化（=打出目标）"
         );
-        assert_eq!(v["effects"][6]["kind"], "spawn");
-        assert_eq!(v["effects"][6]["card_entry"], "BASH");
-        assert_eq!(v["effects"][6]["pile"], "draw");
-        assert_eq!(v["effects"][7]["kind"], "summon");
-        assert_eq!(v["effects"][7]["monster"], "DampCultist");
-        assert_eq!(v["effects"][7]["hp"], json!(13.0));
+        assert_eq!(v["effects"][8]["kind"], "spawn");
+        assert_eq!(v["effects"][8]["card_entry"], "BASH");
+        assert_eq!(v["effects"][8]["pile"], "draw");
+        assert_eq!(v["effects"][9]["kind"], "summon");
+        assert_eq!(v["effects"][9]["monster"], "DampCultist");
+        assert_eq!(v["effects"][9]["hp"], json!(13.0));
+        // damage 打击特效字段透传；vfx 种类（纯演出）
+        assert_eq!(v["effects"][0]["kind"], "damage");
+        assert_eq!(v["effects"][0]["vfx"], "attack_blunt");
+        assert_eq!(v["effects"][0]["sfx"], "blunt_attack.mp3");
+        assert_eq!(v["effects"][0]["hit_count"], json!(2.0));
+        assert_eq!(v["effects"][1]["kind"], "vfx");
+        assert_eq!(v["effects"][1]["vfx"], "vfx/vfx_chain");
+        assert_eq!(v["effects"][1]["target"], "screen");
         // delayed：蛇形 kind + turns/timing/effects 透传（Runtime SfEffect 同名 JSON 字段）
-        assert_eq!(v["effects"][8]["kind"], "delayed");
-        assert_eq!(v["effects"][8]["turns"], json!(2));
-        assert_eq!(v["effects"][8]["timing"], "turn_end");
-        assert_eq!(v["effects"][8]["every_turn"], json!(false));
-        assert_eq!(v["effects"][8]["effects"][0]["kind"], "block");
+        assert_eq!(v["effects"][10]["kind"], "delayed");
+        assert_eq!(v["effects"][10]["turns"], json!(2));
+        assert_eq!(v["effects"][10]["timing"], "turn_end");
+        assert_eq!(v["effects"][10]["every_turn"], json!(false));
+        assert_eq!(v["effects"][10]["effects"][0]["kind"], "block");
         // 多池
         assert_eq!(v["pools"], json!(["ironclad", "silent"]));
         // 单池卡不序列化 pools（向后兼容）
@@ -721,16 +743,21 @@ mod tests {
             back.pools,
             vec!["ironclad".to_string(), "silent".to_string()]
         );
-        assert!(matches!(&back.effects[0], EffectDef::Discard { amount, .. } if *amount == 1.0));
-        assert!(matches!(&back.effects[3], EffectDef::LoseHp { amount, upgrade_amount } if *amount == 3.0 && *upgrade_amount == 2.0));
+        assert!(matches!(
+            &back.effects[0],
+            EffectDef::Damage { vfx: Some(vfx), sfx: Some(sfx), hit_count: Some(2.0), .. }
+            if vfx == "attack_blunt" && sfx == "blunt_attack.mp3"
+        ));
+        assert!(matches!(&back.effects[2], EffectDef::Discard { amount, .. } if *amount == 1.0));
+        assert!(matches!(&back.effects[5], EffectDef::LoseHp { amount, upgrade_amount } if *amount == 3.0 && *upgrade_amount == 2.0));
         assert!(
-            matches!(&back.effects[5], EffectDef::Power { power, .. } if power == "Vulnerable")
+            matches!(&back.effects[7], EffectDef::Power { power, .. } if power == "Vulnerable")
         );
         assert!(
-            matches!(&back.effects[7], EffectDef::Summon { monster, hp: Some(h), .. } if monster == "DampCultist" && *h == 13.0)
+            matches!(&back.effects[9], EffectDef::Summon { monster, hp: Some(h), .. } if monster == "DampCultist" && *h == 13.0)
         );
         assert!(matches!(
-            &back.effects[8],
+            &back.effects[10],
             EffectDef::Delayed { turns: 2, timing: Some(t), every_turn: false, effects }
             if t == "turn_end" && effects.len() == 1
         ));

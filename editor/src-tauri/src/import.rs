@@ -210,7 +210,7 @@ fn import_object(v: Value, _outer_notes: &mut Vec<String>) -> Result<Partial, St
             if let Some(kind) = e.get("kind").or_else(|| e.get("type")).and_then(|k| k.as_str()) {
                 let amount = e.get("amount").or_else(|| e.get("value")).and_then(|a| a.as_f64()).unwrap_or(0.0);
                 match kind.to_ascii_lowercase().as_str() {
-                    "damage" => effects.push(EffectDef::Damage { amount, props: vec!["Move".into()], target: None, upgrade_amount: 0.0 }),
+                    "damage" => effects.push(EffectDef::Damage { amount, props: vec!["Move".into()], target: None, vfx: None, sfx: None, attacker_vfx: None, hit_count: None, upgrade_amount: 0.0 }),
                     "block" => effects.push(EffectDef::Block { amount, props: vec!["Move".into()], upgrade_amount: 0.0 }),
                     "draw" | "cards" => effects.push(EffectDef::Draw { amount: amount as i64, upgrade_amount: 0.0 }),
                     "energy" => effects.push(EffectDef::Energy { amount, upgrade_amount: 0.0 }),
@@ -231,7 +231,7 @@ fn import_object(v: Value, _outer_notes: &mut Vec<String>) -> Result<Partial, St
         }
     } else {
         if let Some(n) = pick_num(&v, &["damage", "dmg"]) {
-            effects.push(EffectDef::Damage { amount: n, props: vec!["Move".into()], target: None, upgrade_amount: 0.0 });
+            effects.push(EffectDef::Damage { amount: n, props: vec!["Move".into()], target: None, vfx: None, sfx: None, attacker_vfx: None, hit_count: None, upgrade_amount: 0.0 });
         }
         if let Some(n) = pick_num(&v, &["block", "blockAmount"]) {
             effects.push(EffectDef::Block { amount: n, props: vec!["Move".into()], upgrade_amount: 0.0 });

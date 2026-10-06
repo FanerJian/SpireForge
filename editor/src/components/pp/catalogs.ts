@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/tauri';
 import type {
   CardDef, CardType, RuntimeCatalog, RuntimeCustomEffect, RuntimeMonster, RuntimePower,
-  VanillaCatalog, VanillaEntry,
+  RuntimeVfx, VanillaCatalog, VanillaEntry,
 } from '../../lib/types';
 import type { ComboItem } from '../Combobox';
 import { MONSTERS } from '../../lib/monsters';
@@ -166,6 +166,42 @@ export function buildHandlerCombo(lang: Lang, runtime: RuntimeCatalog | null): C
   }
   for (const h of BUILTIN_CUSTOM_HANDLERS) {
     push(h, lang === 'en' ? 'Built-in' : '内置');
+  }
+  return items;
+}
+
+// ---- 视觉特效（VfxCmd / mod 场景）----
+
+/** 内置特效兜底表（官方高频项；Runtime ≥ 0.1.8 的目录会带全量并含 mod 场景） */
+const BUILTIN_VFX: RuntimeVfx[] = [
+  'attack_slash', 'attack_blunt', 'attack_lightning', 'heavy_blunt', 'dramatic_stab',
+  'flying_slash', 'giant_horizontal_slash', 'bite', 'scratch', 'thrash',
+  'cross_heal', 'block', 'coin_explosion_small', 'coin_explosion_regular', 'coin_explosion_jumbo',
+  'dagger_throw', 'dagger_spray', 'chain', 'gaze', 'scream', 'spooky_scream',
+  'bloody_impact', 'rock_shatter', 'sandy_impact', 'slime_impact', 'starry_impact', 'adrenaline',
+].map((n) => ({ name: n, path: `vfx/vfx_${n}`, source: 'sts2' }));
+
+/** 特效下拉：目录快照（内置全量 + mod 松散场景）优先，官方高频兜底表去重合并 */
+export function buildVfxCombo(lang: Lang, runtime: RuntimeCatalog | null): ComboItem[] {
+  const items: ComboItem[] = [];
+  const seen = new Set<string>();
+  const push = (v: RuntimeVfx, badge: string) => {
+    if (!v.name || seen.has(v.name.toLowerCase())) return;
+    seen.add(v.name.toLowerCase());
+    items.push({
+      value: v.name,
+      primary: v.name,
+      secondary: v.source === 'sts2' ? undefined : v.path,
+      badge,
+      badgeTone: badge === 'MOD' ? ('neutral' as const) : ('safe' as const),
+      keywords: [v.name, v.path, v.source].filter(Boolean).join(' '),
+    });
+  };
+  for (const v of runtime?.vfx ?? []) {
+    push(v, v.source === 'sts2' ? (lang === 'en' ? 'Built-in' : '内置') : 'MOD');
+  }
+  for (const v of BUILTIN_VFX) {
+    push(v, lang === 'en' ? 'Built-in' : '内置');
   }
   return items;
 }

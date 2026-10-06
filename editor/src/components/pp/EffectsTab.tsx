@@ -8,7 +8,7 @@ import type { CardDef, EffectDef } from '../../lib/types';
 import {
   CORE_KINDS, EXTRA_KINDS, NEEDS_CHOICE, defaultEffect,
 } from '../../lib/effects';
-import { buildMonsterCombo, buildPowerCombo, buildSpawnCombo, modMonsters, modPowers, useRuntimeCatalog, useVanillaCatalog } from './catalogs';
+import { buildMonsterCombo, buildPowerCombo, buildSpawnCombo, buildVfxCombo, modMonsters, modPowers, useRuntimeCatalog, useVanillaCatalog } from './catalogs';
 import { useAppendHookDescription, useGenDescription } from './useDescription';
 import { CustomEffectBody, DelayedEffectBody, StandardEffectBody, effectMetaOf } from './effectEditors';
 
@@ -32,6 +32,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
     () => buildSpawnCombo({ cards, excludeId: card.id, packId: meta?.pack_id ?? '', vanilla, runtime, lang }),
     [cards, vanilla, runtime, lang, meta?.pack_id, card.id],
   );
+  const vfxCombo = useMemo(() => buildVfxCombo(lang, runtime), [lang, runtime]);
 
   const list: EffectDef[] = trigger === 'play' ? card.effects : (card[trigger] ?? []);
   const setList = (fx: EffectDef[]) => {
@@ -114,6 +115,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
                 e={e as Extract<EffectDef, { kind: 'delayed' }>}
                 patch={rowPatch}
                 powerCombo={powerCombo}
+                vfxCombo={vfxCombo}
               />
             ) : e.kind === 'custom' ? (
               <CustomEffectBody
@@ -130,6 +132,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
                 hookCtx={hookCtx}
                 upgrades={u}
                 powerCombo={powerCombo}
+                vfxCombo={vfxCombo}
                 monsterCombo={monsterCombo}
                 spawnCombo={spawnCombo}
               />

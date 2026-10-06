@@ -241,6 +241,18 @@ const STRINGS: Record<string, L> = {
   'pp.handlerUnregistered': { zh: '目录中没有此名', en: 'not in the catalog' },
   'pp.handlerUnregisteredTitle': { zh: '游戏内容目录里没有这个名字。内置处理器需要 Runtime ≥ 0.1.7；mod 处理器需要对应 mod 已启用并重启游戏，然后切回编辑器窗口自动刷新目录。仍可保存——游戏运行时找不到会记日志并跳过', en: 'Not found in the game catalog. Built-ins need Runtime ≥ 0.1.7; mod handlers need that mod enabled and the game restarted (refocus this window to refresh). Saving is still allowed — unknown names are logged and skipped at runtime' },
   'pp.builtinHint': { zh: '内置处理器（无需写 mod）：sf_repeat = 内嵌清单重复 N 次 · sf_random = 内嵌清单随机执行 pick 条 · sf_cond = when 条件成立时执行内嵌清单。选中即自动填好 params 模板；mod 注册的处理器在启用 mod 并重启游戏后出现在下拉里', en: 'Built-in handlers (no mod needed): sf_repeat = run inner list N times · sf_random = run pick random entries from the inner list · sf_cond = run the inner list when when-conditions hold. Selecting one prefills params; mod-registered handlers appear after enabling the mod and restarting the game' },
+  'pp.vfxLabel': { zh: '特效', en: 'VFX' },
+  'pp.vfxSearch': { zh: '搜索特效（内置/mod），或输入 res:// 路径', en: 'search VFX (built-in/mod), or type a res:// path' },
+  'pp.vfxTargetRandom': { zh: '随机敌人', en: 'Random enemy' },
+  'pp.vfxTargetAll': { zh: '每个敌人', en: 'Each enemy' },
+  'pp.vfxTargetSideEnemy': { zh: '敌人阵营中心', en: 'Enemy side center' },
+  'pp.vfxTargetSidePlayer': { zh: '我方阵营中心', en: 'Player side center' },
+  'pp.vfxTargetScreen': { zh: '全屏', en: 'Full screen' },
+  'pp.hitVfx': { zh: '打击特效', en: 'Hit VFX' },
+  'pp.hitCount': { zh: '段数', en: 'Hits' },
+  'pp.hitSfx': { zh: '音效', en: 'SFX' },
+  'pp.hitSfxPh': { zh: 'blunt_attack.mp3 或 event:/…', en: 'blunt_attack.mp3 or event:/…' },
+  'pp.hitVfxHint': { zh: '打击特效/音效只改演出，不改数值；留空 = 游戏默认受击表现。段数 = 每次打 N 段（总伤害 = 数值 × 段数，升级加的是每段数值），描述请手写总伤。卡包里的特效来自游戏内置目录；mod 自带特效填 res://包名/vfx/特效.tscn', en: 'Hit VFX/SFX change presentation only; leave empty for the vanilla hit reaction. Hits = play N segments per attack (total = amount × hits; upgrades apply per segment), write the total in the description yourself. Built-in VFX come from the game catalog; mod VFX take a res://modid/vfx/name.tscn path' },
   'pp.amount': { zh: '数值', en: 'Amount' },
   'pp.amountOpt': { zh: '可选 · 含义由处理器定义', en: 'optional · meaning defined by the handler' },
   'pp.params': { zh: 'params（JSON）', en: 'params (JSON)' },
@@ -456,6 +468,7 @@ export const EFFECT_META: Record<string, { label: L; varName: string; desc: L }>
   summon: { label: { zh: '召唤敌人', en: 'Summon enemy' }, varName: '', desc: { zh: '在对面召唤一只怪物（下拉含全部游戏怪物官方中文译名；不填生命用原生值）', en: 'Summon a monster on the enemy side (the dropdown lists every game monster with its official Chinese name; leave HP empty to use its native range)' } },
   delayed: { label: { zh: '延迟·下几回合', en: 'Delayed (next N turns)' }, varName: '', desc: { zh: '打出后，接下来 N 个回合的每回合开始/结束时执行内嵌效果；触发方式也可改为等 N 回合后仅触发一次', en: 'After playing, run the nested effects at the start/end of each of the next N turns — or only once, on the final turn' } },
   custom: { label: { zh: '自定义', en: 'Custom' }, varName: '', desc: { zh: '内置处理器（sf_repeat/sf_random/sf_cond）或 mod 注册的处理器（SfEffects 注册表）', en: 'Built-in handlers (sf_repeat/sf_random/sf_cond) or mod-registered handlers (SfEffects registry)' } },
+  vfx: { label: { zh: '播放特效', en: 'Play VFX' }, varName: '', desc: { zh: '纯视觉演出：在目标/阵营/全屏播放游戏内置或 mod 自带的特效，不影响数值', en: 'Visual only: play a built-in or mod VFX on target / side / screen, no gameplay effect' } },
 };
 
 /** 效果触发时机 */

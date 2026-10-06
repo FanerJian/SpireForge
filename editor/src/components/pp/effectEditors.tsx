@@ -73,8 +73,8 @@ function HookTargetSelect({ value, onChange, width = 'w-36' }: {
 }
 
 /** 延迟效果编辑器：回合数/触发时机/触发方式 + 内嵌效果清单 */
-export function DelayedEffectBody({ e, patch, powerCombo }: {
-  e: DelayedDef; patch: RowPatch; powerCombo: ComboItem[];
+export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo }: {
+  e: DelayedDef; patch: RowPatch; powerCombo: ComboItem[]; vfxCombo: ComboItem[];
 }) {
   const t = useT();
   const lang = useLang();
@@ -156,6 +156,17 @@ export function DelayedEffectBody({ e, patch, powerCombo }: {
                   value={(inner as { target?: string }).target ?? 'random_enemy'}
                   onChange={(v) => setInner(j, { target: v } as Partial<EffectDef>)}
                   width="w-32"
+                />
+              )}
+              {inner.kind === 'vfx' && (
+                <Combobox
+                  value={(inner as { vfx: string }).vfx}
+                  items={vfxCombo}
+                  onChange={(v) => setInner(j, { vfx: v } as Partial<EffectDef>)}
+                  fallbackDisplay={(inner as { vfx: string }).vfx}
+                  searchPlaceholder={t('pp.vfxSearch')}
+                  allowRaw
+                  rawLabel={(raw) => t('pp.useRaw', { v: raw })}
                 />
               )}
               <button
@@ -300,7 +311,7 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
 }
 
 /** 标准效果（delayed/custom 以外全部）：数值/力量/生成/召唤/目标/不受 buff/升级增量 */
-export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, monsterCombo, spawnCombo }: {
+export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, vfxCombo, monsterCombo, spawnCombo }: {
   e: EffectDef;
   patch: RowPatch;
   updateCard: (patch: Partial<CardDef>) => void;
@@ -308,6 +319,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
   hookCtx: boolean;
   upgrades: UpgradeDef;
   powerCombo: ComboItem[];
+  vfxCombo: ComboItem[];
   monsterCombo: ComboItem[];
   spawnCombo: ComboItem[];
 }) {
@@ -317,6 +329,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
 
   return (
     <div className="mt-2 space-y-2">
+      {e.kind !== 'vfx' && (
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.amount')}</span>
         <NumInput
@@ -403,6 +416,64 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
           </label>
         )}
       </div>
+      )}
+      {e.kind === 'vfx' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.vfxLabel')}</span>
+          <Combobox
+            value={(e as { vfx: string }).vfx}
+            items={vfxCombo}
+            onChange={(v) => patch({ vfx: v } as Partial<EffectDef>)}
+            fallbackDisplay={(e as { vfx: string }).vfx}
+            searchPlaceholder={t('pp.vfxSearch')}
+            allowRaw
+            rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+          />
+          <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
+          <select
+            className={selectCls + ' w-40'}
+            value={(e as { target?: string }).target ?? 'random_enemy'}
+            onChange={(ev) => patch({ target: ev.target.value } as Partial<EffectDef>)}
+          >
+            <option value="random_enemy">{t('pp.vfxTargetRandom')}</option>
+            <option value="all_enemies">{t('pp.vfxTargetAll')}</option>
+            <option value="self">{t('pp.targetSelf')}</option>
+            <option value="side_enemy">{t('pp.vfxTargetSideEnemy')}</option>
+            <option value="side_player">{t('pp.vfxTargetSidePlayer')}</option>
+            <option value="screen">{t('pp.vfxTargetScreen')}</option>
+          </select>
+        </div>
+      )}
+      {e.kind === 'damage' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.hitVfx')}</span>
+            <Combobox
+              value={(e as { vfx?: string }).vfx ?? ''}
+              items={vfxCombo}
+              onChange={(v) => patch({ vfx: v || undefined } as Partial<EffectDef>)}
+              fallbackDisplay={(e as { vfx?: string }).vfx ?? ''}
+              searchPlaceholder={t('pp.vfxSearch')}
+              allowRaw
+              rawLabel={(raw) => t('pp.useRaw', { v: raw })}
+            />
+            <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitCount')}</span>
+            <NumInput
+              width="w-16"
+              value={(e as { hit_count?: number }).hit_count ?? 1}
+              onCommit={(n) => patch({ hit_count: (n ?? 1) > 1 ? Math.round(n!) : undefined } as Partial<EffectDef>)}
+            />
+            <span className="whitespace-nowrap text-xs text-slate-400">{t('pp.hitSfx')}</span>
+            <input
+              className={inputCls + ' w-44 font-mono text-xs'}
+              placeholder={t('pp.hitSfxPh')}
+              value={(e as { sfx?: string }).sfx ?? ''}
+              onChange={(ev) => patch({ sfx: ev.target.value || undefined } as Partial<EffectDef>)}
+            />
+          </div>
+          <div className="text-[10px] leading-relaxed text-slate-600">{t('pp.hitVfxHint')}</div>
+        </>
+      )}
       {e.kind === 'power' && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.targetLabel')}</span>
@@ -432,14 +503,14 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-500">{t('pp.upgradeDelta')}</span>
           <NumInput
             value={(e as { upgrade_amount?: number }).upgrade_amount
-              ?? (LEGACY_UPGRADE[e.kind] != null ? u[LEGACY_UPGRADE[e.kind]!] : 0)}
+              ?? (LEGACY_UPGRADE[e.kind] != null ? u?.[LEGACY_UPGRADE[e.kind]!] ?? 0 : 0)}
             onCommit={(n) => {
               // 增量写在本效果上（升级时对绑定变量 UpgradeValueBy）；
               // 旧五通道种类同时清零通道值，避免两处来源互相覆盖
               if (n == null) return;
               patch({ upgrade_amount: n } as Partial<EffectDef>);
               const lk = LEGACY_UPGRADE[e.kind];
-              if (lk && u[lk] !== 0) updateCard({ upgrades: { ...u, [lk]: 0 } });
+              if (lk && (u?.[lk] ?? 0) !== 0) updateCard({ upgrades: { ...u, [lk]: 0 } });
             }}
           />
           {(e.kind === 'spawn' || e.kind === 'summon' || e.kind === 'gold') && (
