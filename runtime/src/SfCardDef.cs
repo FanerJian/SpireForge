@@ -304,8 +304,9 @@ public sealed class SfCardDef
     [JsonPropertyName("on_exhaust")]
     public List<SfEffect> OnExhaust { get; set; } = [];
 
-    /// <summary>战斗开始此牌进入战斗时（在抽牌堆中也会触发；战斗中生成的副本进入战斗堆时同样触发）。
-    /// 引擎自动补 BlockingPlayerChoiceContext，全部内建种类均可用（开局手牌为空，随机弃牌/消耗无牌可选）。</summary>
+    /// <summary>战斗开始时（BeforeCombatStart 钩子，与游戏「战斗开始时」遗物同款）：开局时此牌
+    /// 在牌组/抽牌堆中即触发一次（战斗副本）。引擎自动补 BlockingPlayerChoiceContext，全部内建
+    /// 种类均可用（开局手牌为空，随机弃牌/消耗此时无牌可选）。</summary>
     [JsonPropertyName("on_enter_combat")]
     public List<SfEffect> OnEnterCombat { get; set; } = [];
 

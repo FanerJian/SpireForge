@@ -184,15 +184,19 @@ public abstract class SfCardBase : CardModel
         await RunHook("on_exhaust", TryDef()?.OnExhaust, choiceContext);
     }
 
-    public override async Task AfterCardEnteredCombat(CardModel card)
+    /// <summary>战斗开始时钩子。真实触发点 = BeforeCombatStart（原版「战斗开始时」遗物——
+    /// 锚/Lantern 等全部用它）：RunState.IterateHookListeners 会把**牌组本体与战斗副本各调用一次**，
+    /// 只认战斗副本（PopulateCombatState 克隆副本时设置 DeckVersion），否则开局触发两遍。
+    /// 此前挂在 AfterCardEnteredCombat 上导致开局完全不触发——开局的抽牌堆由
+    /// PlayerCombatState.DrawPile.AddInternal 填充，不走 CardPileCmd.Add，卡片事件不会分发。</summary>
+    public override async Task BeforeCombatStart()
     {
-        if (card != this)
+        var effects = TryDef()?.OnEnterCombat;
+        if (effects == null || effects.Count == 0 || DeckVersion == null)
         {
             return;
         }
-        // 游戏的 AfterCardEnteredCombat 分发不携带 PlayerChoiceContext；
-        // 引擎会自动补 BlockingPlayerChoiceContext，全部内建种类均可用
-        await RunHook("on_enter_combat", TryDef()?.OnEnterCombat, null);
+        await RunHook("on_enter_combat", effects, null);
     }
 
     protected override async Task OnTurnEndInHand(PlayerChoiceContext choiceContext)

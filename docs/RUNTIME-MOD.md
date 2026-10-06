@@ -78,10 +78,11 @@ ContentSorter 用 `type.Assembly` 查 `AssemblyInfo.ModMap`，因此必须额外
 `DynamicVars.X.UpgradeValueBy`，与描述占位符 `{Damage}` 自动联动。
 生命周期钩子（`on_draw`/`on_discard`/`on_exhaust`/`on_enter_combat`/`on_turn_end_in_hand`）
 共用同一解释器，override `AbstractModel.AfterCardXxx` / `CardModel.OnTurnEndInHand`
-并以 `card == this` 自作用过滤；钩子里取敌用
+（`on_enter_combat` 则 override `AbstractModel.BeforeCombatStart`——原版「战斗开始时」
+遗物同款时机）并以 `card == this` 自作用过滤；钩子里取敌用
 `Owner.RunState.Rng.CombatTargets.NextItem(CombatState.HittableEnemies)`
-（与游戏 Tingsha 遗物完全同款）。游戏的 `AfterCardEnteredCombat` 分发不带
-`PlayerChoiceContext`，因此该钩子仅支持 block/heal/energy/custom。
+（与游戏 Tingsha 遗物完全同款）。卡片事件分发不带 `PlayerChoiceContext` 的场合
+（`on_enter_combat`）引擎自动补 `BlockingPlayerChoiceContext`，全部内建种类可用。
 
 ### 6. 原版卡覆盖（SfVanillaOverride）
 游戏自带 `0Harmony.dll`（`data_sts2_windows_x86_64/`，BaseLib 等框架 mod 同样引用它），

@@ -259,7 +259,7 @@ Runtime 常驻注册三个可组合处理器，编辑器的自定义效果下拉
 | `on_draw` | 此牌被抽到时（含开局起手抽牌） | 全部效果 |
 | `on_discard` | 此牌被弃置时 | 全部效果 |
 | `on_exhaust` | 此牌被消耗时（含 Ethereal 消耗） | 全部效果 |
-| `on_enter_combat` | 战斗开始此牌进入战斗时（在抽牌堆中也触发；战斗中生成的副本进堆时同样触发） | 全部内建种类（引擎自动补 `BlockingPlayerChoiceContext`；开局手牌为空，随机弃牌/消耗无牌可选） |
+| `on_enter_combat` | 战斗开始时（`BeforeCombatStart`，与游戏「战斗开始时」遗物同款；开局时在牌组/抽牌堆中即触发一次） | 全部内建种类（引擎自动补 `BlockingPlayerChoiceContext`；开局手牌为空，随机弃牌/消耗无牌可选） |
 | `on_turn_end_in_hand` | 回合结束时若此牌在手中（配合 `Retain` 关键词） | 全部效果 |
 
 ```json

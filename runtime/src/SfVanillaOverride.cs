@@ -227,7 +227,9 @@ public static class SfVanillaOverride
         TryPatchCardEvent(harmony, template, def.OnDraw, "AfterCardDrawn", nameof(EventDrawPrefix));
         TryPatchCardEvent(harmony, template, def.OnDiscard, "AfterCardDiscarded", nameof(EventDiscardPrefix));
         TryPatchCardEvent(harmony, template, def.OnExhaust, "AfterCardExhausted", nameof(EventExhaustPrefix));
-        TryPatchCardEvent(harmony, template, def.OnEnterCombat, "AfterCardEnteredCombat", nameof(EventEnterCombatPrefix));
+        // 战斗开始时 = BeforeCombatStart（原版锚/Lantern 等「战斗开始时」遗物同款）；
+        // 开局的抽牌堆由 DrawPile.AddInternal 填充，AfterCardEnteredCombat 在开局不会分发
+        TryPatchCardEvent(harmony, template, def.OnEnterCombat, "BeforeCombatStart", nameof(EventEnterCombatPrefix));
         if (def.OnTurnEndInHand is { Count: > 0 })
         {
             // OnTurnEndInHand 由 HasTurnEndInHandEffect 属性门控（基类恒 false），两个都要补：
@@ -265,10 +267,12 @@ public static class SfVanillaOverride
         harmony.Patch(declared, prefix: new HarmonyMethod(typeof(SfVanillaOverride), prefixName));
     }
 
-    /// <summary>沿继承链找方法的**声明**实现（Harmony 只接受声明处方法）；getters=true 找属性 getter。</summary>
+    /// <summary>沿继承链找方法的**声明**实现（Harmony 只接受声明处方法）；getters=true 找属性 getter。
+    /// 链条必须走到 AbstractModel——卡片事件（AfterCardDrawn/BeforeCombatStart 等）全都声明在
+    /// AbstractModel 上、CardModel 不重写：只沿 CardModel 链找会全部落空（覆盖卡钩子静默失效）。</summary>
     private static MethodInfo? DeclaredInChain(Type type, string name, bool findGetter)
     {
-        for (var cur = type; cur != null && typeof(CardModel).IsAssignableFrom(cur); cur = cur.BaseType)
+        for (var cur = type; cur != null && typeof(AbstractModel).IsAssignableFrom(cur); cur = cur.BaseType)
         {
             if (findGetter)
             {
@@ -329,9 +333,17 @@ public static class SfVanillaOverride
         AbstractModel __instance, PlayerChoiceContext choiceContext, CardModel card, bool causedByEthereal, ref Task __result)
         => CardEventPrefix(__instance, ref __result, choiceContext, d => d.OnExhaust, "on_exhaust", card);
 
-    private static bool EventEnterCombatPrefix(
-        AbstractModel __instance, CardModel card, ref Task __result)
-        => CardEventPrefix(__instance, ref __result, null, d => d.OnEnterCombat, "on_enter_combat", card);
+    /// <summary>战斗开始时限定的签名：BeforeCombatStart 无参数、按模型逐个调用（牌组本体与战斗副本
+    /// 各来一次）——只认战斗副本（DeckVersion != null，PopulateCombatState 克隆时设置），
+    /// 否则开局触发两遍。非卡牌模型与未覆盖卡照常放行。</summary>
+    private static bool EventEnterCombatPrefix(AbstractModel __instance, ref Task __result)
+    {
+        if (__instance is CardModel { DeckVersion: null })
+        {
+            return true;
+        }
+        return CardEventPrefix(__instance, ref __result, null, d => d.OnEnterCombat, "on_enter_combat");
+    }
 
     private static bool EventTurnEndPrefix(
         AbstractModel __instance, PlayerChoiceContext choiceContext, ref Task __result)
