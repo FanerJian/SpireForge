@@ -108,6 +108,14 @@ public static class SfVanillaOverride
             {
                 ApplyVars(template, def.Stats, absolute: true);
             }
+            var delayedVars = SfDelayedValues.CardValues(def).ToList();
+            if (delayedVars.Count > 0)
+            {
+                var vars = new DynamicVarSet(template.DynamicVars.Values.Concat(
+                    delayedVars.Select(value => (DynamicVar)new IntVar(value.Name, value.Base))));
+                AccessTools.Field(typeof(CardModel), "_dynamicVars").SetValue(template, vars);
+                vars.InitializeWithOwner(template);
+            }
         }
         catch (Exception e)
         {
@@ -131,7 +139,7 @@ public static class SfVanillaOverride
                 harmony.Patch(onPlay, prefix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(PlayPrefix)));
             }
         }
-        if (def.UpgradeStats is { Count: > 0 })
+        if (def.UpgradeStats is { Count: > 0 } || SfDelayedValues.CardValues(def).Any(v => v.Delta != 0))
         {
             var onUpgrade = AccessTools.DeclaredMethod(template.GetType(), "OnUpgrade");
             if (onUpgrade == null)
@@ -140,7 +148,9 @@ public static class SfVanillaOverride
             }
             else
             {
-                harmony.Patch(onUpgrade, prefix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(UpgradePrefix)));
+                harmony.Patch(onUpgrade,
+                    prefix: def.UpgradeStats is { Count: > 0 } ? new HarmonyMethod(typeof(SfVanillaOverride), nameof(UpgradePrefix)) : null,
+                    postfix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(DelayedUpgradePostfix)));
             }
         }
         HookCardEvents(harmony, template, def);
@@ -446,5 +456,10 @@ public static class SfVanillaOverride
             ApplyVars(__instance, def.UpgradeStats, absolute: false);
         }
         return false;
+    }
+
+    private static void DelayedUpgradePostfix(CardModel __instance)
+    {
+        if (Active.TryGetValue(__instance.Id.Entry, out var def)) SfDelayedValues.Upgrade(__instance, def);
     }
 }

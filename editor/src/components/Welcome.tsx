@@ -4,6 +4,7 @@ import { useStore } from '../lib/store';
 import { setLang, useLang, useT } from '../lib/i18n';
 import ProjectLibrary from './ProjectLibrary';
 import BackupRecoveryModal from './BackupRecoveryModal';
+import { Disclosure } from './ui';
 
 // 与后端 project::validate_pack_id 一致：字母开头，字母/数字/下划线，2–64 位
 const PACK_ID_RE = /^[A-Za-z][A-Za-z0-9_]{1,63}$/;
@@ -144,7 +145,7 @@ export default function Welcome() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-gradient-to-b from-[#12121c] to-[#0a0a10] px-6 py-8">
+    <div className="h-full overflow-y-auto bg-[#0c0c12] px-6 py-8">
       <div className="mx-auto grid w-full max-w-[1100px] items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
       <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-2xl">
         <div className="flex items-start justify-between">
@@ -159,11 +160,14 @@ export default function Welcome() {
             {t('app.toEnglish')}
           </button>
         </div>
-        <div className="mb-5 mt-3 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+        <Disclosure title={t('ui.help')} storageKey="welcome.help" className="mb-3 mt-3">
+        <div className="text-[11px] text-slate-500">
           {t('w.guide')}
         </div>
+        </Disclosure>
         {error && <p role="alert" className="mb-4 break-words rounded-lg border border-rose-400/20 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200">{error}</p>}
 
+        <Disclosure title={gameDirHint || t('w.gameOk')} storageKey="welcome.game" defaultOpen={!settings.game_dir} className="mb-4">
         <button
           onClick={detectGame}
           className={`mb-6 flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition ${
@@ -179,6 +183,7 @@ export default function Welcome() {
           </span>
           <span className="shrink-0 pl-2 text-xs opacity-70">{gameDirHint ? t('w.clickConfig') : t('w.clickRedetect')}</span>
         </button>
+        </Disclosure>
 
         {mode === 'none' ? (
           <div className="space-y-3">

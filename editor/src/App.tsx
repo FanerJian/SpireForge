@@ -14,6 +14,7 @@ import { setLang, useLang, useT } from './lib/i18n';
 import { grantEntry } from './lib/entry';
 import { bytesToDataUrl, extOf } from './lib/img';
 import { useAutoUpdateCheck, useUpdateInfo } from './lib/update';
+import { Disclosure } from './components/ui';
 
 function Toast({ msg }: { msg: string }) {
   return (
@@ -158,11 +159,12 @@ function PreviewPane() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-5 overflow-auto bg-[radial-gradient(ellipse_at_center,#1a1a26_0%,#0c0c12_70%)] p-6">
+    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-auto bg-[#0c0c12] p-6">
       {card && meta ? (
         <>
           <CardPreview card={card} packId={meta.pack_id} portraitUrl={portraitUrl} upgraded={upgraded} />
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-500">
+          <Disclosure title={t('ui.previewTools')} storageKey="preview.actions" className="w-full max-w-[360px]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
             <label className="flex items-center gap-1.5 whitespace-nowrap">
               <input type="checkbox" checked={upgraded} onChange={(e) => setUpgraded(e.target.checked)} />
               {t('pv.upgraded')}
@@ -178,6 +180,7 @@ function PreviewPane() {
               {t('pv.entry')}: {grantEntry(card, meta.pack_id)}
             </span>
           </div>
+          </Disclosure>
         </>
       ) : (
         <div className="text-sm text-slate-600">{t('pv.empty')}</div>

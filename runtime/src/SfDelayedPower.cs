@@ -23,8 +23,7 @@ namespace SpireForge.Runtime;
 /// 内嵌效果挂在力量实例上（ConditionalWeakTable，不阻止 GC）；Apply 传入的是本实例
 /// （不克隆），标记先于施加。InstanceType=Instanced：重复打出各建各的实例，互不叠加，
 /// 各自携带各自的内嵌清单与倒计时。
-/// 当回合跳过：打出当回合 AmountOnTurnStart==0（回合开始时尚未施加），钩子里据此
-/// 不触发也不减层——"下 N 回合"从下一回合起算，与卡面文案一致。
+/// 从施加后的下一次匹配时机起算；回合结束效果包含施加当回合的结束时机。
 /// </summary>
 public sealed class SfDelayedPower : PowerModel
 {
@@ -42,6 +41,8 @@ public sealed class SfDelayedPower : PowerModel
         /// <summary>解析后的图标纹理（懒解析一次；null 且 IconTried=失败/无图标）。</summary>
         public Texture2D? IconTex;
         public bool IconTried;
+        public string TextKey = "";
+        public string NameZh = "", NameEn = "", DescriptionZh = "", DescriptionEn = "";
     }
 
     private static readonly ConditionalWeakTable<PowerModel, Payload> Payloads = new();
@@ -59,6 +60,11 @@ public sealed class SfDelayedPower : PowerModel
         get
         {
             EnsureLoc();
+            if (Payloads.TryGetValue(this, out var payload))
+            {
+                EnsurePayloadLoc(payload);
+                return new LocString("powers", payload.TextKey + ".title");
+            }
             return base.Title;
         }
     }
@@ -68,8 +74,23 @@ public sealed class SfDelayedPower : PowerModel
         get
         {
             EnsureLoc();
+            if (Payloads.TryGetValue(this, out var payload))
+            {
+                EnsurePayloadLoc(payload);
+                return new LocString("powers", payload.TextKey + ".description");
+            }
             return base.Description;
         }
+    }
+
+    private static void EnsurePayloadLoc(Payload payload)
+    {
+        var english = LocManager.Instance.Language == "eng";
+        LocManager.Instance.GetTable("powers").MergeWith(new Dictionary<string, string>
+        {
+            [payload.TextKey + ".title"] = english ? payload.NameEn : payload.NameZh,
+            [payload.TextKey + ".description"] = english ? payload.DescriptionEn : payload.DescriptionZh,
+        });
     }
 
     /// <summary>注入力量名/描述词条（幂等；语言切换后表重载，靠 Title/Description 读取路径兜底重注）。</summary>
@@ -105,18 +126,27 @@ public sealed class SfDelayedPower : PowerModel
     public static async Task Schedule(
         ICombatState combat, CardModel source, PlayerChoiceContext? ctx,
         List<SfEffect> effects, int turns, string timing, bool everyTurn, string side,
-        string icon = "")
+        string icon = "", Dictionary<string, string>? buffName = null, Dictionary<string, string>? buffDescription = null)
     {
         var template = ModelDb.Power<SfDelayedPower>().ToMutable();
         var entry = source.Id?.Entry ?? "";
         var pack = PackLoader.PackOf.TryGetValue(entry, out var pk) ? pk
             : SfVanillaOverride.TryPackOfEntry(entry, out var vk) ? vk : "";
-        Payloads.Add(template, new Payload
+        var normalizedTiming = string.Equals(timing?.Trim(), "turn_start", System.StringComparison.OrdinalIgnoreCase) ? "turn_start" : "turn_end";
+        var normalizedSide = (side ?? "").Trim().ToLowerInvariant();
+        var payload = new Payload
         {
-            Card = source, Effects = effects, EveryTurn = everyTurn, Side = side,
-            Timing = string.Equals(timing?.Trim(), "turn_start", System.StringComparison.OrdinalIgnoreCase) ? "turn_start" : "turn_end",
+            Card = source, Effects = effects, EveryTurn = everyTurn, Side = normalizedSide,
+            Timing = normalizedTiming,
             Icon = icon ?? "", Pack = pack,
-        });
+            NameZh = SfDelayedText.Name(buffName, false), NameEn = SfDelayedText.Name(buffName, true),
+            DescriptionZh = SfDelayedText.Description(buffDescription, effects, normalizedTiming, normalizedSide, everyTurn, false),
+            DescriptionEn = SfDelayedText.Description(buffDescription, effects, normalizedTiming, normalizedSide, everyTurn, true),
+        };
+        // 同内容复用词条；不同卡牌、升级数值和自定义文本互不覆盖。
+        var textBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new[] { payload.NameZh, payload.NameEn, payload.DescriptionZh, payload.DescriptionEn });
+        payload.TextKey = LocKey + "_" + System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(textBytes));
+        Payloads.Add(template, payload);
         EnsureLoc();
         await PowerCmd.Apply(
             ctx ?? new ThrowingPlayerChoiceContext(), template, source.Owner.Creature,
@@ -128,7 +158,7 @@ public sealed class SfDelayedPower : PowerModel
     public override async Task BeforeSideTurnStart(
         PlayerChoiceContext choiceContext, CombatSide side, IReadOnlyList<Creature> participants, ICombatState combatState)
     {
-        if (AmountOnTurnStart <= 0 || !Payloads.TryGetValue(this, out var payload) || payload == null)
+        if (Amount <= 0 || !Payloads.TryGetValue(this, out var payload) || payload == null)
         {
             return;
         }
@@ -148,7 +178,7 @@ public sealed class SfDelayedPower : PowerModel
     public override async Task AfterSideTurnEnd(
         PlayerChoiceContext choiceContext, CombatSide side, IEnumerable<Creature> participants)
     {
-        if (AmountOnTurnStart <= 0 || !Payloads.TryGetValue(this, out var payload) || payload == null)
+        if (Amount <= 0 || !Payloads.TryGetValue(this, out var payload) || payload == null)
         {
             return;
         }

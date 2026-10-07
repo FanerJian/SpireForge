@@ -3,6 +3,7 @@ import { api, pickPoolCatalogRaw } from '../lib/tauri';
 import type { CardDef, CustomPoolDef } from '../lib/types';
 import { useStore } from '../lib/store';
 import { useLang } from '../lib/i18n';
+import { Disclosure } from './ui';
 
 export default function CustomPoolSection({ card, onToggle }: { card: CardDef; onToggle: (key: string) => void }) {
   const { meta, cards, settings, updateMeta, showToast } = useStore();
@@ -54,7 +55,7 @@ export default function CustomPoolSection({ card, onToggle }: { card: CardDef; o
     await run(async () => { const valid = await api.importCustomPools(JSON.stringify({ format_version: 1, pools: [pool] })); await merge(valid); setLabel(''); setModId(''); setTypeName(''); setWorkshopId(''); setPreview(null); showToast(zh ? '角色卡池已添加' : 'Character pool added'); });
   };
 
-  return <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+  return <Disclosure title={zh ? '角色卡池' : 'Character pools'} storageKey="basic.custom-pools">
     {all.length > 0 && <div className="flex flex-wrap gap-1">{all.map((p) => <button key={p.key} onClick={() => onToggle(p.key)}
       className={`rounded-md px-2.5 py-1 text-xs font-medium ${selected.includes(p.key) ? 'bg-amber-500/90 text-black' : 'border border-white/10 bg-black/30 text-slate-400 hover:bg-white/10'}`}>
       {p.label}
@@ -67,10 +68,10 @@ export default function CustomPoolSection({ card, onToggle }: { card: CardDef; o
         if (runtime.action === 'installed' || runtime.action === 'updated') { setNote(zh ? 'SpireForgeRuntime 已安装或更新，请重启游戏并进入主菜单后重新读取。' : 'SpireForgeRuntime was installed or updated. Restart the game and reach the main menu, then read again.'); return; }
         await review(JSON.stringify({ format_version: 1, pools: await api.readGamePools() }));
       })} className="rounded border border-white/10 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-50">{zh ? '从游戏读取' : 'Read from game'}</button>
-      <button disabled={busy} onClick={() => run(async () => { const raw = await pickPoolCatalogRaw(); if (raw !== null) await review(raw); })} className="rounded border border-white/10 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-50">{zh ? '导入角色配置 JSON' : 'Import character catalog JSON'}</button>
+      <button disabled={busy} onClick={() => run(async () => { const raw = await pickPoolCatalogRaw(); if (raw !== null) await review(raw); })} className="rounded border border-white/10 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-50">{zh ? '导入配置' : 'Import'}</button>
       <button disabled={busy} onClick={() => setPreview(preview === null ? [] : null)} className="rounded border border-white/10 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-50">{zh ? '手动添加' : 'Add manually'}</button>
     </div>
-    <p className="text-[10px] text-slate-500">{zh ? '仅导入卡池声明，角色专属效果仍需自行适配。' : 'Imports pool declarations only; character-specific effects still need adaptation.'}</p>
+    <Disclosure title={zh ? '说明' : 'Help'} storageKey="basic.custom-pools-help"><p className="text-[10px] text-slate-500">{zh ? '仅导入卡池；专属效果需另行适配。' : 'Imports pools only; custom effects need separate support.'}</p></Disclosure>
     {note && <p role="alert" className="whitespace-pre-wrap text-xs text-rose-300">{note}</p>}
     {preview !== null && <div className="space-y-2 rounded border border-white/10 bg-black/20 p-2">
       {preview.length === 0 ? <div className="grid grid-cols-2 gap-1">
@@ -91,5 +92,5 @@ export default function CustomPoolSection({ card, onToggle }: { card: CardDef; o
       const used = cards.some((c) => c.pool === p.key || c.pools?.includes(p.key));
       return <div key={p.key} className="flex items-center justify-between text-[10px] text-slate-500"><span className="truncate">{p.label} · {p.mod_id}</span><button disabled={used || busy} onClick={() => run(async () => { await updateMeta({ custom_pools: defs.filter((x) => x.key !== p.key) }); })} className="px-1 text-rose-300 disabled:opacity-30">{zh ? '删除' : 'Remove'}</button></div>;
     })}</div>}
-  </div>;
+  </Disclosure>;
 }

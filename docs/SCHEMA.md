@@ -215,8 +215,16 @@ props 自动回落直结 + 特效另补。`sfx` 以 `event:` 开头走 FMOD 事�
 - Runtime 把内嵌清单挂在隐藏承载力量 `SfDelayedPower` 上（玩家可见图标显示剩余回合数，
   `InstanceType=Instanced` 重复打出各建各的实例互不叠加），每次选定时机后减层、到 0 自动移除；
   `every_turn=false` 时其余回合只静默减层，最后一层（Amount==1）的那次时机才执行内嵌清单
-- **打出当回合不触发也不减层**（"下 N 回合"从下一回合起算，与卡面文案一致）
-- 内嵌效果走字面数值，不参与升级变量/描述占位符；战斗结束未消耗完的回合自动消失
+- 从施加后的下一次匹配时机计数；`turn_end` 包含施加当回合的结束，`turn_start` 从下一次匹配的回合开始触发。
+- `upgrade_turns` = 每次升级增加的触发次数（可为负数，最终次数至少为 1）；内嵌数值效果的
+  `upgrade_amount` = 每次升级增量，未填写为 0，不借用打出效果的旧升级通道。
+  Runtime 在施加时递归复制内嵌清单并冻结实际数值；嵌套延迟不重复计算升级，战斗结束自动消失。
+  卡面自动描述使用独立的 `DelayedPlay1Turns` / `DelayedPlay1Effect1Amount` 等变量；
+  钩子用 `DelayedOnDraw1…` 等前缀，避免与打出数值冲突。
+- `buff_name` / `buff_description` = `{ "zhs": "…", "eng": "…" }`；各语言文本留空时自动生成。
+  描述中的 `{Amount}` 表示剩余次数，`{Effect1Amount}` 表示第 1 条内嵌效果的实际数值，
+  `{Effect2Turns}` 表示第 2 条内嵌延迟的触发次数，继续嵌套用 `{Effect2Effect1Amount}`。
+  编辑器支持一键生成中英文模板；修改内嵌种类或顺序后应重新生成。
 - 不需要选择上下文（调度时可无 ctx；触发时用回合钩子的上下文，因此内嵌 damage 可用）
 
 ### 自定义效果（custom —— 第三方扩展接口）

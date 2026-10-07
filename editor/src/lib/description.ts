@@ -1,6 +1,6 @@
 // 卡面描述合成引擎：效果清单 → 中/英描述（含升级占位符变量名推导）。
 // 占位符命名必须与 Runtime SfVarNaming 同规则，否则游戏内升级后描述不更新。
-import { HOOK_FIELDS, type CardDef, type EffectDef, type HookField, type TargetType } from './types';
+import { HOOK_FIELDS, type CardDef, type EffectDef, type HookField, type TargetType, type LocText } from './types';
 import { LEGACY_UPGRADE } from './effects';
 import { POWER_ZH } from './powers';
 import { MONSTER_ZH } from './monsters';
@@ -49,13 +49,30 @@ export function previewEffectVars(card: CardDef, upgraded: boolean): Record<stri
     const shown = String((e as { amount?: number }).amount ?? 0);
     vars[name] = upgraded && up ? `${shown}${up > 0 ? '+' : ''}${up}` : shown;
   });
+  const addDelayed = (list: EffectDef[], prefix: string, nested = false) => list.forEach((e, i) => {
+    const path = prefix + (i + 1);
+    if (e.kind === 'delayed') {
+      const turns = Math.max(1, e.turns + (upgraded ? e.upgrade_turns ?? 0 : 0));
+      vars[path + 'Turns'] = String(turns);
+      addDelayed(e.effects ?? [], path + 'Effect', true);
+    } else if (nested && 'amount' in e) {
+      const delta = upgraded && 'upgrade_amount' in e ? e.upgrade_amount ?? 0 : 0;
+      vars[path + 'Amount'] = String((e.amount ?? 0) + delta);
+    }
+  });
+  addDelayed(card.effects, 'DelayedPlay');
+  HOOK_FIELDS.forEach(h => addDelayed(card[h] ?? [], delayedHookPrefix(h)));
   return vars;
 }
 
 /** 单条效果的描述句。varName 非空时数值走 {占位符}（游戏内升级后自动更新），
  *  否则字面值（钩子效果、失去金币等少数句子）。
  *  xCost=true（X 费卡）按官方惯例给句子带「X次」（串刺/旋风斩/挽歌同款）。 */
-type DescriptionContext = { trigger: 'play' | HookField | 'delayed'; target?: TargetType };
+type DescriptionContext = { trigger: 'play' | HookField | 'delayed'; target?: TargetType; delayedVars?: boolean; templateVars?: boolean };
+
+function delayedHookPrefix(trigger: HookField): string {
+  return 'Delayed' + trigger.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
+}
 
 // 与 Runtime 的目标解析一致：钩子默认随机敌人；打出时先读效果覆盖，再读卡牌目标。
 function resolvedTarget(fx: EffectDef, context: DescriptionContext): string {
@@ -72,7 +89,7 @@ function resolvedTarget(fx: EffectDef, context: DescriptionContext): string {
   return 'selected';
 }
 
-function effectSentence(fx: EffectDef, varName: string | null, xCost: boolean, context: DescriptionContext): { zhs: string; eng: string } {
+function effectSentence(fx: EffectDef, varName: string | null, xCost: boolean, context: DescriptionContext, path: string): { zhs: string; eng: string } {
   const num = (v: string | null, literal: number) => (v ? `{${v}}` : `${literal}`);
   const xzh = xCost ? 'X次' : '';
   const xen = xCost ? ' X times' : '';
@@ -208,9 +225,8 @@ function effectSentence(fx: EffectDef, varName: string | null, xCost: boolean, c
     case 'custom':
       return { zhs: `【${fx.handler || '自定义效果'}】`, eng: `[custom:${fx.handler || '?'}]` };
     case 'delayed': {
-      // 内嵌效果走字面数值（变量属于打出效果，延迟执行不借用）；
-      // effects 可缺失（删空内嵌后 Rust 端不落该字段，老卡包 JSON 里就是没有）
-      const n = Math.max(1, Math.round(fx.turns));
+      const n = context.templateVars || (context.delayedVars && fx.upgrade_turns)
+        ? `{${path}Turns}` : String(Math.max(1, Math.round(fx.turns)));
       const timingZh = fx.timing === 'turn_start' ? '开始' : '结束';
       const timingEn = fx.timing === 'turn_start' ? 'start' : 'end';
       const side = fx.side ?? 'player';
@@ -223,7 +239,8 @@ function effectSentence(fx: EffectDef, varName: string | null, xCost: boolean, c
       const enWhen = fx.every_turn === false
         ? `After ${n} matching turn(s), at the ${timingEn} of the final turn (${sideEn})`
         : `At the ${timingEn} of each of ${upcomingEn}`;
-      const body = composeListDescription(fx.effects ?? [], false, false, { trigger: 'delayed' });
+      const body = composeListDescription(fx.effects ?? [], false, false,
+        { trigger: 'delayed', delayedVars: context.delayedVars, templateVars: context.templateVars }, path + 'Effect');
       if (!body) return { zhs: '', eng: '' };
       const zhOrigin = context.trigger === 'play' ? '打出后，' : '';
       const enOrigin = context.trigger === 'play' ? 'After playing this, ' : '';
@@ -238,11 +255,14 @@ function effectSentence(fx: EffectDef, varName: string | null, xCost: boolean, c
 
 /** 效果清单 → 多行描述；useVars=true（打出效果）时数值型种类用变量占位符，
  *  xCost=true（X 费卡）按官方惯例给数值句带「X次」 */
-function composeListDescription(list: EffectDef[], useVars: boolean, xCost: boolean, context: DescriptionContext): { zhs: string; eng: string } | null {
+function composeListDescription(list: EffectDef[], useVars: boolean, xCost: boolean, context: DescriptionContext, prefix = 'DelayedPlay'): { zhs: string; eng: string } | null {
   const z: string[] = [];
   const e: string[] = [];
   list.forEach((fx, i) => {
-    const s = effectSentence(fx, useVars ? effectVarName(list, i) : null, xCost, context);
+    const path = prefix + (i + 1);
+    const nestedVar = context.trigger === 'delayed' && 'amount' in fx
+      && (context.templateVars || (context.delayedVars && 'upgrade_amount' in fx && fx.upgrade_amount));
+    const s = effectSentence(fx, nestedVar ? path + 'Amount' : useVars ? effectVarName(list, i) : null, xCost, context, path);
     if (s.zhs || s.eng) {
       z.push(s.zhs);
       e.push(s.eng);
@@ -256,7 +276,7 @@ function composeListDescription(list: EffectDef[], useVars: boolean, xCost: bool
  *  X 费卡句子带「X次」；原版覆盖卡的数值是字面语义（Runtime 不绑原版同名变量），
  *  描述也用字面数值，避免游戏内 {Damage} 显示原版旧值。 */
 export function composeDescription(card: CardDef): { zhs: string; eng: string } | null {
-  return composeListDescription(card.effects, !card.vanilla_id, !!card.costs_x, { trigger: 'play', target: card.target });
+  return composeListDescription(card.effects, !card.vanilla_id, !!card.costs_x, { trigger: 'play', target: card.target, delayedVars: true });
 }
 
 /** 钩子触发的描述前缀（官方风格短语，en 尾带空格） */
@@ -269,9 +289,9 @@ const TRIGGER_PREFIX: Record<HookField, { zhs: string; eng: string }> = {
 };
 
 /** 每个时机只加一次前缀；延迟内层不重复外层前缀。 */
-export function composeHookDescription(trigger: HookField, list: EffectDef[]): { zhs: string; eng: string } | null {
+export function composeHookDescription(trigger: HookField, list: EffectDef[], delayedVars = false): { zhs: string; eng: string } | null {
   if (list.length === 0) return null;
-  const body = composeListDescription(list, false, false, { trigger });
+  const body = composeListDescription(list, false, false, { trigger, delayedVars }, delayedHookPrefix(trigger));
   if (!body) return null;
   const p = TRIGGER_PREFIX[trigger];
   return {
@@ -282,8 +302,18 @@ export function composeHookDescription(trigger: HookField, list: EffectDef[]): {
 
 /** 全卡描述统一入口，与当前查看的触发页签无关。 */
 export function composeCardDescription(card: CardDef): { zhs: string; eng: string } | null {
-  const sections = [composeDescription(card), ...HOOK_FIELDS.map((trigger) => composeHookDescription(trigger, card[trigger] ?? []))]
+  const sections = [composeDescription(card), ...HOOK_FIELDS.map((trigger) => composeHookDescription(trigger, card[trigger] ?? [], true))]
     .filter((s): s is { zhs: string; eng: string } => s !== null);
   if (!sections.length) return null;
   return { zhs: sections.map((s) => s.zhs).join('\n'), eng: sections.map((s) => s.eng).join('\n') };
+}
+
+/** Buff 使用独立模板：剩余次数由游戏提供，内嵌数值在施加时替换为升级后的实际值。 */
+export function composeDelayedBuffText(effect: Extract<EffectDef, { kind: 'delayed' }>): { name: LocText; description: LocText } {
+  const text = effectSentence(effect, null, false, { trigger: 'delayed', templateVars: true }, 'Buff');
+  const convert = (s: string) => s.split('{BuffTurns}').join('{Amount}').split('BuffEffect').join('Effect');
+  return {
+    name: { zhs: '延迟效果', eng: 'Delayed effect' },
+    description: { zhs: convert(text.zhs), eng: convert(text.eng) },
+  };
 }

@@ -57,7 +57,8 @@ public sealed class SfEffect
     /// <summary>升级增量：升级时对本效果绑定的变量 UpgradeValueBy 此值（每次升级叠加）。
     /// 0/缺省 = 未单独设置——damage/block/draw/energy/heal 回落 upgrades.* 旧通道，其余种类无升级。
     /// 打出效果全部绑定 DynamicVar（见 SfVarNaming），因此所有内建种类的数值都可升级；
-    /// 钩子效果与 custom 不建变量，本字段不生效。</summary>
+    /// 延迟内嵌效果使用独立升级增量（不回落旧通道），施加时冻结实际数值。
+    /// 普通钩子效果与 custom 不建变量，本字段不生效。</summary>
     [JsonPropertyName("upgrade_amount")]
     public decimal UpgradeAmount { get; set; }
 
@@ -126,6 +127,18 @@ public sealed class SfEffect
     /// <summary>延迟效果（delayed）：持续回合数（>=1）。</summary>
     [JsonPropertyName("turns")]
     public decimal? Turns { get; set; }
+
+    [JsonPropertyName("upgrade_turns")]
+    public int UpgradeTurns { get; set; }
+
+    [JsonPropertyName("buff_name")]
+    public Dictionary<string, string>? BuffName { get; set; }
+
+    [JsonPropertyName("buff_description")]
+    public Dictionary<string, string>? BuffDescription { get; set; }
+
+    /// <summary>复制效果字段；内嵌清单由延迟解析器递归复制，不修改共享卡牌定义。</summary>
+    internal SfEffect Copy() => (SfEffect)MemberwiseClone();
 
     /// <summary>延迟效果（delayed）：触发时机 turn_end（默认）/ turn_start。</summary>
     [JsonPropertyName("timing")]

@@ -616,6 +616,7 @@ mod tests {
             // 项目路径形态：发布时改写为 images/powers/burst.png 并入包
             EffectDef::Delayed {
                 turns: 1,
+                upgrade_turns: 0, buff_name: None, buff_description: None,
                 timing: None,
                 side: None,
                 every_turn: true,
@@ -629,6 +630,7 @@ mod tests {
             // 力量名形态：原样保留
             EffectDef::Delayed {
                 turns: 2,
+                upgrade_turns: 0, buff_name: None, buff_description: None,
                 timing: None,
                 side: None,
                 every_turn: true,
@@ -650,6 +652,7 @@ mod tests {
         // 缺失文件：图标清空回落空白（不阻断发布）
         card.effects[0] = EffectDef::Delayed {
             turns: 1,
+            upgrade_turns: 0, buff_name: None, buff_description: None,
             timing: None,
             side: None,
             every_turn: true,
@@ -804,6 +807,7 @@ mod tests {
             },
             EffectDef::Delayed {
                 turns: 2,
+                upgrade_turns: 0, buff_name: None, buff_description: None,
                 timing: Some("turn_end".into()),
                 side: Some("enemy".into()),
                 every_turn: false,
@@ -894,7 +898,7 @@ mod tests {
         );
         assert!(matches!(
             &back.effects[10],
-            EffectDef::Delayed { turns: 2, timing: Some(t), side: Some(s), every_turn: false, icon: Some(i), effects }
+            EffectDef::Delayed { turns: 2, timing: Some(t), side: Some(s), every_turn: false, icon: Some(i), effects, .. }
             if t == "turn_end" && s == "enemy" && i == "Vulnerable" && effects.len() == 1
         ));
         // 兼容旧卡包：every_turn/effects/icon 全缺省（黑屏卡 card_1 的形态）必须照常解析
@@ -904,6 +908,27 @@ mod tests {
             legacy_delayed,
             EffectDef::Delayed { every_turn: true, effects, .. } if effects.is_empty()
         ));
+    }
+
+    #[test]
+    fn delayed_upgrade_and_buff_text_survive_save_and_pack() {
+        let effect: EffectDef = serde_json::from_value(json!({
+            "kind": "delayed", "turns": 2, "upgrade_turns": 1,
+            "buff_name": {"zhs": "希望", "eng": "Hope"},
+            "buff_description": {"zhs": "剩余 {Amount} 次，获得 {Effect1Amount} 点格挡。", "eng": "Gain {Effect1Amount} Block."},
+            "effects": [{"kind": "block", "amount": 4, "upgrade_amount": 3}]
+        })).unwrap();
+        let dir = std::env::temp_dir().join(format!("sf-delayed-text-{}", std::process::id()));
+        let card = CardDef { id: "delayed_text".into(), effects: vec![effect], ..CardDef::default() };
+        let saved = serde_json::to_vec(&card).unwrap();
+        let back: CardDef = serde_json::from_slice(&saved).unwrap();
+        let files = build_pack_files(dir.to_str().unwrap(), "DelayedText", &[back]).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&files["res://DelayedText/cards/delayed_text.json"]).unwrap();
+        let effect = &value["effects"][0];
+        assert_eq!(effect["upgrade_turns"], 1);
+        assert_eq!(effect["effects"][0]["upgrade_amount"], 3.0);
+        assert_eq!(effect["buff_name"]["zhs"], "希望");
+        assert_eq!(effect["buff_description"]["zhs"], "剩余 {Amount} 次，获得 {Effect1Amount} 点格挡。");
     }
 
     #[test]

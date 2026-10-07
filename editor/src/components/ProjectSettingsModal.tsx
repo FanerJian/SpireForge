@@ -3,7 +3,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
 import { checkUpdateNow } from '../lib/update';
-import { inputCls } from './ui';
+import { Disclosure, inputCls } from './ui';
 
 /** 项目设置：包名 / 作者 / 简介。这三项此前只能手改 project.json；
  *  名称与简介会进入工坊条目，作者署名也会写进卡包清单。 */
@@ -50,6 +50,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
           {t('ps.metaLine', { id: meta.pack_id, ws: meta.workshop_id ?? t('pub.unpublished') })}
         </div>
         <div className="space-y-3">
+          <Disclosure title={t('ui.packInfo')} storageKey="settings.meta" defaultOpen>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-400">{t('ps.name')}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
@@ -68,8 +69,10 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
               className={inputCls + ' resize-none'}
             />
           </label>
+          </Disclosure>
         </div>
-        <div className="mt-5 flex items-center justify-between gap-2 border-t border-white/10 pt-4">
+        <Disclosure title={t('ui.appInfo')} storageKey="settings.app" className="mt-3">
+        <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-[11px] text-slate-600">
             SpireForge {version}
           </span>
@@ -91,6 +94,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
             {t('upd.check')}
           </button>
         </div>
+        </Disclosure>
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onClose}

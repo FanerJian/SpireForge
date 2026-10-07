@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolderOpen, RefreshCw, Search } from 'lucide-react';
 import { api, type ProjectLibrary as Library } from '../lib/tauri';
 import { useLang, useT } from '../lib/i18n';
+import { Disclosure } from './ui';
 
 export default function ProjectLibrary({ busy, onOpen, onRecover }: {
   busy: boolean;
@@ -42,7 +43,6 @@ export default function ProjectLibrary({ busy, onOpen, onRecover }: {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-100">{t('projects.title')}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-slate-400">{t('projects.subtitle')}</p>
         </div>
         <button onClick={() => void refresh()} disabled={loading || busy || opening !== null}
           className="flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-40">
@@ -94,9 +94,11 @@ export default function ProjectLibrary({ busy, onOpen, onRecover }: {
             </div>
           ))}
       </div>
-      {library?.root && <p className="mt-4 border-t border-white/5 pt-3 text-[11px] leading-relaxed text-slate-500">
-        {t('projects.root')}<span className="mt-1 block break-all font-mono text-[10px]">{library.root}</span>
-      </p>}
+      {library?.root && <Disclosure title={t('projects.root')} storageKey="projects.folder" className="mt-4">
+        <p className="text-[11px] text-slate-500">
+        <span className="block break-all font-mono text-[10px]">{library.root}</span>
+      </p>
+      </Disclosure>}
     </section>
   );
 }

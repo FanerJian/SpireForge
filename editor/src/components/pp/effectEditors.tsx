@@ -2,13 +2,14 @@
 // 从 EffectsTab 的巨型 JSX 中拆出——每种效果一个组件，行头（标签/排序/删除）仍在 EffectsTab。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Combobox, type ComboItem } from '../Combobox';
-import { NumInput, inputCls, selectCls } from '../ui';
+import { Disclosure, NumInput, Segmented, inputCls, selectCls } from '../ui';
 import { EFFECT_META, HOOK_TARGET_OPTIONS, ORB_OPTIONS, pick, useLang, useT } from '../../lib/i18n';
 import { AMOUNT_KINDS, DELAYED_INNER_KINDS, defaultEffect, LEGACY_UPGRADE } from '../../lib/effects';
 import { buildHandlerCombo, starterParamsFor, useRuntimeCatalog } from './catalogs';
 import { api } from '../../lib/tauri';
 import { bytesToDataUrl, extOf } from '../../lib/img';
 import { useStore } from '../../lib/store';
+import { composeDelayedBuffText } from '../../lib/description';
 import type { CardDef, EffectDef, UpgradeDef } from '../../lib/types';
 
 type DelayedDef = Extract<EffectDef, { kind: 'delayed' }>;
@@ -82,6 +83,8 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
   const t = useT();
   const lang = useLang();
   const { showToast } = useStore();
+  const [buffLanguage, setBuffLanguage] = useState<'zhs' | 'eng'>(lang === 'en' ? 'eng' : 'zhs');
+  const sectionKey = `delayed.${cardId}.${path ?? 'root'}`;
   const iconFileRef = useRef<HTMLInputElement>(null);
   const [iconUrl, setIconUrl] = useState('');
   const isIconPath = !!e.icon && e.icon.includes('/');
@@ -135,6 +138,7 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
 
   return (
     <div className="mt-2 space-y-2">
+      <Disclosure title={t('ui.timing')} storageKey={sectionKey + '.timing'} defaultOpen>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <label data-effect-field="turns" className="flex items-center gap-2">
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.delayedTurns')}</span>
@@ -179,6 +183,15 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
           </select>
         </label>
       </div>
+      </Disclosure>
+      <Disclosure title={t('ui.upgrade')} storageKey={sectionKey + '.upgrade'}>
+      <label data-effect-field="upgrade_turns" className="flex items-center gap-2">
+        <span className="text-xs text-slate-500">{t('pp.delayedUpgradeTurns')}</span>
+        <NumInput width="w-16" value={e.upgrade_turns ?? 0}
+          onCommit={(n) => patch({ upgrade_turns: Math.round(n ?? 0) } as Partial<EffectDef>)} />
+      </label>
+      </Disclosure>
+      <Disclosure title={t('pp.iconLabel')} effectField="icon" storageKey={sectionKey + '.icon'}>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <label className="flex items-center gap-2">
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-400">{t('pp.iconLabel')}</span>
@@ -214,23 +227,56 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
           />
         </label>
       </div>
-      <p className="text-[11px] leading-relaxed text-slate-500">{t('pp.delayedCountHint')}</p>
-      <div data-effect-field="effects" className="rounded-md border border-white/10 bg-black/20 p-2">
+      </Disclosure>
+      <Disclosure title={t('pp.delayedBuffText')} effectField="buff_description" storageKey={sectionKey + '.text'}>
+        <div className="flex items-center justify-between gap-2">
+          <Segmented value={buffLanguage} onChange={setBuffLanguage} options={[
+            { v: 'zhs', label: t('pp.delayedBuffZh') }, { v: 'eng', label: t('pp.delayedBuffEn') },
+          ]} />
+          <button type="button" className="rounded border border-white/15 px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
+            onClick={() => { const text = composeDelayedBuffText(e); patch({ buff_name: text.name, buff_description: text.description } as Partial<EffectDef>); }}>
+            {t('pp.delayedGenerateBuff')}
+          </button>
+        </div>
+        {[buffLanguage].map(language => (
+          <div key={language} className="space-y-1">
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="w-14 shrink-0">{t('pp.locName')}</span>
+              <input data-effect-field="buff_name" className={inputCls} placeholder={t('pp.delayedBuffName')}
+                value={e.buff_name?.[language] ?? ''}
+                onChange={ev => patch({ buff_name: { eng: '', zhs: '', ...e.buff_name, [language]: ev.target.value } } as Partial<EffectDef>)} />
+            </label>
+            <textarea aria-label={`${language} ${t('pp.delayedBuffDescription')}`} className={inputCls + ' min-h-16 resize-y text-xs'}
+              placeholder={t('pp.delayedBuffDescription')} value={e.buff_description?.[language] ?? ''}
+              onChange={ev => patch({ buff_description: { eng: '', zhs: '', ...e.buff_description, [language]: ev.target.value } } as Partial<EffectDef>)} />
+          </div>
+        ))}
+        <Disclosure title={t('ui.help')} storageKey={sectionKey + '.text-help'}><p className="whitespace-pre-line text-[11px] text-slate-500">{t('pp.delayedBuffHint')}</p></Disclosure>
+      </Disclosure>
+      <Disclosure title={<>{t('ui.nestedEffects')} <span className="ml-1 text-slate-500">{innerList.length}</span></>}
+        effectField="effects" storageKey={sectionKey + '.effects'} defaultOpen>
         <div className="space-y-1.5">
           {innerList.length === 0 && (
             <div className="py-1 text-center text-[10px] text-slate-600">{t('pp.delayedEmpty')}</div>
           )}
           {innerList.map((inner, j) => (
-            <div key={j} data-field={path && `${path}.effects.${j}`} className="flex flex-wrap items-center gap-2">
-              <span className="w-20 shrink-0 whitespace-nowrap text-[11px] text-slate-300">
-                {pick(EFFECT_META[inner.kind]?.label ?? { zh: inner.kind, en: inner.kind }, lang)}
-              </span>
+            <Disclosure key={j} field={path && `${path}.effects.${j}`} storageKey={sectionKey + `.inner.${j}.${inner.kind}`} defaultOpen={innerList.length === 1}
+              title={<>{pick(EFFECT_META[inner.kind]?.label ?? { zh: inner.kind, en: inner.kind }, lang)} <span className="ml-2 text-slate-500">{'amount' in inner ? inner.amount : ''}</span></>}
+              actions={<button aria-label={t('pp.removeEffect')} onClick={() => removeInner(j)} className="rounded px-1.5 text-rose-400/80 hover:bg-rose-500/20">✕</button>}>
+              <div className="flex flex-wrap items-center gap-2">
               {inner.kind !== 'custom' && inner.kind !== 'delayed' && 'amount' in inner && (
-                <NumInput
-                  width="w-16"
-                  value={(inner as { amount: number }).amount}
-                  onCommit={(n) => setInner(j, { amount: n ?? 0 } as Partial<EffectDef>)}
-                />
+                <>
+                  <NumInput
+                    width="w-16"
+                    value={(inner as { amount: number }).amount}
+                    onCommit={(n) => setInner(j, { amount: n ?? 0 } as Partial<EffectDef>)}
+                  />
+                  <label className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-500">{t('pp.upgradeDelta')}</span>
+                    <NumInput width="w-16" value={'upgrade_amount' in inner ? inner.upgrade_amount ?? 0 : 0}
+                      onCommit={(n) => setInner(j, { upgrade_amount: n ?? 0 } as Partial<EffectDef>)} />
+                  </label>
+                </>
               )}
               {inner.kind === 'power' && (
                 <>
@@ -280,14 +326,12 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
                   rawLabel={(raw) => t('pp.useRaw', { v: raw })}
                 />
               )}
-              <button
-                onClick={() => removeInner(j)}
-                className="rounded px-1.5 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300"
-              >✕</button>
-            </div>
+              </div>
+            </Disclosure>
           ))}
         </div>
-        <div className="mt-2 flex flex-wrap gap-1">
+        <Disclosure title={t('ui.addEffect')} storageKey={sectionKey + '.add'} defaultOpen={innerList.length === 0}>
+        <div className="flex flex-wrap gap-1">
           {DELAYED_INNER_KINDS.map((k) => (
             <button
               key={k}
@@ -298,15 +342,17 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
             </button>
           ))}
         </div>
-      </div>
+        </Disclosure>
+      </Disclosure>
+      <Disclosure title={t('ui.help')} storageKey={sectionKey + '.help'}><p className="text-[11px] text-slate-500">{t('pp.delayedCountHint')}</p></Disclosure>
     </div>
   );
 }
 
 /** 自定义效果编辑器：handler（目录下拉：内置/mod 注册 + 自由输入）+ 可选数值/目标
  *  + params JSON + 处理器模板/真实示例。选中内置处理器且 params 为空时预填起始模板。 */
-export function CustomEffectBody({ e, patch, hookCtx }: {
-  e: CustomDef; patch: RowPatch; hookCtx: boolean;
+export function CustomEffectBody({ e, patch, hookCtx, scope }: {
+  e: CustomDef; patch: RowPatch; hookCtx: boolean; scope?: string;
 }) {
   const t = useT();
   const lang = useLang();
@@ -367,15 +413,13 @@ export function CustomEffectBody({ e, patch, hookCtx }: {
           />
         </div>
       )}
-      <div>
-        <span className="text-xs text-slate-400">{t('pp.params')}</span>
+      <Disclosure title={t('pp.params')} effectField="params" storageKey={`custom.${scope}.params`}>
         <ParamsEditor
           value={e.params}
           onChange={(v) => patch({ params: v } as Partial<EffectDef>)}
         />
-      </div>
-      <details className="rounded-lg border border-white/10 bg-black/30 p-2 text-[11px] text-slate-500">
-        <summary className="cursor-pointer select-none text-slate-400">{t('pp.tplSummary')}</summary>
+      </Disclosure>
+      <Disclosure title={t('pp.tplSummary')} storageKey={`custom.${scope}.template`}>
         <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-slate-400">{`// 独立 mod 引用 SpireForgeRuntime.dll，初始化时注册：
 SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
 {
@@ -385,9 +429,8 @@ SpireForge.Api.SfEffects.Register("${e.handler || 'my_effect'}", async ctx =>
         MegaCrit.Sts2.Core.ValueProps.ValueProp.Move, ctx.Card, ctx.Play);
 });
 // 卡牌 JSON 即可用 {"kind":"${e.handler || 'my_effect'}", "amount": 5} 调用`}</pre>
-      </details>
-      <details className="rounded-lg border border-sky-400/20 bg-sky-500/5 p-2 text-[11px] text-slate-500">
-        <summary className="cursor-pointer select-none text-sky-300/80">{t('pp.exampleSummary')}</summary>
+      </Disclosure>
+      <Disclosure title={t('pp.exampleSummary')} storageKey={`custom.${scope}.example`}>
         <div className="mt-1.5 leading-relaxed text-slate-400">{t('pp.exampleIntro')}</div>
         <div className="mt-2 text-slate-500">{t('pp.exampleSaved')}</div>
         <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-slate-400">{'{\n  "kind": "custom",\n  "handler": "demo_kaka"\n}'}</pre>
@@ -414,13 +457,13 @@ public static async Task<Creature> SpawnKaka(ICombatState combatState)
     await CreatureCmd.SetMaxAndCurrentHp(creature, 13m);
     return creature;
 }`}</pre>
-      </details>
+      </Disclosure>
     </div>
   );
 }
 
 /** 标准效果（delayed/custom 以外全部）：数值/力量/生成/召唤/目标/不受 buff/升级增量 */
-export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, vfxCombo, hitVfxCombo, sfxCombo, monsterCombo, spawnCombo }: {
+export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgrades, powerCombo, vfxCombo, hitVfxCombo, sfxCombo, monsterCombo, spawnCombo, scope }: {
   e: EffectDef;
   patch: RowPatch;
   updateCard: (patch: Partial<CardDef>) => void;
@@ -433,6 +476,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
   sfxCombo: ComboItem[];
   monsterCombo: ComboItem[];
   spawnCombo: ComboItem[];
+  scope?: string;
 }) {
   const t = useT();
   const lang = useLang();
@@ -632,7 +676,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
         );
       })()}
       {e.kind === 'damage' && (
-        <>
+        <Disclosure title={t('ui.attack')} storageKey={`standard.${scope}.attack`}>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {isPlay && (
               <label className="flex items-center gap-2">
@@ -682,7 +726,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
               />
             </label>
           </div>
-        </>
+        </Disclosure>
       )}
       {e.kind === 'power' && !hookCtx && (
         <div className="flex flex-wrap items-center gap-2">
@@ -709,6 +753,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
         </div>
       )}
       {isPlay && AMOUNT_KINDS.includes(e.kind) && (
+        <Disclosure title={t('ui.upgrade')} storageKey={`standard.${scope}.upgrade`} effectField="upgrade_amount">
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-14 shrink-0 whitespace-nowrap text-xs text-slate-500">{t('pp.upgradeDelta')}</span>
           <NumInput
@@ -724,6 +769,7 @@ export function StandardEffectBody({ e, patch, updateCard, isPlay, hookCtx, upgr
             }}
           />
         </div>
+        </Disclosure>
       )}
     </div>
   );

@@ -390,8 +390,9 @@ public static class SfEffectEngine
             {
                 // 延迟效果：下 N 回合的每回合开始/结束时执行内嵌效果清单（SfDelayedPower 承载）。
                 // turns 缺省回落 amount（编辑器把持续回合写进 amount 也认）
-                var turns = (int)(e.DecimalParam("turns") ?? e.Amount);
-                var inner = e.Effects;
+                var resolved = SfDelayedValues.Resolve(e, card.CurrentUpgradeLevel);
+                var turns = (int)(resolved.Turns ?? resolved.Amount);
+                var inner = resolved.Effects;
                 if (turns < 1 || inner == null || inner.Count == 0)
                 {
                     SfLog.Error("card " + card.Id + ": delayed effect needs turns>=1 and a non-empty effects list");
@@ -404,7 +405,7 @@ public static class SfEffectEngine
                     break;
                 }
                 await SfDelayedPower.Schedule(combat, card, ctx, inner, turns, e.Timing, e.EveryTurn, e.Side,
-                    e.StringParam("icon"));
+                    e.StringParam("icon"), e.BuffName, e.BuffDescription);
                 break;
             }
 

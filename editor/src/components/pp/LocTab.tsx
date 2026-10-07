@@ -1,14 +1,13 @@
 // 文案页签：卡牌名称/描述/风味的双语文本编辑 + 占位符/BBCode 快捷插入 + 一键生成描述。
 import { useState } from 'react';
 import { useStore } from '../../lib/store';
-import { Field, Segmented, inputCls } from '../ui';
+import { Disclosure, Segmented, inputCls } from '../ui';
 import { useT } from '../../lib/i18n';
-import { cardEntry } from '../../lib/entry';
 import type { CardDef } from '../../lib/types';
 import { useGenDescription } from './useDescription';
 
 export default function LocTab({ card }: { card: CardDef }) {
-  const { meta, updateCard, fieldFocus } = useStore();
+  const { updateCard, fieldFocus } = useStore();
   const t = useT();
   const genDesc = useGenDescription();
   const [loc, setLoc] = useState<'zhs' | 'eng'>(() => fieldFocus?.field.endsWith('.eng') ? 'eng' : 'zhs');
@@ -20,14 +19,14 @@ export default function LocTab({ card }: { card: CardDef }) {
     <div className="space-y-3">
       <Segmented
         value={loc}
-        options={[{ v: 'zhs' as const, label: '简体中文' }, { v: 'eng' as const, label: 'English' }]}
+        options={[{ v: 'zhs' as const, label: '中文' }, { v: 'eng' as const, label: 'English' }]}
         onChange={setLoc}
       />
-      <Field label={t('pp.locName')} field={`name.${loc}`} hint={`${cardEntry(meta?.pack_id ?? '', card.id)}.title`}>
-        <input className={inputCls} value={card.name[loc]}
+      <Disclosure title={t('pp.locName')} storageKey="text.name" defaultOpen field={`name.${loc}`}>
+        <input aria-label={t('pp.locName')} className={inputCls} value={card.name[loc]}
           onChange={(e) => updateCard({ name: { ...card.name, [loc]: e.target.value } })} />
-      </Field>
-      <Field label={t('pp.locDesc')} hint={`${cardEntry(meta?.pack_id ?? '', card.id)}.description`}>
+      </Disclosure>
+      <Disclosure title={t('pp.locDesc')} storageKey="text.description" defaultOpen field={`description.${loc}`}>
         <div className="mb-1.5 flex justify-end">
           <button
             onClick={() => genDesc(card)}
@@ -37,11 +36,13 @@ export default function LocTab({ card }: { card: CardDef }) {
           </button>
         </div>
         <textarea
+          aria-label={t('pp.locDesc')}
           className={inputCls + ' h-28 resize-none font-mono'}
           value={card.description[loc]}
           onChange={(e) => updateCard({ description: { ...card.description, [loc]: e.target.value } })}
         />
-      </Field>
+      </Disclosure>
+      <Disclosure title={t('ui.format')} storageKey="text.format">
       <div className="flex flex-wrap gap-1.5">
         {['{Damage}', '{Block}', '{Cards}', '{Damage:diff()}', '{Block:diff()}', '[gold][/gold]', '[red][/red]', '[blue][/blue]'].map((s) => (
           <button
@@ -53,10 +54,11 @@ export default function LocTab({ card }: { card: CardDef }) {
           </button>
         ))}
       </div>
-      <Field label={t('pp.locFlavor')}>
-        <input className={inputCls} value={card.flavor[loc]}
+      </Disclosure>
+      <Disclosure title={t('pp.locFlavor')} storageKey="text.flavor" field={`flavor.${loc}`}>
+        <input aria-label={t('pp.locFlavor')} className={inputCls} value={card.flavor[loc]}
           onChange={(e) => updateCard({ flavor: { ...card.flavor, [loc]: e.target.value } })} />
-      </Field>
+      </Disclosure>
     </div>
   );
 }

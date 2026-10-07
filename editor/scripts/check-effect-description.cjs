@@ -20,7 +20,7 @@ function load(file, overrides = {}) {
   return module.exports;
 }
 const { newCard } = load('lib/types.ts');
-const { composeDescription, composeHookDescription, composeCardDescription, effectVarName, previewEffectVars } = load('lib/description.ts');
+const { composeDescription, composeHookDescription, composeCardDescription, composeDelayedBuffText, effectVarName, previewEffectVars } = load('lib/description.ts');
 const checks = [];
 function check(name, fn) { fn(); checks.push(name); }
 const damage = (amount = 6, target) => ({ kind: 'damage', amount, props: ['Move'], ...(target ? { target } : {}) });
@@ -94,6 +94,34 @@ check('X cost repetition retains hit-count and delayed scheduling semantics', ()
   const text = composeDescription({ ...newCard('a'), costs_x: true, effects: [{ ...damage(), hit_count: 2 }, delayed()] });
   assert.ok(text.zhs.includes('重复施加 X 次'));
   assert.ok(text.zhs.includes('两次（重复 X 次）'));
+});
+check('delayed upgrades use distinct variables in card description and upgrade preview', () => {
+  const c = { ...newCard('upgrade_delay'), effects: [damage(), delayed({ upgrade_turns: 1, effects: [
+    { kind: 'block', amount: 4, props: ['Move'], upgrade_amount: 3 },
+    { kind: 'block', amount: 8, props: ['Move'], upgrade_amount: -2 },
+  ] })] };
+  const text = composeCardDescription(c).zhs;
+  assert.ok(text.includes('{DelayedPlay2Turns}'));
+  assert.ok(text.includes('{DelayedPlay2Effect1Amount}') && text.includes('{DelayedPlay2Effect2Amount}'));
+  const preview = previewEffectVars(c, true);
+  assert.equal(preview.DelayedPlay2Turns, '3');
+  assert.equal(preview.DelayedPlay2Effect1Amount, '7');
+  assert.equal(preview.DelayedPlay2Effect2Amount, '6');
+  const hook = { ...c, on_draw: [delayed({ upgrade_turns: -5, effects: [{ kind: 'draw', amount: 1, upgrade_amount: 1 }] })] };
+  assert.ok(composeCardDescription(hook).zhs.includes('{DelayedOnDraw1Effect1Amount}'));
+  assert.equal(previewEffectVars(hook, true).DelayedOnDraw1Turns, '1');
+  assert.ok(composeCardDescription({ ...c, vanilla_id: 'BASH' }).zhs.includes('{DelayedPlay2Effect1Amount}'));
+});
+check('buff generation uses live remaining count and resolved value placeholders', () => {
+  const text = composeDelayedBuffText(delayed({ every_turn: false, side: 'enemy', effects: [
+    { kind: 'block', amount: 4, props: ['Move'], upgrade_amount: 3 },
+    delayed({ effects: [{ kind: 'draw', amount: 1, upgrade_amount: 1 }] }),
+  ] }));
+  assert.equal(text.name.zhs, '延迟效果');
+  assert.ok(text.description.zhs.includes('第 {Amount} 次敌方回合结束时'));
+  assert.ok(text.description.zhs.includes('{Effect1Amount}') && text.description.zhs.includes('{Effect2Turns}'));
+  assert.ok(text.description.eng.includes('{Effect2Effect1Amount}'));
+  assert.ok(!text.description.zhs.includes('打出后'));
 });
 async function checkActions() {
   let c = { ...newCard('a'), effects: [damage()], on_draw: [{ kind: 'draw', amount: 1 }] };

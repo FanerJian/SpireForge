@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import CustomPoolSection from './CustomPoolSection';
-import { Field, NumInput, Segmented, inputCls, selectCls } from './ui';
+import { Disclosure, Field, NumInput, Segmented, inputCls, selectCls, revealDisclosureAncestors, setDisclosuresOpen } from './ui';
+import { ChevronsDown, ChevronsUp } from 'lucide-react';
 import {
   KEYWORD_CHIPS, POOL_LABEL, RARITY_LABEL,
   TARGET_LABEL, TYPE_LABEL,
@@ -80,37 +81,10 @@ function BasicTab({ card }: { card: CardDef }) {
 
   return (
     <div className="space-y-3">
-      <VanillaSection card={card} />
-
+      <Disclosure title={t('pp.tabBasic')} storageKey="basic.main" defaultOpen>
       <Field label={t('pp.idLabel')} field="id">
         <IdField card={card} />
       </Field>
-
-      <div className="block min-w-0" data-field="pools">
-        <div className="mb-1 flex items-baseline justify-between gap-2">
-          <span className="shrink-0 whitespace-nowrap text-xs font-medium text-slate-400">{t('pp.poolLabel')}</span>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {(Object.entries(POOL_LABEL)).map(([v, l]) => {
-            const cur = card.pools?.length ? card.pools : [card.pool];
-            const on = cur.includes(v as Pool);
-            return (
-              <button
-                key={v}
-                onClick={() => togglePool(v as Pool)}
-                className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                  on
-                    ? 'bg-amber-500/90 text-black'
-                    : 'border border-white/10 bg-black/30 text-slate-400 hover:bg-white/10 hover:text-slate-200'
-                }`}
-              >
-                {pick(l, lang)}
-              </button>
-            );
-          })}
-        </div>
-        <CustomPoolSection card={card} onToggle={togglePool} />
-      </div>
 
       <Field label={t('pp.typeLabel')}>
         <Segmented
@@ -147,9 +121,9 @@ function BasicTab({ card }: { card: CardDef }) {
           </select>
         </Field>
       </div>
-      <p className="text-[11px] leading-relaxed text-slate-500">
+      {card.target === 'TargetedNoCreature' && <p className="text-[11px] leading-relaxed text-slate-500">
         {t(card.target === 'TargetedNoCreature' ? 'pp.targetLegacyHint' : 'pp.targetHint')}
-      </p>
+      </p>}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('pp.costLabel')} field="cost">
@@ -175,8 +149,20 @@ function BasicTab({ card }: { card: CardDef }) {
           </label>
         </div>
       </div>
-
-      <Field label={t('pp.keywordLabel')}>
+      </Disclosure>
+      <Disclosure title={t('pp.poolLabel')} field="pools" storageKey="basic.pools">
+        <div className="flex flex-wrap gap-1">
+          {Object.entries(POOL_LABEL).map(([value, label]) => (
+            <button key={value} onClick={() => togglePool(value)}
+              className={`rounded-md px-2.5 py-1 text-xs ${(card.pools?.length ? card.pools : [card.pool]).includes(value)
+                ? 'bg-amber-500/90 text-black' : 'border border-white/10 text-slate-400 hover:bg-white/5'}`}>
+              {pick(label, lang)}
+            </button>
+          ))}
+        </div>
+        <CustomPoolSection card={card} onToggle={togglePool} />
+      </Disclosure>
+      <Disclosure title={t('pp.keywordLabel')} storageKey="basic.keywords">
         <div className="mb-1.5 flex flex-wrap gap-1">
           {KEYWORD_CHIPS.map(({ k, label }) => {
             const on = card.keywords.includes(k);
@@ -201,10 +187,11 @@ function BasicTab({ card }: { card: CardDef }) {
             );
           })}
         </div>
-        <input className={inputCls} value={card.keywords.join(', ')}
+        <input aria-label={t('pp.keywordLabel')} className={inputCls} value={card.keywords.join(', ')}
           onChange={(e) => updateCard({ keywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
-      </Field>
-
+      </Disclosure>
+      <Disclosure title={t('ui.more')} storageKey="basic.more">
+        <VanillaSection card={card} />
       <div className="grid grid-cols-2 gap-3 pt-1">
         <label className="flex items-center gap-2 whitespace-nowrap text-xs text-slate-400">
           <input type="checkbox" checked={card.show_in_library}
@@ -212,6 +199,7 @@ function BasicTab({ card }: { card: CardDef }) {
           {t('pp.showLib')}
         </label>
       </div>
+      </Disclosure>
     </div>
   );
 }
@@ -235,11 +223,13 @@ export default function PropertyPanel() {
         if (!element) parts.pop();
       }
       if (!element) return;
+      revealDisclosureAncestors(element);
       element.scrollIntoView({ block: 'center', behavior: 'smooth' });
       const field = fieldFocus.field.split('.').pop()!;
       const exact = element.querySelector<HTMLElement>(`[data-effect-field="${CSS.escape(field)}"]`);
       const scope = exact ?? element;
-      const control = scope.matches('input,textarea,select,button') ? scope : scope.querySelector<HTMLElement>('input,textarea,select,button');
+      const control = scope.matches('input,textarea,select,button') ? scope
+        : scope.querySelector<HTMLElement>('input,textarea,select') ?? scope.querySelector<HTMLElement>('button');
       control?.focus({ preventScroll: true });
       element.classList.add('ring-2', 'ring-amber-400/70', 'rounded-md');
       setTimeout(() => element?.classList.remove('ring-2', 'ring-amber-400/70'), 2400);
@@ -275,6 +265,8 @@ export default function PropertyPanel() {
           </span>
         )}
         <div className="flex-1" />
+        <button type="button" title={t('ui.expandAll')} aria-label={t('ui.expandAll')} onClick={() => setDisclosuresOpen(panelRef.current, true)} className="rounded p-1 text-slate-500 hover:bg-white/5 hover:text-slate-300"><ChevronsDown size={14} /></button>
+        <button type="button" title={t('ui.collapseAll')} aria-label={t('ui.collapseAll')} onClick={() => setDisclosuresOpen(panelRef.current, false)} className="rounded p-1 text-slate-500 hover:bg-white/5 hover:text-slate-300"><ChevronsUp size={14} /></button>
         <button
           onClick={async () => {
             try {

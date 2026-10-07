@@ -15,7 +15,7 @@ export const DELAYED_INNER_KINDS: EffectDef['kind'][] = [
   'damage', 'block', 'draw', 'energy', 'heal', 'gold', 'lose_hp', 'power', 'orb', 'orb_slot', 'vfx',
 ];
 
-/** 参与升级数值编辑的打出效果种类（custom/delayed 的数值语义由内嵌效果或处理器定义，不参与） */
+/** 标准数值效果；delayed 单独编辑触发次数和内嵌数值的升级增量。 */
 export const AMOUNT_KINDS: EffectDef['kind'][] = [
   'damage', 'block', 'draw', 'energy', 'heal', 'discard', 'exhaust',
   'gold', 'lose_hp', 'max_hp', 'power', 'spawn', 'summon', 'orb', 'orb_slot',

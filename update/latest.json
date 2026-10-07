@@ -1,17 +1,17 @@
 {
-  "version": "0.2.5",
+  "version": "0.2.7",
   "notes": {
-    "zhs": "召唤建筑师等事件怪物无效修复；延迟效果可设置力量图标（游戏内图标或自传图片）；回合末在手的官方自动打出说明。",
-    "eng": "Fixed summoning event-only monsters such as the Architect; delayed effects can pick an in-game power icon or upload a custom image; official auto-play note for turn-end-in-hand."
+    "zhs": "精简界面并支持功能折叠；延迟效果升级、Buff 自定义文本与当回合结束触发修复。",
+    "eng": "Compact collapsible UI; delayed effect upgrades, custom Buff text, and current-turn end activation."
   },
-  "pub_date": "2026-10-06T18:08:16.137Z",
+  "pub_date": "2026-10-07T10:28:28.193Z",
   "exe": {
-    "sha256": "a1ea8012df74486bbb6305e9c5b421605f5169db210fcf779cf49b6fa6589e5c",
-    "size": 27509248,
+    "sha256": "ff4c8e55957e4c51696a71c98b53d170cfe273bd43803ddcf19df4fa1c46cece",
+    "size": 27536384,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.5/SpireForge-editor-v0.2.5.exe",
-      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.5/SpireForge-editor-v0.2.5.exe",
-      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.5/SpireForge-editor-v0.2.5.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.7/SpireForge-editor-v0.2.7.exe",
+      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.7/SpireForge-editor-v0.2.7.exe",
+      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.7/SpireForge-editor-v0.2.7.exe"
     ]
   }
 }

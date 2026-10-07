@@ -269,6 +269,12 @@ pub enum EffectDef {
     Delayed {
         #[serde(default = "default_turns")]
         turns: i64,
+        #[serde(default, skip_serializing_if = "is_zero_i64")]
+        upgrade_turns: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        buff_name: Option<LocText>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        buff_description: Option<LocText>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         timing: Option<String>,
         /// 触发哪一方：player（缺省，我方回合时机）/ enemy（敌方）/ both（双方）
@@ -289,6 +295,8 @@ pub enum EffectDef {
 fn default_turns() -> i64 {
     1
 }
+
+fn is_zero_i64(v: &i64) -> bool { *v == 0 }
 
 fn default_true() -> bool {
     true

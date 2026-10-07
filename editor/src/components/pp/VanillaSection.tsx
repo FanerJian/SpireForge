@@ -8,6 +8,7 @@ import { effectsFromVanillaVars } from '../../lib/effects';
 import type { CardDef, VanillaEntry } from '../../lib/types';
 import { useVanillaEntry } from './catalogs';
 import { confirmAction } from '../../lib/confirmation';
+import { Disclosure } from '../ui';
 
 export default function VanillaSection({ card }: { card: CardDef }) {
   const { updateCard, showToast } = useStore();
@@ -128,15 +129,13 @@ export default function VanillaSection({ card }: { card: CardDef }) {
               placeholder={t('pp.vanillaEntryPh')}
               className="w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 font-mono text-xs text-slate-200 outline-none focus:border-amber-400/60"
             />
-          <div>
-            <div className="mb-1 text-[11px] font-medium text-slate-400">{t('pp.statsCover')}</div>
+          <Disclosure title={t('pp.statsCover')} storageKey="vanilla.stats" field="stats">
             {rows(stats, setStats, false)}
-          </div>
-          <div>
-            <div className="mb-1 text-[11px] font-medium text-slate-400">{t('pp.upgCover')}</div>
+          </Disclosure>
+          <Disclosure title={t('pp.upgCover')} storageKey="vanilla.upgrade" field="upgrade_stats">
             {rows(upStats, setUpStats, true)}
-          </div>
-          {vanilla && <VanillaInfo vanilla={vanilla} onPrefill={prefillEffects} />}
+          </Disclosure>
+          {vanilla && <Disclosure title={t('ui.reference')} storageKey="vanilla.reference"><VanillaInfo vanilla={vanilla} onPrefill={prefillEffects} /></Disclosure>}
         </div>
       )}
     </div>

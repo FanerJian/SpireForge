@@ -113,6 +113,8 @@ public abstract class SfCardBase : CardModel
         {
             var def = Def();
             var effects = def.Effects;
+            foreach (var value in SfDelayedValues.CardValues(def))
+                yield return new IntVar(value.Name, value.Base);
             for (var i = 0; i < effects.Count; i++)
             {
                 var e = effects[i];
@@ -222,6 +224,7 @@ public abstract class SfCardBase : CardModel
     protected override void OnUpgrade()
     {
         var def = Def();
+        SfDelayedValues.Upgrade(this, def);
         var u = def.Upgrades;
         var effects = def.Effects;
         var legacyApplied = new HashSet<SfEffectKind>();

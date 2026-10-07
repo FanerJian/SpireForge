@@ -68,12 +68,17 @@ export type EffectDef =
   | {
       kind: 'delayed';
       turns: number;
+      /** 每次升级增加的触发次数，最终次数至少为 1。 */
+      upgrade_turns?: number;
       timing?: 'turn_start' | 'turn_end';
       /** 触发哪一方：player（缺省，我方回合时机）/ enemy（敌方）/ both（双方） */
       side?: 'player' | 'enemy' | 'both';
       every_turn?: boolean;
       /** 承载力量图标：游戏内力量名（如 Vulnerable）或包内路径 images/powers/*.png */
       icon?: string;
+      /** 延迟 Buff 的名称和描述。空文本使用自动说明；{Amount} 表示剩余次数。 */
+      buff_name?: LocText;
+      buff_description?: LocText;
       effects?: EffectDef[];
     }
   | {

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/tauri';
 import { useStore } from '../../lib/store';
-import { Field } from '../ui';
+import { Disclosure } from '../ui';
 import PortraitCropper from '../PortraitCropper';
 import { bytesToDataUrl, extOf } from '../../lib/img';
 import { useT } from '../../lib/i18n';
@@ -72,7 +72,8 @@ export default function LookTab({ card }: { card: CardDef }) {
 
   return (
     <div className="space-y-4">
-      <Field label={t('pp.portraitLabel')} hint={dim || t('pp.portraitUnset')}>
+      <Disclosure title={<>{t('pp.portraitLabel')} <span className="ml-2 font-normal text-slate-500">{dim || t('pp.portraitUnset')}</span></>}
+        storageKey="look.art" defaultOpen field="portrait">
         <div className="flex items-center gap-2">
           <button
             onClick={() => fileRef.current?.click()}
@@ -104,11 +105,13 @@ export default function LookTab({ card }: { card: CardDef }) {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }}
           />
         </div>
-      </Field>
+      </Disclosure>
       {projectRoot && card.portrait && (
+        <Disclosure title={t('ui.fileInfo')} storageKey="look.file">
         <div className="rounded-lg border border-white/10 bg-black/30 p-3 font-mono text-[10px] text-slate-600">
           {card.portrait}
         </div>
+        </Disclosure>
       )}
       {crop && (
         <PortraitCropper

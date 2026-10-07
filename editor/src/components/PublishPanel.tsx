@@ -4,17 +4,8 @@ import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
 import { OFFICIAL_RUNTIME_WORKSHOP_ID } from '../lib/types';
 import { grantEntry } from '../lib/entry';
-import { inputCls } from './ui';
+import { Disclosure, inputCls } from './ui';
 import { workshopSnapshot } from '../lib/workshopSnapshot';
-
-function SectionTitle({ text }: { text: string }) {
-  return (
-    <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold tracking-wider text-slate-500">
-      <span className="whitespace-nowrap">{text}</span>
-      <div className="h-px flex-1 bg-white/10" />
-    </div>
-  );
-}
 
 /** 发布面板：导出卡包 / 一键安装到游戏 / Steam 工坊发布。
  *  常用路径（装进游戏试玩）在最上面；工坊发布整块折叠，避免一打开就是满屏表单。 */
@@ -211,10 +202,9 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <fieldset disabled={busy} className="min-w-0">
+        <fieldset disabled={busy} className="min-w-0 space-y-3">
         {/* ---- 本地使用：最常用，放最上面 ---- */}
-        <SectionTitle text={t('pub.local')} />
-        <div className="mb-4">
+        <Disclosure title={t('pub.local')} storageKey="publish.local" defaultOpen>
           <label className="mb-2 flex flex-wrap items-center gap-3">
             <span className="shrink-0 whitespace-nowrap text-xs font-medium text-slate-400">{t('pub.version')}</span>
             <input
@@ -252,14 +242,11 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
               {t('pub.exportPack')}
             </button>
           </div>
-        </div>
+        </Disclosure>
 
-        {/* ---- Steam 工坊：折叠，避免干扰只想本地试玩的用户 ---- */}
-        <details className="mb-1 rounded-lg border border-white/10 bg-black/20 open:bg-black/30">
-          <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-semibold text-sky-200 hover:text-sky-100">
-            {t('pub.workshop')}{meta?.workshop_id ? t('pub.publishedTag', { id: meta.workshop_id }) : ''}
-          </summary>
-          <div className="space-y-3 px-3 pb-3">
+        <Disclosure title={t('pub.workshop')} storageKey="publish.workshop">
+          <div className="space-y-3">
+            <Disclosure title={t('pub.runtimeDep')} storageKey="publish.runtime">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-400">
                 {t('pub.runtimeDep')}
@@ -294,6 +281,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
                 </span>
               )}
             </label>
+            </Disclosure>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-400">{t('pub.visibility')}</span>
@@ -335,6 +323,7 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
               </button>
             </div>
             {stale && <p role="status" className="text-xs text-amber-300">{t('pub.wsStale')}</p>}
+            <Disclosure title={t('ui.more')} storageKey="publish.uploader">
             <div className="text-[11px] leading-relaxed text-slate-500">
               {t('pub.uploaderLine', {
                 up: settings.uploader_path ? t('pub.uploaderReady') : t('pub.upExtracting'),
@@ -345,14 +334,17 @@ export default function PublishPanel({ onClose }: { onClose: () => void }) {
               <br />
               {t('pub.workshopNote')}
             </div>
+            </Disclosure>
           </div>
-        </details>
+        </Disclosure>
         </fieldset>
 
         {log && (
+          <Disclosure title={t('ui.log')} storageKey="publish.log" className="mt-3">
           <pre className="mt-4 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/40 p-3 text-[11px] leading-relaxed text-emerald-300/90">
             {log}
           </pre>
+          </Disclosure>
         )}
       </div>
     </div>

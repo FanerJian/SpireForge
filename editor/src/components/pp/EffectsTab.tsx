@@ -2,7 +2,7 @@
 // + 底部「添加效果」按钮组 + 升级上限。
 import { useMemo, useState } from 'react';
 import { useStore } from '../../lib/store';
-import { Field, NumInput, Segmented } from '../ui';
+import { Disclosure, Field, NumInput, Segmented } from '../ui';
 import { EFFECT_META, TRIGGER_OPTIONS, pick, useLang, useT, type TriggerKey } from '../../lib/i18n';
 import type { CardDef, EffectDef } from '../../lib/types';
 import {
@@ -66,7 +66,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
 
   return (
     <div className="space-y-3">
-      <Field label={t('pp.triggerLabel')}>
+      <Disclosure title={t('pp.triggerLabel')} storageKey="effects.trigger" defaultOpen>
         <Segmented
           value={trigger}
           options={TRIGGER_OPTIONS.map((o) => ({ v: o.v, label: pick(o.label, lang) }))}
@@ -81,7 +81,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
             {t('pp.genDescBtn')}
           </button>
         </div>
-      </Field>
+      </Disclosure>
 
       {list.length === 0 && (
         <div className="rounded-lg border border-dashed border-white/10 px-3 py-6 text-center text-xs text-slate-600">
@@ -89,24 +89,21 @@ export default function EffectsTab({ card }: { card: CardDef }) {
         </div>
       )}
       {!isPlay && trigger === 'on_turn_end_in_hand' && list.length > 0 && (
-        <p className="text-[11px] leading-relaxed text-slate-500">{t('pp.turnEndInHandNote')}</p>
+        <Disclosure title={t('ui.help')} storageKey="effects.hand-help"><p className="text-[11px] text-slate-500">{t('pp.turnEndInHandNote')}</p></Disclosure>
       )}
       {list.map((e, i) => {
         const meta = effectMetaOf(e.kind);
         const rowPatch = (p: Partial<EffectDef>) => patch(i, p);
         return (
-          <div key={i} data-field={`${isPlay ? 'effects' : trigger}.${i}`} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-200">{pick(meta.label, lang)}</span>
-              <div className="flex items-center gap-1">
+          <Disclosure key={`${trigger}:${i}:${e.kind}`} field={`${isPlay ? 'effects' : trigger}.${i}`}
+            storageKey={`effect.${card.id}.${trigger}.${i}.${e.kind}`} defaultOpen={i === list.length - 1}
+            title={<>{pick(meta.label, lang)} <span className="ml-2 font-normal text-slate-500">{e.kind === 'delayed' ? `${e.turns}${t('ui.times')}` : 'amount' in e ? e.amount : ''}</span></>}
+            hint={pick(meta.desc, lang) + (isPlay && effectVarName(list, i) ? ` · {${effectVarName(list, i)}}` : '')}
+            actions={<>
                 <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={t('pp.moveEffectUp')} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200 disabled:opacity-25">↑</button>
                 <button onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label={t('pp.moveEffectDown')} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200 disabled:opacity-25">↓</button>
                 <button onClick={() => remove(i)} aria-label={t('pp.removeEffect')} className="rounded px-1.5 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300">✕</button>
-              </div>
-            </div>
-            <div className="text-[11px] text-slate-600">
-              {pick(meta.desc, lang)}{isPlay && !card.vanilla_id && effectVarName(list, i) ? <> · {`{${effectVarName(list, i)}}`}</> : null}
-            </div>
+            </>}>
 
             {e.kind === 'delayed' ? (
               <DelayedEffectBody
@@ -119,12 +116,14 @@ export default function EffectsTab({ card }: { card: CardDef }) {
               />
             ) : e.kind === 'custom' ? (
               <CustomEffectBody
+                scope={`${card.id}.${trigger}.${i}`}
                 e={e as Extract<EffectDef, { kind: 'custom' }>}
                 patch={rowPatch}
                 hookCtx={hookCtx}
               />
             ) : (
               <StandardEffectBody
+                scope={`${card.id}.${trigger}.${i}`}
                 e={e}
                 patch={rowPatch}
                 updateCard={updateCard}
@@ -139,10 +138,10 @@ export default function EffectsTab({ card }: { card: CardDef }) {
                 spawnCombo={spawnCombo}
               />
             )}
-          </div>
+          </Disclosure>
         );
       })}
-      <div className="space-y-2 border-t border-white/10 pt-3">
+      <Disclosure title={t('ui.addEffect')} storageKey="effects.add" defaultOpen={list.length === 0}>
         <div>
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{t('pp.coreKinds')}</div>
           <div className="flex flex-wrap gap-1.5">
@@ -157,8 +156,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
             ))}
           </div>
         </div>
-        <div>
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{t('pp.extraKinds')}</div>
+        <Disclosure title={t('pp.extraKinds')} storageKey="effects.catalog-extra">
           <div className="flex flex-wrap gap-1.5">
             {EXTRA_KINDS.map((k) => (
               <button
@@ -170,9 +168,10 @@ export default function EffectsTab({ card }: { card: CardDef }) {
               </button>
             ))}
           </div>
-        </div>
-      </div>
+        </Disclosure>
+      </Disclosure>
       {isPlay && (
+        <Disclosure title={t('ui.upgrade')} storageKey="effects.upgrade">
         <Field label={t('pp.maxUpgrade')}>
           <NumInput
             width="w-24"
@@ -180,6 +179,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
             onCommit={(n) => updateCard({ max_upgrade_level: Math.max(0, Math.round(n ?? 0)) })}
           />
         </Field>
+        </Disclosure>
       )}
     </div>
   );
