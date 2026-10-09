@@ -1,17 +1,17 @@
 {
-  "version": "0.2.7",
+  "version": "0.2.8",
   "notes": {
-    "zhs": "精简界面并支持功能折叠；延迟效果升级、Buff 自定义文本与当回合结束触发修复。",
-    "eng": "Compact collapsible UI; delayed effect upgrades, custom Buff text, and current-turn end activation."
+    "zhs": "新增 Mod 内容库，可浏览与引用卡牌、状态、怪物和已接入的特殊效果；支持导入第三方卡牌并仅覆盖编辑字段。内置 Runtime 0.1.16，特殊机制仍需适配。",
+    "eng": "Mod Content browser for cards, powers, monsters and registered effects; import third-party cards with only edited fields overridden. Bundled Runtime 0.1.16. Special mechanics still require adapters."
   },
-  "pub_date": "2026-10-07T10:28:28.193Z",
+  "pub_date": "2026-10-09T15:40:26.249Z",
   "exe": {
-    "sha256": "ff4c8e55957e4c51696a71c98b53d170cfe273bd43803ddcf19df4fa1c46cece",
-    "size": 27536384,
+    "sha256": "b57a935aa253d1825b58777dad59cf3f8cf86833285737c6f0d74082c85b231a",
+    "size": 27659776,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.7/SpireForge-editor-v0.2.7.exe",
-      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.7/SpireForge-editor-v0.2.7.exe",
-      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.7/SpireForge-editor-v0.2.7.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.8/SpireForge-editor-v0.2.8.exe",
+      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.8/SpireForge-editor-v0.2.8.exe",
+      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.8/SpireForge-editor-v0.2.8.exe"
     ]
   }
 }
