@@ -230,8 +230,7 @@ public static class SfGrant
     /// 返回 null = 成功，否则为错误说明。</summary>
     public static async Task<string?> GrantAsync(Player player, string entry)
     {
-        var model = ModelDb.AllCards.FirstOrDefault(c =>
-            string.Equals(c.Id.Entry, entry, StringComparison.OrdinalIgnoreCase));
+        var model = SfContentRegistry.Find<CardModel>(entry);
         if (model == null)
         {
             // 常见根因（实测）：卡包 mod 在游戏的 Mod 管理里被禁用，或改卡后没重装卡包

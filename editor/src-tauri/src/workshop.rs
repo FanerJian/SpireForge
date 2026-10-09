@@ -25,6 +25,13 @@ pub fn dependencies_for_cards(meta: &ProjectMeta, cards: &[CardDef]) -> Vec<Stri
     if let Some(id) = meta.runtime_workshop_id {
         ids.insert(id.to_string());
     }
+    for card in cards {
+        for dep in &card.content_dependencies {
+            if dep.mod_id != meta.pack_id && crate::content_refs::mod_ids(card).contains(&dep.mod_id) {
+                if let Some(id) = &dep.workshop_id { ids.insert(id.clone()); }
+            }
+        }
+    }
     for pool in &meta.custom_pools {
         if used.contains(pool.key.as_str()) {
             if let Some(id) = &pool.workshop_id {

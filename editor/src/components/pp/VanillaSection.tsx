@@ -24,7 +24,7 @@ export default function VanillaSection({ card }: { card: CardDef }) {
   }, [card.id, card.vanilla_id]);
   const commitEntry = () => {
     const id = entryDraft.trim();
-    if (id) updateCard({ vanilla_id: id });
+    if (id) updateCard({ vanilla_id: id, source_ref: id === card.vanilla_id ? card.source_ref : null });
     else setEntryDraft(card.vanilla_id ?? '');
   };
 
@@ -99,7 +99,7 @@ export default function VanillaSection({ card }: { card: CardDef }) {
             </span>
           </div>
           <button
-            onClick={() => { setEditing(false); updateCard({ vanilla_id: null, stats: null, upgrade_stats: null }); }}
+            onClick={() => { setEditing(false); updateCard({ vanilla_id: null, source_ref: null, override_fields: null, stats: null, upgrade_stats: null }); }}
             className="shrink-0 text-[11px] text-slate-500 underline hover:text-slate-300"
           >
             {t('pp.vanillaCancel')}
@@ -115,12 +115,13 @@ export default function VanillaSection({ card }: { card: CardDef }) {
           </button>
         </div>
       )}
+      {card.source_ref && <div className="mt-2 text-[11px] text-slate-400">{card.override_fields?.length ? `已修改：${card.override_fields.map(f => ({ cost:'费用', card_type:'类型', rarity:'稀有度', target:'目标', name:'名称', description:'描述', stats:'数值', upgrade_stats:'升级数值', effects:'效果', portrait:'立绘' } as Record<string,string>)[f] || '其他字段').join('、')}` : '保留原卡行为。编辑字段后仅应用对应修改。'}</div>}
       {(!!card.vanilla_id || editing) && (
         <div className="mt-2 space-y-2">
             <input
               aria-label={t('pp.vanillaEntryPh')}
               value={entryDraft}
-              onChange={(e) => setEntryDraft(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+              onChange={(e) => setEntryDraft(e.target.value.trim())}
               onBlur={commitEntry}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') e.currentTarget.blur();

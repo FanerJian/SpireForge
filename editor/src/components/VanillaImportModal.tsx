@@ -63,6 +63,7 @@ export default function VanillaImportModal({ onClose }: { onClose: () => void })
   const doImport = async (v: VanillaEntry) => {
     setBusy(true);
     try {
+      await useStore.getState().persistAll();
       const card = cardFromVanilla(v, new Set(cards.map((c) => c.id)));
       await api.saveCard(card);
       if (projectRoot) {

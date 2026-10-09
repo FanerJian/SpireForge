@@ -173,11 +173,11 @@ export default function EffectsTab({ card }: { card: CardDef }) {
       {isPlay && (
         <Disclosure title={t('ui.upgrade')} storageKey="effects.upgrade">
         <Field label={t('pp.maxUpgrade')}>
-          <NumInput
+          {card.source_ref ? <p className="text-xs text-slate-500">{lang === 'en' ? 'Uses the source card setting.' : '沿用原卡设置。'}</p> : <NumInput
             width="w-24"
             value={card.max_upgrade_level}
             onCommit={(n) => updateCard({ max_upgrade_level: Math.max(0, Math.round(n ?? 0)) })}
-          />
+          />}
         </Field>
         </Disclosure>
       )}

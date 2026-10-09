@@ -5,6 +5,7 @@ import type { CardDef, CardType } from '../lib/types';
 import { CARD_TEMPLATES } from '../lib/templates';
 import { pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
 import VanillaImportModal from './VanillaImportModal';
+import ModContentModal from './ModContentModal';
 import { createThumbnailCache, thumbnailKey } from '../lib/thumbnails';
 
 const TYPE_DOT: Record<string, string> = {
@@ -88,6 +89,7 @@ export default function CardLibrary() {
   const t = useT();
   const lang = useLang();
   const [showVanilla, setShowVanilla] = useState(false);
+  const [showModContent, setShowModContent] = useState(false);
   const [showTpl, setShowTpl] = useState(false);
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<CardType | 'all'>('all');
@@ -199,6 +201,7 @@ export default function CardLibrary() {
             {t('lib.newCard')}
           </button>
         </div>
+        <button onClick={() => setShowModContent(true)} className="mt-2 w-full rounded-md border border-white/10 px-2 py-1.5 text-xs text-slate-300 hover:bg-white/5">{lang === 'en' ? 'Mod content' : 'Mod 内容'}</button>
         <div className="mt-1.5 flex flex-wrap gap-1">
           {TYPE_FILTERS.map((tp) => (
             <button
@@ -274,6 +277,7 @@ export default function CardLibrary() {
         </>
       )}
       {showVanilla && <VanillaImportModal onClose={() => setShowVanilla(false)} />}
+      {showModContent && <ModContentModal onClose={() => setShowModContent(false)} />}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import type { CardDef, CustomPoolDef, EditorSettings, ProjectMeta, RuntimeCatalo
 export const api = {
   detectGameDir: () => invoke<string | null>('detect_game_dir'),
   getSettings: () => invoke<EditorSettings>('get_settings'),
-  setGameDir: (dir: string) => invoke<void>('set_game_dir', { dir }),
+  setGameDir: async (dir: string) => { await invoke<void>('set_game_dir', { dir }); window.dispatchEvent(new Event('spireforge:catalog-reset')); },
   /** 内置 Runtime 前置 mod 自动安装（幂等、防降级；游戏锁文件时 action=locked） */
   ensureRuntime: () => invoke<RuntimeEnsure>('ensure_runtime'),
 

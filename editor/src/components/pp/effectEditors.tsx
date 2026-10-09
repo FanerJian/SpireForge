@@ -6,6 +6,7 @@ import { Disclosure, NumInput, Segmented, inputCls, selectCls } from '../ui';
 import { EFFECT_META, HOOK_TARGET_OPTIONS, ORB_OPTIONS, pick, useLang, useT } from '../../lib/i18n';
 import { AMOUNT_KINDS, DELAYED_INNER_KINDS, defaultEffect, LEGACY_UPGRADE } from '../../lib/effects';
 import { buildHandlerCombo, starterParamsFor, useRuntimeCatalog } from './catalogs';
+import EffectParameterFields from './EffectParameterFields';
 import { api } from '../../lib/tauri';
 import { bytesToDataUrl, extOf } from '../../lib/img';
 import { useStore } from '../../lib/store';
@@ -362,6 +363,7 @@ export function CustomEffectBody({ e, patch, hookCtx, scope }: {
     () => new Set(handlerCombo.map((i) => i.value.toLowerCase())),
     [handlerCombo],
   );
+  const descriptor = runtime?.custom_effects?.find(h => h.name === e.handler);
   const unregistered = !!e.handler && !registered.has(e.handler.toLowerCase());
 
   const pickHandler = (name: string) => {
@@ -369,7 +371,9 @@ export function CustomEffectBody({ e, patch, hookCtx, scope }: {
       patch({ handler: name, params: starterParamsFor(name) } as Partial<EffectDef>);
       return;
     }
-    patch({ handler: name } as Partial<EffectDef>);
+    const definition = runtime?.custom_effects?.find(h => h.name === name);
+    const defaults = Object.fromEntries((definition?.parameters ?? []).filter(p => p.default != null).map(p => [p.name, p.default]));
+    patch({ handler: name, ...(Object.keys(defaults).length ? { params: { ...defaults, ...e.params } } : {}) } as Partial<EffectDef>);
   };
 
   return (
@@ -413,6 +417,9 @@ export function CustomEffectBody({ e, patch, hookCtx, scope }: {
           />
         </div>
       )}
+      {descriptor?.desc_zh && <p className="text-xs text-slate-500">{lang === 'en' ? descriptor.desc_en || descriptor.desc_zh : descriptor.desc_zh}</p>}
+      {!!descriptor?.parameters?.length && <EffectParameterFields parameters={descriptor.parameters} value={e} patch={patch} />}
+      {descriptor?.required_character && <p className="text-[11px] text-amber-300">{lang === 'en' ? 'Requires the source character.' : '仅适用于来源角色。'}</p>}
       <Disclosure title={t('pp.params')} effectField="params" storageKey={`custom.${scope}.params`}>
         <ParamsEditor
           value={e.params}

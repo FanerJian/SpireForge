@@ -415,6 +415,8 @@ public static class RuntimeEntry
     private static void AfterEssentialInit()
     {
         // 原版卡覆盖（模板已构造、Id 已赋值；不受 DEBUG 开关限制——这是正式功能）
+        SfContentRegistry.Refresh();
+        SfModActions.RegisterLoaded();
         SfVanillaOverride.ApplyAll();
 
         // 本地化与立绘验证（调试模式下也顺带验证卡包本地化）

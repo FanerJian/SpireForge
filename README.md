@@ -4,7 +4,7 @@
 
 中文 | [English](README_EN.md)
 
-![状态](https://img.shields.io/badge/游戏版本-v0.111.0-blue) ![Runtime](https://img.shields.io/badge/Runtime-0.1.9-green)
+![状态](https://img.shields.io/badge/游戏版本-v0.111.0-blue) ![Runtime](https://img.shields.io/badge/Runtime-0.1.16-green)
 
 ![编辑器主界面](docs/screenshot.png)
 
@@ -14,7 +14,7 @@
 
 1. 双击 `editor.exe`（单文件，前端已内嵌；需要 WebView2 Runtime，Win10/11 一般自带）；
 2. 首次启动选择游戏根目录（欢迎页会自动检测）；
-3. **把包内 `SpireForgeRuntime` 文件夹整个复制到游戏的 `mods` 目录**（前置 mod，一次性）；
+3. 先关闭游戏，编辑器会检查并安装内置 Runtime；手动安装时，将包内 `SpireForgeRuntime` 文件夹复制到游戏的 `mods` 目录；
 4. 建卡包 → 建卡 / 导入原版卡改卡 → 「发布 / 安装」→ 一键安装到游戏 → 重启游戏。
 
 ## 快速开始（从源码构建）
@@ -46,6 +46,7 @@ cd runtime && dotnet build -c Release
 - **生命周期钩子**：抽到时 / 被弃时 / 被消耗时 / 战斗开始时 / 回合末在手——复用同一效果系统
 - **自定义效果接口**：`custom` 效果 + `SfEffects` 注册表，其他 mod 引用 Runtime.dll 即可扩展任意行为
 - **批量导入**：多卡 JSON 容器整批导入；`.pck` 卡包直读（其他 SpireForge 用户的卡包可解包再编辑）
+- **Mod 内容库**：从已加载的 Mod 浏览、引用卡牌/状态/怪物与已注册效果，导入卡牌后仅覆盖实际修改的字段；特殊机制需要适配，详见 [MOD-CONTENT.md](docs/MOD-CONTENT.md)
 - **第三方角色卡池**：从游戏读取、导入角色配置 JSON 或手动添加，将新卡放入其他角色 Mod 的卡池（专属机制需额外适配）
 - **自定义贴图**：PNG/JPEG/WebP 上传，官方 250×190 规格提示
 - **中英双语**：占位符 `{Damage}`、BBCode 着色、升级数值对照
@@ -67,6 +68,7 @@ cd runtime && dotnet build -c Release
 - [HANDOVER.md](docs/HANDOVER.md) — 项目现状、五分钟上手、路线图、踩坑记录
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — 四组件架构、注册时序、PCK 格式
 - [SCHEMA.md](docs/SCHEMA.md) — 卡牌 JSON 逐字段说明
+- [MOD-CONTENT.md](docs/MOD-CONTENT.md) — Mod 内容读取、导入、引用与效果适配协议
 - [CUSTOM-POOLS.md](docs/CUSTOM-POOLS.md) — 第三方角色卡池导入、依赖与兼容边界
 - [RUNTIME-MOD.md](docs/RUNTIME-MOD.md) — Runtime 设计 + 游戏版本升级适配流程
 - [BUILD.md](docs/BUILD.md) — 环境要求、构建、测试矩阵
@@ -89,7 +91,7 @@ OnPlay 按效果清单 await 游戏 Cmd API 执行
 本项目以 [MIT](LICENSE) 许可开源（免费，仅限非商业用途地使用其中的 Spire Codex 派生内容——
 详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)）。
 本项目为社区工具，与 Mega Crit 无关。游戏资产版权归 Mega Crit 所有。
-内嵌的 ModUploader 来自 [MegaCrit/sts2-mod-uploader](https://github.com/Megacrit/sts2-mod-uploader)（MIT）。
+内嵌的 ModUploader 来自 [MegaCrit/sts2-mod-uploader](https://github.com/Megacrit/sts2-mod-uploader)（再分发授权尚待核实，见第三方声明）。
 原版卡目录、力量/怪物目录与图标数据来自 [spire-codex](https://github.com/ptrlrd/spire-codex)
 （PolyForm Noncommercial，Required Notice 见第三方声明）。
 调研受益于 BaseLib（Alchyr）、RitsuLib（BAKAOLC）、fresh-milkshake/Modding-Tutorial 等社区项目。

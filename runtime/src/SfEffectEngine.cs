@@ -229,8 +229,7 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": spawn effect missing params.card_entry");
                     break;
                 }
-                var template = ModelDb.AllCards.FirstOrDefault(c =>
-                    string.Equals(c.Id.Entry, entry.Trim(), System.StringComparison.OrdinalIgnoreCase));
+                var template = SfContentRegistry.Find<CardModel>(entry);
                 if (template == null)
                 {
                     SfLog.Error("card " + card.Id + ": spawn source card not found: " + entry);
@@ -759,178 +758,17 @@ internal static class SfVarNaming
 /// </summary>
 internal static class SfMonsterResolver
 {
-    private static readonly Dictionary<string, System.Type> ExtraCache =
-        new(System.StringComparer.OrdinalIgnoreCase);
-    private static bool _scanned;
-
-    public static MonsterModel? Find(string name)
-    {
-        var n = (name ?? "").Trim();
-        if (n.Length == 0)
-        {
-            return null;
-        }
-        foreach (var m in ModelDb.Monsters)
-        {
-            if (string.Equals(m.GetType().Name, n, System.StringComparison.OrdinalIgnoreCase)
-                || string.Equals(m.Id.Entry, n, System.StringComparison.OrdinalIgnoreCase))
-            {
-                return m;
-            }
-        }
-        EnsureScan();
-        return ExtraCache.TryGetValue(n, out var t) ? Instance(t) : null;
-    }
-
-    private static void EnsureScan()
-    {
-        if (_scanned)
-        {
-            return;
-        }
-        _scanned = true;
-        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-        {
-            System.Type[] types;
-            try
-            {
-                types = asm.GetTypes();
-            }
-            catch (System.Exception)
-            {
-                continue; // 动态/受限程序集跳过
-            }
-            foreach (var t in types)
-            {
-                if (t.IsAbstract || !typeof(MonsterModel).IsAssignableFrom(t))
-                {
-                    continue;
-                }
-                ExtraCache[t.Name] = t;
-                ExtraCache[MegaCrit.Sts2.Core.Helpers.StringHelper.Slugify(t.Name)] = t;
-            }
-        }
-    }
-
-    private static MonsterModel? Instance(System.Type t)
-    {
-        try
-        {
-            var get = typeof(ModelDb).GetMethod("Get",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
-                null, new[] { typeof(System.Type) }, null);
-            return get?.Invoke(null, new object[] { t }) as MonsterModel;
-        }
-        catch (System.Exception)
-        {
-            return null;
-        }
-    }
+    public static MonsterModel? Find(string name) => SfContentRegistry.Find<MonsterModel>(name);
 }
 
-/// <summary>
-/// 球名 → OrbModel 子类 解析（orb 效果用）。扫描全部已加载程序集的具体 OrbModel 子类，
-/// 名字匹配规则：完整类名（LightningOrb）或去掉 Orb 后缀（Lightning），不区分大小写。
-/// 不能用 ModelDb.Orbs——它只有 4 种（缺玻璃球），扫描覆盖 GlassOrb 与 mod 新增球。
-/// 空/未知返回 null（引擎回落随机球）。
-/// </summary>
 internal static class SfOrbResolver
 {
-    private static readonly Dictionary<string, System.Type> Cache =
-        new(System.StringComparer.OrdinalIgnoreCase);
-    private static bool _scanned;
-
-    public static System.Type? Find(string name)
-    {
-        EnsureScan();
-        return Cache.TryGetValue(name.Trim(), out var t) ? t : null;
-    }
-
-    private static void EnsureScan()
-    {
-        if (_scanned)
-        {
-            return;
-        }
-        _scanned = true;
-        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-        {
-            System.Type[] types;
-            try
-            {
-                types = asm.GetTypes();
-            }
-            catch (System.Exception)
-            {
-                continue; // 动态/受限程序集跳过
-            }
-            foreach (var t in types)
-            {
-                if (t.IsAbstract || !typeof(OrbModel).IsAssignableFrom(t))
-                {
-                    continue;
-                }
-                var n = t.Name;
-                Cache[n] = t;
-                if (n.Length > 3 && n.EndsWith("Orb", System.StringComparison.Ordinal))
-                {
-                    Cache[n[..^3]] = t;
-                }
-            }
-        }
-    }
+    public static Type? Find(string name) => SfContentRegistry.Find<OrbModel>(name)?.GetType();
 }
 
-/// <summary>
-/// 力量名 → PowerModel 子类 解析（power 效果用）。
-/// 扫描全部已加载程序集（覆盖原版力量与第三方 mod 注册的 PowerModel 子类），
-/// 名字匹配规则：完整类名（VulnerablePower）或去掉 Power 后缀（Vulnerable），不区分大小写。
-/// </summary>
 internal static class SfPowerResolver
 {
-    private static readonly Dictionary<string, System.Type> Cache =
-        new(System.StringComparer.OrdinalIgnoreCase);
-    private static bool _scanned;
-
-    public static System.Type? Find(string name)
-    {
-        EnsureScan();
-        return Cache.TryGetValue(name.Trim(), out var t) ? t : null;
-    }
-
-    private static void EnsureScan()
-    {
-        if (_scanned)
-        {
-            return;
-        }
-        _scanned = true;
-        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-        {
-            System.Type[] types;
-            try
-            {
-                types = asm.GetTypes();
-            }
-            catch (System.Exception)
-            {
-                continue; // 动态/受限程序集跳过
-            }
-            foreach (var t in types)
-            {
-                if (t.IsAbstract || !typeof(PowerModel).IsAssignableFrom(t))
-                {
-                    continue;
-                }
-                var n = t.Name;
-                Cache[n] = t;
-                if (n.Length > 5 && n.EndsWith("Power", System.StringComparison.Ordinal))
-                {
-                    Cache[n[..^5]] = t;
-                }
-            }
-        }
-    }
+    public static Type? Find(string name) => SfContentRegistry.Find<PowerModel>(name)?.GetType();
 
     /// <summary>调 PowerCmd.Apply&lt;T&gt;（单目标泛型重载，6 参）</summary>
     public static async Task Apply(

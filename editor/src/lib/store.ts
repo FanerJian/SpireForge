@@ -120,6 +120,13 @@ export const useStore = create<EditorStore>((set, get) => ({
   },
 
   updateCard: (patch) => {
+    const current = get().cards.find(c => c.id === get().selectedId);
+    if (current?.source_ref) {
+      patch = Object.fromEntries(Object.entries(patch).filter(([k]) => !['pool', 'pools', 'show_in_library', 'multiplayer', 'max_upgrade_level'].includes(k))) as Partial<CardDef>;
+      const keys = Object.keys(patch).filter(k => !['id', 'format_version', 'source_ref', 'override_fields', 'content_dependencies', 'vanilla_id'].includes(k));
+      const normalized = keys.map(k => k === 'costs_x' ? 'cost' : k);
+      patch = { ...patch, format_version: 2, override_fields: [...new Set([...(current.override_fields ?? []), ...normalized])] };
+    }
     if (get().historyBusy) return;
     // 标识只能通过后端改名事务修改。
     const { id: _id, ...safePatch } = patch;

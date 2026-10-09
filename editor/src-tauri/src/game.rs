@@ -300,11 +300,7 @@ pub fn game_process_running() -> bool {
 /// 原版 Entry 已是游戏的最终 Slugify 形态，不能再过 slugify（BASH 会被拆成 B_A_S_H），
 /// 只做大写规范化 + 剔除非法字符。
 fn normalize_vanilla_entry(s: &str) -> String {
-    s.trim()
-        .to_uppercase()
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
-        .collect()
+    s.trim().to_string()
 }
 
 /// 已安装进游戏的卡牌 Entry 全集（发放预检用）：
@@ -459,7 +455,7 @@ pub fn queue_card_grant(entries: Vec<String>) -> Result<GrantQueueResult, String
     }
     let mut added = 0usize;
     for e in entries {
-        let e = e.trim().to_uppercase();
+        let e = e.trim().to_string();
         if !e.is_empty() && !merged.contains(&e) {
             merged.push(e);
             added += 1;

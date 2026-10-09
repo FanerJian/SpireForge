@@ -84,6 +84,8 @@ public static class SfVanillaOverride
         Pending.Clear();
     }
 
+    private static bool Overrides(SfCardDef def, string field) => def.OverrideFields == null || def.OverrideFields.Contains(field);
+
     private static bool Apply(Harmony harmony, SfCardDef def, string modId)
     {
         string vid = (def.VanillaId ?? "").Trim();
@@ -91,20 +93,30 @@ public static class SfVanillaOverride
         {
             return false;
         }
-        var template = ModelDb.AllCards.FirstOrDefault(c => c.Id.Entry == vid);
+        var template = SfContentRegistry.Find<CardModel>(def.SourceRef ?? vid);
         if (template == null)
         {
             SfLog.Error("vanilla override: card " + vid + " not found in ModelDb");
             return false;
         }
+        if (def.SourceRef != null && template.Id.Entry != vid)
+        {
+            SfLog.Error("source reference and localization Entry disagree: " + vid);
+            return false;
+        }
 
         try
         {
-            SetCost(template, def);
-            SetBacking(template, "<Type>k__BackingField", def.Type);
-            SetBacking(template, "<Rarity>k__BackingField", def.RarityEnum);
-            SetBacking(template, "<TargetType>k__BackingField", def.TargetEnum);
-            if (def.Stats is { Count: > 0 })
+            if (Overrides(def, "cost")) SetCost(template, def);
+            if (Overrides(def, "card_type")) SetBacking(template, "<Type>k__BackingField", def.Type);
+            if (Overrides(def, "rarity")) SetBacking(template, "<Rarity>k__BackingField", def.RarityEnum);
+            if (Overrides(def, "target")) SetBacking(template, "<TargetType>k__BackingField", def.TargetEnum);
+            if (def.SourceRef != null && Overrides(def, "keywords"))
+            {
+                var keywords = def.Keywords.Select(k => Enum.Parse<CardKeyword>(k, true)).ToHashSet();
+                AccessTools.Field(typeof(CardModel), "_keywords").SetValue(template, keywords);
+            }
+            if (Overrides(def, "stats") && def.Stats is { Count: > 0 })
             {
                 ApplyVars(template, def.Stats, absolute: true);
             }
@@ -127,9 +139,9 @@ public static class SfVanillaOverride
         Active[vid] = def;
         PackOfVanilla[vid] = modId;
 
-        if (def.Effects is { Count: > 0 })
+        if (Overrides(def, "effects") && (def.OverrideFields != null || def.Effects.Count > 0))
         {
-            var onPlay = AccessTools.DeclaredMethod(template.GetType(), "OnPlay");
+            var onPlay = AccessTools.Method(template.GetType(), "OnPlay");
             if (onPlay == null)
             {
                 SfLog.Error("vanilla override " + vid + ": no declared OnPlay, effects skipped");
@@ -139,9 +151,9 @@ public static class SfVanillaOverride
                 harmony.Patch(onPlay, prefix: new HarmonyMethod(typeof(SfVanillaOverride), nameof(PlayPrefix)));
             }
         }
-        if (def.UpgradeStats is { Count: > 0 } || SfDelayedValues.CardValues(def).Any(v => v.Delta != 0))
+        if ((Overrides(def, "upgrade_stats") && def.UpgradeStats is { Count: > 0 }) || SfDelayedValues.CardValues(def).Any(v => v.Delta != 0))
         {
-            var onUpgrade = AccessTools.DeclaredMethod(template.GetType(), "OnUpgrade");
+            var onUpgrade = AccessTools.Method(template.GetType(), "OnUpgrade");
             if (onUpgrade == null)
             {
                 SfLog.Error("vanilla override " + vid + ": no declared OnUpgrade, upgrade_stats skipped");
@@ -154,7 +166,7 @@ public static class SfVanillaOverride
             }
         }
         HookCardEvents(harmony, template, def);
-        if (!string.IsNullOrEmpty(def.Portrait))
+        if (Overrides(def, "portrait") && !string.IsNullOrEmpty(def.Portrait))
         {
             HookPortrait(harmony, template);
         }
@@ -387,10 +399,7 @@ public static class SfVanillaOverride
         AccessTools.Field(typeof(CardModel), "<CanonicalEnergyCost>k__BackingField")
             ?.SetValue(template, def.Cost);
         // 模板的 EnergyCost 可能已被游戏代码惰性创建（属性 getter 缓存）——一并替换
-        if (ecField.GetValue(template) != null)
-        {
-            ecField.SetValue(template, new CardEnergyCost(template, def.Cost, false));
-        }
+        ecField.SetValue(template, new CardEnergyCost(template, def.Cost, false));
     }
 
     private static void SetBacking(CardModel template, string fieldName, object value)
@@ -439,7 +448,7 @@ public static class SfVanillaOverride
     private static bool PlayPrefix(
         ref Task __result, CardModel __instance, PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
-        if (!Active.TryGetValue(__instance.Id.Entry, out var def) || def.Effects.Count == 0)
+        if (!Active.TryGetValue(__instance.Id.Entry, out var def) || !Overrides(def, "effects") || (def.OverrideFields == null && def.Effects.Count == 0))
         {
             return true;
         }
@@ -451,7 +460,7 @@ public static class SfVanillaOverride
     /// <summary>OnUpgrade 替换前缀：按 upgrade_stats 增量改本实例的变量。</summary>
     private static bool UpgradePrefix(CardModel __instance)
     {
-        if (Active.TryGetValue(__instance.Id.Entry, out var def) && def.UpgradeStats is { Count: > 0 })
+        if (Active.TryGetValue(__instance.Id.Entry, out var def) && Overrides(def, "upgrade_stats") && def.UpgradeStats is { Count: > 0 })
         {
             ApplyVars(__instance, def.UpgradeStats, absolute: false);
         }

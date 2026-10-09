@@ -151,6 +151,7 @@ function BasicTab({ card }: { card: CardDef }) {
       </div>
       </Disclosure>
       <Disclosure title={t('pp.poolLabel')} field="pools" storageKey="basic.pools">
+        <fieldset disabled={!!card.source_ref}>
         <div className="flex flex-wrap gap-1">
           {Object.entries(POOL_LABEL).map(([value, label]) => (
             <button key={value} onClick={() => togglePool(value)}
@@ -161,6 +162,8 @@ function BasicTab({ card }: { card: CardDef }) {
           ))}
         </div>
         <CustomPoolSection card={card} onToggle={togglePool} />
+        </fieldset>
+        {card.source_ref && <p className="mt-2 text-[11px] text-slate-500">{lang === 'en' ? 'The source card keeps its original pool.' : '沿用原卡的卡池。'}</p>}
       </Disclosure>
       <Disclosure title={t('pp.keywordLabel')} storageKey="basic.keywords">
         <div className="mb-1.5 flex flex-wrap gap-1">
@@ -194,7 +197,7 @@ function BasicTab({ card }: { card: CardDef }) {
         <VanillaSection card={card} />
       <div className="grid grid-cols-2 gap-3 pt-1">
         <label className="flex items-center gap-2 whitespace-nowrap text-xs text-slate-400">
-          <input type="checkbox" checked={card.show_in_library}
+          <input type="checkbox" disabled={!!card.source_ref} checked={card.show_in_library}
             onChange={(e) => updateCard({ show_in_library: e.target.checked })} />
           {t('pp.showLib')}
         </label>

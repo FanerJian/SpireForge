@@ -135,6 +135,9 @@ export interface CardDef {
   on_turn_end_in_hand?: EffectDef[];
   /** 原版卡覆盖：非空 = 本卡改写游戏原版 Entry=此值 的卡牌（不新建） */
   vanilla_id?: string | null;
+  source_ref?: string | null;
+  override_fields?: string[] | null;
+  content_dependencies?: { mod_id: string; version?: string; workshop_id?: string | null }[];
   /** 未裁剪原图路径（assets/cards/<id>_original.*）；「重新裁剪」用它重开裁剪框，打包时剔除 */
   portrait_original?: string | null;
   /** 原版数值覆盖：键 = 原版变量名（Damage/Block/Vulnerable…），值 = 覆盖后数值 */
@@ -191,7 +194,18 @@ export interface VanillaCatalog {
 }
 
 /** 游戏内容目录条目：Runtime 从游戏内导出的力量（含 mod 角色 buff） */
-export interface RuntimePower {
+export interface ContentIdentity {
+  key?: string; model_id?: string; type_name?: string; mod_id?: string; mod_name?: string;
+  mod_version?: string; workshop_id?: string | null; capabilities?: string[];
+}
+export interface CatalogMod { id: string; name: string; version: string; workshop_id?: string | null }
+export interface RuntimeModel extends ContentIdentity { kind: string; name: string; title: string; entry: string; source: string }
+export interface EffectParameter {
+  name: string; title: string; type: string; options?: string[] | null;
+  default?: unknown; min?: number | null; max?: number | null; required?: boolean;
+}
+
+export interface RuntimePower extends ContentIdentity {
   /** SfPowerResolver 解析名（类名去 Power 后缀） */
   name: string;
   entry: string;
@@ -206,7 +220,7 @@ export interface RuntimePower {
 }
 
 /** Runtime 导出的怪物条目（name = 类名，召唤效果 params.monster 值） */
-export interface RuntimeMonster {
+export interface RuntimeMonster extends ContentIdentity {
   name: string;
   entry: string;
   title: string;
@@ -215,7 +229,9 @@ export interface RuntimeMonster {
 }
 
 /** Runtime 导出的卡牌条目（entry 规范值，spawn 效果 card_entry 值） */
-export interface RuntimeCard {
+export interface RuntimeCard extends ContentIdentity {
+  description?: string; cost?: number | null; costs_x?: boolean; target?: string; keywords?: string[];
+  vars?: Record<string, number>; pool?: string;
   entry: string;
   title: string;
   type: string;
@@ -225,6 +241,7 @@ export interface RuntimeCard {
 
 /** 自定义效果处理器条目（SfEffects 注册表快照：内置 + 各 mod 注册的） */
 export interface RuntimeCustomEffect {
+  mod_id?: string; title?: string; parameters?: EffectParameter[]; allowed_triggers?: string[]; required_character?: string;
   name: string;
   source: string;
   desc_zh: string;
@@ -240,6 +257,8 @@ export interface RuntimeVfx {
 
 /** 游戏内容目录（mods/SpireForgeRuntime/spireforge-catalog.json；读取失败时为 null） */
 export interface RuntimeCatalog {
+  format_version?: number; runtime_version?: string; game_version?: string; session_id?: string;
+  mods?: CatalogMod[]; models?: RuntimeModel[]; issues?: string[];
   language: string;
   generated_at_utc: string;
   powers: RuntimePower[];

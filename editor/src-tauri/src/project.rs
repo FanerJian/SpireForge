@@ -271,10 +271,10 @@ pub fn load_project(root: &str) -> Result<(ProjectMeta, Vec<CardDef>), String> {
 pub fn add_card(root: &str, card: &CardDef) -> Result<(), String> {
     write_card(root, card)?;
     let mut meta = read_meta(root)?;
-    if !meta.cards.contains(&card.id) {
-        meta.cards.push(card.id.clone());
-        write_meta(root, &meta)?;
-    }
+    let changed = !meta.cards.contains(&card.id) || meta.format_version < card.format_version;
+    if !meta.cards.contains(&card.id) { meta.cards.push(card.id.clone()); }
+    meta.format_version = meta.format_version.max(card.format_version);
+    if changed { write_meta(root, &meta)?; }
     Ok(())
 }
 

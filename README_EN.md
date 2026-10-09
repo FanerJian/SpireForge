@@ -4,7 +4,7 @@
 
 [中文](README.md) | English
 
-![Game version](https://img.shields.io/badge/Game%20version-v0.111.0-blue) ![Runtime](https://img.shields.io/badge/Runtime-0.1.9-green)
+![Game version](https://img.shields.io/badge/Game%20version-v0.111.0-blue) ![Runtime](https://img.shields.io/badge/Runtime-0.1.16-green)
 
 ![Editor main window](docs/screenshot.png)
 
@@ -14,10 +14,10 @@ Grab the latest `SpireForge-*-win64.zip` from [Releases](../../releases), unzip,
 
 1. Double-click `editor.exe` (single file, frontend embedded; needs WebView2 Runtime — preinstalled on Win10/11);
 2. On first launch, pick your game root folder (auto-detected on the welcome page);
-3. **Copy the bundled `SpireForgeRuntime` folder into the game's `mods` directory** (required dependency, one time only);
+3. Close the game first. The editor checks and installs the bundled Runtime; for manual installation, copy `SpireForgeRuntime` into the game's `mods` directory;
 4. Create a pack → create or import cards → "Publish / Install" → restart the game.
 
-> The editor auto-installs/updates the Runtime prerequisite on startup — manual copying is only needed for source builds.
+> The editor auto-installs/updates the Runtime prerequisite on startup — the bundled folder is also available for manual installation.
 
 ## Quick Start (build from source)
 
@@ -48,6 +48,7 @@ cd runtime && dotnet build -c Release
 - **Lifecycle hooks**: when drawn / discarded / exhausted / at combat start / end of turn in hand — same effect system
 - **Custom effect API**: `custom` effects + the `SfEffects` registry — other mods can reference Runtime.dll to extend anything
 - **Batch import**: import multi-card JSON containers; open `.pck` packs directly (unpack other users' packs and edit them)
+- **Mod Content browser**: browse and reference registered cards, powers, monsters and effects; import cards with only edited fields overridden. Special mechanics need adapters; see [MOD-CONTENT.md](docs/MOD-CONTENT.md).
 - **Third-party character pools**: read from the game, import a config JSON, or add manually to put cards in other character mods' pools
 - **Custom art**: PNG/JPEG/WebP upload with the official 250×190 crop guide
 - **Bilingual UI**: `{Damage}` placeholders, BBCode coloring, upgraded-value comparison
@@ -69,6 +70,7 @@ cd runtime && dotnet build -c Release
 - [HANDOVER.md](docs/HANDOVER.md) — project status, five-minute tour, roadmap, gotcha log
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — four-component architecture, registration timing, PCK format
 - [SCHEMA.md](docs/SCHEMA.md) — card JSON field-by-field reference
+- [MOD-CONTENT.md](docs/MOD-CONTENT.md) — Mod discovery, imports, references and effect adapter protocol
 - [CUSTOM-POOLS.md](docs/CUSTOM-POOLS.md) — third-party character pool import, dependencies & compatibility limits
 - [RUNTIME-MOD.md](docs/RUNTIME-MOD.md) — Runtime design + game-update adaptation workflow
 - [BUILD.md](docs/BUILD.md) — environment requirements, build steps, test matrix
@@ -92,7 +94,7 @@ needs updating — published packs keep working.
 This project is open source under the [MIT](LICENSE) license (free; the Spire Codex derived content
 may only be used non-commercially — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).
 This is a community tool, not affiliated with Mega Crit. Game assets are © Mega Crit.
-The bundled ModUploader comes from [MegaCrit/sts2-mod-uploader](https://github.com/Megacrit/sts2-mod-uploader) (MIT).
+The bundled ModUploader comes from [MegaCrit/sts2-mod-uploader](https://github.com/Megacrit/sts2-mod-uploader) (redistribution authorization remains unverified; see the third-party notices).
 The vanilla card / power / monster catalogs and icons come from [spire-codex](https://github.com/ptrlrd/spire-codex)
 (PolyForm Noncommercial — see the third-party notices).
 Research benefited from community projects such as BaseLib (Alchyr), RitsuLib (BAKAOLC), and fresh-milkshake/Modding-Tutorial.

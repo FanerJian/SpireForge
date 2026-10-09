@@ -2,6 +2,7 @@
 // 会话级缓存、hooks 与三个效果下拉（力量/怪物/生成卡牌）的数据构建。
 // 原来散在 PropertyPanel/VanillaSection 两处各自维护缓存，现集中于此。
 import { useEffect, useState } from 'react';
+import { useRuntimeCatalogState } from '../../lib/runtimeCatalog';
 import { api } from '../../lib/tauri';
 import type {
   CardDef, CardType, RuntimeCatalog, RuntimeCustomEffect, RuntimeMonster, RuntimePower,
@@ -17,7 +18,7 @@ import { TYPE_LABEL, pick, type Lang } from '../../lib/i18n';
 // ---- 会话级缓存（整个应用只拉一次；读取失败不缓存，下次挂载重试）----
 
 let vanillaCache: VanillaCatalog | null = null;
-let runtimeCatalogCache: RuntimeCatalog | null = null;
+
 
 /** 原版卡覆盖时的目录条目（原版描述/数值/关键词展示用） */
 export function useVanillaEntry(vanillaId: string | null | undefined): VanillaEntry | null {
@@ -67,28 +68,7 @@ export function useVanillaCatalog(): VanillaEntry[] {
 /** 游戏内容目录（mod buff 等的来源）：挂载时读缓存，窗口重新聚焦时重读——
  *  用户先开编辑器、后进游戏拿到新目录，切回来即可生效；读失败保持现状不闪空 */
 export function useRuntimeCatalog(): RuntimeCatalog | null {
-  const [catalog, setCatalog] = useState<RuntimeCatalog | null>(runtimeCatalogCache);
-  useEffect(() => {
-    let cancelled = false;
-    const load = async (force: boolean) => {
-      try {
-        if (force || !runtimeCatalogCache) {
-          runtimeCatalogCache = await api.readGameCatalog();
-        }
-        if (!cancelled) setCatalog(runtimeCatalogCache);
-      } catch {
-        // 未装 Runtime / 游戏没重开 / 文件损坏：静默降级为内置目录
-      }
-    };
-    void load(false);
-    const onFocus = () => void load(true);
-    window.addEventListener('focus', onFocus);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('focus', onFocus);
-    };
-  }, []);
-  return catalog;
+  return useRuntimeCatalogState().catalog;
 }
 
 // ---- mod 目录条目过滤（只保留内置目录没有的）----
@@ -96,13 +76,13 @@ export function useRuntimeCatalog(): RuntimeCatalog | null {
 export function modPowers(runtime: RuntimeCatalog | null): RuntimePower[] {
   if (!runtime) return [];
   const known = new Set(POWERS.map((p) => p.name.toLowerCase()));
-  return runtime.powers.filter((p) => !known.has(p.name.toLowerCase()));
+  return runtime.powers.filter((p) => p.mod_id ? p.mod_id !== 'sts2' || !known.has(p.name.toLowerCase()) : !known.has(p.name.toLowerCase()));
 }
 
 export function modMonsters(runtime: RuntimeCatalog | null): RuntimeMonster[] {
   if (!runtime) return [];
   const known = new Set(MONSTERS.map((m) => m.name.toLowerCase()));
-  return runtime.monsters.filter((m) => !known.has(m.name.toLowerCase()));
+  return runtime.monsters.filter((m) => m.mod_id ? m.mod_id !== 'sts2' || !known.has(m.name.toLowerCase()) : !known.has(m.name.toLowerCase()));
 }
 
 // ---- 自定义效果处理器（SfEffects 注册表）----
@@ -155,7 +135,7 @@ export function buildHandlerCombo(lang: Lang, runtime: RuntimeCatalog | null): C
     seen.add(h.name.toLowerCase());
     items.push({
       value: h.name,
-      primary: h.name,
+      primary: h.title || h.name,
       secondary: (lang === 'en' ? h.desc_en : h.desc_zh) || h.source,
       badge,
       badgeTone: badge === 'MOD' ? ('neutral' as const) : ('safe' as const),
@@ -163,7 +143,7 @@ export function buildHandlerCombo(lang: Lang, runtime: RuntimeCatalog | null): C
     });
   };
   for (const h of runtime?.custom_effects ?? []) {
-    push(h, h.source === 'SpireForgeRuntime' ? (lang === 'en' ? 'Built-in' : '内置') : 'MOD');
+    push(h, (h.mod_id ? h.mod_id === 'SpireForgeRuntime' : h.source === 'SpireForgeRuntime') ? (lang === 'en' ? 'Built-in' : '内置') : 'MOD');
   }
   for (const h of BUILTIN_CUSTOM_HANDLERS) {
     push(h, lang === 'en' ? 'Built-in' : '内置');
@@ -292,9 +272,9 @@ export function buildPowerCombo(lang: Lang, mods: RuntimePower[]): ComboItem[] {
   }));
   for (const p of mods) {
     items.push({
-      value: p.name,
+      value: p.key || p.name,
       primary: p.title || p.name,
-      secondary: stripBbcode(p.description) || p.entry,
+      secondary: [p.mod_name || p.source, stripBbcode(p.description) || p.entry].filter(Boolean).join(" · "),
       badge: p.type === 'debuff' ? (lang === 'en' ? 'Debuff' : '减益') : 'MOD',
       badgeTone: p.type === 'debuff' ? ('danger' as const) : ('neutral' as const),
       keywords: [p.name, p.entry, p.class_name, p.source].filter(Boolean).join(' '),
@@ -315,9 +295,9 @@ export function buildMonsterCombo(lang: Lang, mods: RuntimeMonster[]): ComboItem
   }));
   for (const m of mods) {
     items.push({
-      value: m.name,
+      value: m.key || m.name,
       primary: m.title || m.name,
-      secondary: m.hp ? (lang === 'en' ? `HP ${m.hp}` : `生命 ${m.hp}`) : m.entry,
+      secondary: [m.mod_name || m.source, m.hp ? `HP ${m.hp}` : m.entry].filter(Boolean).join(' · '),
       badge: 'MOD',
       badgeTone: 'neutral' as const,
       keywords: [m.name, m.entry, m.source].filter(Boolean).join(' '),
@@ -364,13 +344,13 @@ export function buildSpawnCombo(args: {
   if (runtime) {
     const seen = new Set(items.map((i) => i.value.toUpperCase()));
     for (const c of runtime.cards) {
-      if (seen.has(c.entry.toUpperCase())) continue;
+      if ((!c.mod_id || c.mod_id === "sts2") && seen.has(c.entry.toUpperCase())) continue;
       seen.add(c.entry.toUpperCase());
       const typeLabel = c.type ? c.type.charAt(0).toUpperCase() + c.type.slice(1) : '';
       items.push({
-        value: c.entry,
+        value: c.key || c.entry,
         primary: c.title || c.entry,
-        secondary: c.entry,
+        secondary: [c.mod_name || c.source, c.entry].filter(Boolean).join(' · '),
         badge: TYPE_LABEL[typeLabel as CardType] ? pick(TYPE_LABEL[typeLabel as CardType], lang) : (typeLabel || undefined),
         badgeTone: 'neutral' as const,
         keywords: [c.entry, c.source, c.rarity].filter(Boolean).join(' '),

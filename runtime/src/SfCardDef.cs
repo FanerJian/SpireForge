@@ -300,6 +300,14 @@ public sealed class SfCardDef
     [JsonPropertyName("vanilla_id")]
     public string? VanillaId { get; set; }
 
+    [JsonPropertyName("source_ref")]
+    public string? SourceRef { get; set; }
+
+    // Null preserves legacy full overrides; imported Mod cards apply only explicitly edited fields.
+    [JsonPropertyName("override_fields")]
+    public List<string>? OverrideFields { get; set; }
+
+
     /// <summary>原版卡数值覆盖：键 = DynamicVar.Name（如 Damage/Block/Vulnerable），值 = 覆盖后的 BaseValue。</summary>
     [JsonPropertyName("stats")]
     public Dictionary<string, decimal>? Stats { get; set; }

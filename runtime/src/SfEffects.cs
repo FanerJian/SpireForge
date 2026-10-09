@@ -46,6 +46,22 @@ public delegate Task SfEffectHandler(SfEffectContext ctx);
 public static class SfEffects
 {
     private static readonly Dictionary<string, SfEffectHandler> Handlers = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, SfEffectDescriptor> Descriptors = new(StringComparer.OrdinalIgnoreCase);
+
+    public static SfEffectDescriptor? Describe(string name) => Descriptors.GetValueOrDefault(name);
+
+    /// <summary>Qualified effects cannot silently replace another Mod's handler.</summary>
+    public static string Register(SfEffectDescriptor descriptor, SfEffectHandler handler)
+    {
+        if (string.IsNullOrWhiteSpace(descriptor.ModId) || string.IsNullOrWhiteSpace(descriptor.Name)
+            || descriptor.ModId.Contains(':') || descriptor.Name.Contains(':'))
+            throw new ArgumentException("A Mod ID and effect name without ':' are required");
+        var key = $"effect:{descriptor.ModId}:{descriptor.Name}";
+        if (Handlers.ContainsKey(key)) throw new InvalidOperationException("Effect already registered: " + key);
+        Register(key, handler);
+        Descriptors[key] = descriptor;
+        return key;
+    }
 
     /// <summary>当前已注册的自定义效果名。</summary>
     public static IReadOnlyCollection<string> Kinds => Handlers.Keys;
@@ -63,13 +79,14 @@ public static class SfEffects
     }
 
     /// <summary>注销一个自定义效果处理器。</summary>
-    public static bool Unregister(string kind) => Handlers.Remove(kind);
+    public static bool Unregister(string kind) { Descriptors.Remove(kind); return Handlers.Remove(kind); }
 
     /// <summary>查询某个自定义效果名是否已注册。</summary>
     public static bool IsRegistered(string kind) => Handlers.ContainsKey(kind);
 
     /// <summary>处理器的来源程序集名（目录导出用：编辑器据此标 MOD 徽章；未知返回空串）。</summary>
     public static string SourceOf(string kind) =>
+        Descriptors.TryGetValue(kind, out var descriptor) ? descriptor.ModId :
         Handlers.TryGetValue(kind, out var h)
             ? h.Method.DeclaringType?.Assembly.GetName().Name ?? ""
             : "";
@@ -94,6 +111,33 @@ public static class SfEffects
         }
         try
         {
+            if (Descriptors.TryGetValue(key, out var descriptor))
+            {
+                if (descriptor.AllowedTriggers is { Length: > 0 } && !descriptor.AllowedTriggers.Contains(ctx.Trigger))
+                    throw new InvalidOperationException("This effect does not support trigger: " + ctx.Trigger);
+                if (!string.IsNullOrEmpty(descriptor.RequiredCharacter)
+                    && ctx.Card.Owner.Character.GetType().FullName != descriptor.RequiredCharacter)
+                    throw new InvalidOperationException("This effect requires character: " + descriptor.RequiredCharacter);
+                foreach (var parameter in descriptor.Parameters)
+                {
+                    var has = ctx.Effect.Params?.ContainsKey(parameter.Name) == true;
+                    if (!has && parameter.Default != null) {
+                        ctx.Effect.Params ??= new();
+                        ctx.Effect.Params[parameter.Name] = System.Text.Json.JsonSerializer.SerializeToElement(parameter.Default);
+                        has = true;
+                    }
+                    if (!has && parameter.Required && parameter.Default == null)
+                        throw new InvalidOperationException("Missing effect parameter: " + parameter.Name);
+                    if (!has) continue;
+                    var actual = ctx.Effect.Params![parameter.Name];
+                    if (parameter.Type == "enum" && parameter.Options != null
+                        && (actual.ValueKind != System.Text.Json.JsonValueKind.String || !parameter.Options.Contains(actual.GetString())))
+                        throw new InvalidOperationException("Invalid effect option: " + parameter.Name);
+                    if (parameter.Type == "number" && (actual.ValueKind != System.Text.Json.JsonValueKind.Number || !actual.TryGetDecimal(out var number)
+                        || parameter.Min is decimal min && number < min || parameter.Max is decimal max && number > max))
+                        throw new InvalidOperationException("Invalid effect number: " + parameter.Name);
+                }
+            }
             await handler(ctx);
             return true;
         }

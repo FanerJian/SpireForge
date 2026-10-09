@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpireForge content integration fields (card format 2)",
+  "type": "object",
+  "properties": {
+    "source_ref": { "type": ["string", "null"], "pattern": "^(game:.+|mod:[A-Za-z0-9_.-]+:.+)$" },
+    "override_fields": { "type": ["array", "null"], "items": { "type": "string" }, "uniqueItems": true },
+    "content_dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["mod_id"],
+        "properties": {
+          "mod_id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+          "version": { "type": "string" },
+          "workshop_id": { "type": ["string", "null"], "pattern": "^[0-9]+$" }
+        }
+      }
+    }
+  }
+}

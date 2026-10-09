@@ -174,12 +174,7 @@ pub fn build_pack_files(
         // 原版 Entry 已是游戏的最终 Slugify 形态，不能再过 slugify（BASH 会被拆成 B_A_S_H），
         // 只做大写规范化 + 剔除非法字符。
         let entry = match card.vanilla_id.as_deref() {
-            Some(v) if !v.trim().is_empty() => v
-                .trim()
-                .to_uppercase()
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect(),
+            Some(v) if !v.trim().is_empty() => v.trim().to_string(),
             _ => card_entry(pack_id, &card.id),
         };
 
@@ -223,7 +218,8 @@ pub fn build_pack_files(
                     "eng" => &text.eng,
                     _ => &text.zhs,
                 };
-                if !v.is_empty() {
+                if !v.is_empty() && card.override_fields.as_ref().map_or(true, |fields|
+                    fields.iter().any(|f| f == match *suffix { "title" => "name", "description" => "description", _ => "flavor" })) {
                     table.insert(format!("{entry}.{suffix}"), json!(v));
                 }
             }
@@ -261,6 +257,7 @@ pub fn build_manifest(
 fn mod_ids_used(cards: &[CardDef]) -> Vec<String> {
     let mut ids = std::collections::BTreeSet::new();
     for card in cards {
+        ids.extend(crate::content_refs::mod_ids(card));
         for pool in crate::custom_pools::active_pool_keys(card) {
             if let Some(rest) = pool.strip_prefix("mod:") {
                 if let Some((mod_id, type_name)) = rest.split_once(':') {
@@ -285,9 +282,13 @@ pub fn build_manifest_for_cards(
 ) -> String {
     let dependencies: Vec<serde_json::Value> = std::iter::once("SpireForgeRuntime".to_string())
         .chain(mod_ids_used(cards))
+        .filter(|id| id != pack_id)
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
-        .map(|id| json!({"id": id, "min_version": null}))
+        .map(|id| {
+            let minimum = if id == "SpireForgeRuntime" && cards.iter().any(|c| c.format_version >= 2) { Some("0.1.16") } else { None };
+            json!({"id": id, "min_version": minimum})
+        })
         .collect();
     serde_json::to_string_pretty(&json!({
         "id": pack_id,
@@ -521,7 +522,7 @@ mod custom_pool_tests {
             .as_array()
             .unwrap()
             .iter()
-            .all(|d| d["min_version"].is_null()));
+            .all(|d| if d["id"] == "SpireForgeRuntime" { d["min_version"] == "0.1.16" } else { d["min_version"].is_null() }));
     }
 }
 

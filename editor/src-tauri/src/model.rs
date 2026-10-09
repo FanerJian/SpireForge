@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 /// 卡牌类型：字符串与游戏 CardType 枚举名一致
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -383,6 +383,12 @@ pub struct CardDef {
     /// （费用/类型/稀有度/目标/文案；effects 非空时整体替换其打出行为）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vanilla_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub override_fields: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content_dependencies: Vec<crate::content_refs::ContentDependency>,
     /// 原版数值覆盖：键 = 原版 DynamicVar 名（如 Damage/Block/Vulnerable），值 = 覆盖后的数值
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stats: Option<std::collections::BTreeMap<String, f64>>,
@@ -420,6 +426,9 @@ impl Default for CardDef {
             on_enter_combat: vec![],
             on_turn_end_in_hand: vec![],
             vanilla_id: None,
+            source_ref: None,
+            override_fields: None,
+            content_dependencies: vec![],
             stats: None,
             upgrade_stats: None,
         }

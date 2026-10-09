@@ -1,4 +1,5 @@
 mod custom_pools;
+mod content_refs;
 mod demo;
 mod game;
 mod game_catalog;
@@ -144,8 +145,15 @@ fn get_project_meta(state: State<AppState>) -> Result<ProjectMeta, String> {
 }
 
 #[tauri::command]
-fn save_card(state: State<AppState>, card: CardDef) -> Result<(), String> {
+fn save_card(state: State<AppState>, mut card: CardDef) -> Result<(), String> {
     let root = require_root(&state)?;
+    let game_dir = state.settings.lock().map_err(|_| "设置读取失败")?.game_dir.clone();
+    let catalog = game_catalog::read_game_catalog(&game_dir).ok();
+    content_refs::enrich(&mut card, catalog.as_ref());
+    // Keep previously learned Workshop identities when saving an offline UI snapshot.
+    if let Ok(previous) = project::read_card(&root, &card.id) {
+        content_refs::merge_known(&mut card, &previous.content_dependencies);
+    }
     project::add_card(&root, &card)
 }
 
@@ -496,11 +504,15 @@ fn install_to_game(state: State<AppState>, version: String) -> Result<InstallRes
 fn validate_project(state: State<AppState>) -> Result<Vec<publish::ValidationIssue>, String> {
     let root = require_root(&state)?;
     let (meta, cards) = project::load_project(&root)?;
-    Ok(publish::preflight_with_pools(
+    let mut issues = publish::preflight_with_pools(
         &meta.pack_id,
         &cards,
         &meta.custom_pools,
-    ))
+    );
+    let game_dir = state.settings.lock().map_err(|_| "设置读取失败")?.game_dir.clone();
+    let catalog = game_catalog::read_game_catalog(&game_dir).ok();
+    issues.extend(content_refs::preflight(&cards, catalog.as_ref()));
+    Ok(issues)
 }
 
 /// 生成工坊上传工作区（dependencies 按 meta.runtime_workshop_id 写入；
