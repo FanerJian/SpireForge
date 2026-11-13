@@ -4,6 +4,7 @@ import type { CardDef, CustomPoolDef } from '../lib/types';
 import { useStore } from '../lib/store';
 import { useLang } from '../lib/i18n';
 import { Disclosure } from './ui';
+import { officialPoolDefinition } from '../lib/officialPools';
 
 export default function CustomPoolSection({ card, onToggle }: { card: CardDef; onToggle: (key: string) => void }) {
   const { meta, cards, settings, updateMeta, showToast } = useStore();
@@ -24,7 +25,7 @@ export default function CustomPoolSection({ card, onToggle }: { card: CardDef; o
     for (const key of selected) if (key.startsWith('mod:') && !byKey.has(key)) {
       byKey.set(key, { key, label: `${key}（${zh ? '尚未配置' : 'unconfigured'}）`, mod_id: '', type_name: '' });
     }
-    return [...byKey.values()];
+    return [...byKey.values()].filter(pool => !officialPoolDefinition(pool.key));
   }, [defs, selected.join('|'), zh]);
 
   const merge = async (incoming: CustomPoolDef[]) => {
@@ -88,7 +89,7 @@ export default function CustomPoolSection({ card, onToggle }: { card: CardDef; o
         <div className="flex gap-2"><button disabled={busy} onClick={saveSelected} className="rounded bg-amber-500 px-2 py-1 text-xs font-semibold text-black disabled:opacity-50">{zh ? '确认合并所选' : 'Merge selected'}</button><button onClick={() => setPreview(null)} className="rounded border border-white/10 px-2 py-1 text-xs">{zh ? '取消' : 'Cancel'}</button></div>
       </>}
     </div>}
-    {defs.length > 0 && <div className="space-y-1">{defs.map((p) => {
+    {defs.length > 0 && <div className="space-y-1">{defs.filter(pool => !officialPoolDefinition(pool.key)).map((p) => {
       const used = cards.some((c) => c.pool === p.key || c.pools?.includes(p.key));
       return <div key={p.key} className="flex items-center justify-between text-[10px] text-slate-500"><span className="truncate">{p.label} · {p.mod_id}</span><button disabled={used || busy} onClick={() => run(async () => { await updateMeta({ custom_pools: defs.filter((x) => x.key !== p.key) }); })} className="px-1 text-rose-300 disabled:opacity-30">{zh ? '删除' : 'Remove'}</button></div>;
     })}</div>}

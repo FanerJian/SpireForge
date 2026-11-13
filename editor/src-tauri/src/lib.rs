@@ -9,6 +9,7 @@ mod project;
 mod project_library;
 mod publish;
 mod recovery;
+mod rules;
 mod update;
 mod vanilla;
 mod workshop;
@@ -149,6 +150,7 @@ fn save_card(state: State<AppState>, mut card: CardDef) -> Result<(), String> {
     let root = require_root(&state)?;
     let game_dir = state.settings.lock().map_err(|_| "设置读取失败")?.game_dir.clone();
     let catalog = game_catalog::read_game_catalog(&game_dir).ok();
+    rules::bind_statuses(&mut card, &project::read_meta(&root)?.rule_statuses)?;
     content_refs::enrich(&mut card, catalog.as_ref());
     // Keep previously learned Workshop identities when saving an offline UI snapshot.
     if let Ok(previous) = project::read_card(&root, &card.id) {
@@ -244,8 +246,12 @@ fn save_effect_icon(
     name: String,
     ext: String,
     bytes: Vec<u8>,
+    project_root: Option<String>,
 ) -> Result<String, String> {
     let root = require_root(&state)?;
+    if project_root.as_deref().is_some_and(|expected| expected != root) {
+        return Err("项目已切换，请重新选择图标".into());
+    }
     project::save_effect_icon(&root, &name, &ext, &bytes)
 }
 
@@ -273,7 +279,7 @@ fn export_card_json(state: State<AppState>, id: String) -> Result<String, String
 /// 读取用户通过对话框选择的文本文件（导入卡牌 JSON 用）
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    import::read_json_file(std::path::Path::new(&path))
 }
 
 /// 写入用户通过对话框指定的文本文件（导出卡牌 JSON 用）
@@ -309,6 +315,7 @@ fn import_card_any(state: State<AppState>, raw: String) -> Result<import::Import
     let mut card = report.card;
     card.id = dedup_id(&mut used, &card.id);
     project::add_card(&root, &card)?;
+    let card = project::read_card(&root, &card.id)?;
     Ok(import::ImportReport { card, ..report })
 }
 
@@ -327,6 +334,7 @@ fn import_cards_any(
         let mut card = r.card;
         card.id = dedup_id(&mut used, &card.id);
         project::add_card(&root, &card)?;
+        let card = project::read_card(&root, &card.id)?;
         out.push(import::ImportReport { card, ..r });
     }
     Ok(out)
@@ -356,7 +364,7 @@ fn import_pack_pck(
                 .next()
                 .unwrap_or_default()
                 .to_string();
-            card.portrait = match result.images.iter().find(|i| i.file_name == fname) {
+            card.portrait = match import::find_image(&result.images, &card.portrait) {
                 Some(img) => {
                     let ext = fname.rsplit('.').next().unwrap_or("png").to_string();
                     match project::save_portrait(&root, &card.id, &ext, &img.data) {
@@ -374,7 +382,9 @@ fn import_pack_pck(
                 }
             };
         }
+        import::restore_effect_icons(&root, &mut card, &result.images)?;
         project::add_card(&root, &card)?;
+        let card = project::read_card(&root, &card.id)?;
         imported.push(import::ImportReport { card, ..r });
     }
     Ok(import::PckImportResult {
@@ -503,7 +513,8 @@ fn install_to_game(state: State<AppState>, version: String) -> Result<InstallRes
 #[tauri::command]
 fn validate_project(state: State<AppState>) -> Result<Vec<publish::ValidationIssue>, String> {
     let root = require_root(&state)?;
-    let (meta, cards) = project::load_project(&root)?;
+    let (meta, mut cards) = project::load_project(&root)?;
+    for card in &mut cards { rules::bind_statuses(card, &meta.rule_statuses)?; }
     let mut issues = publish::preflight_with_pools(
         &meta.pack_id,
         &cards,

@@ -147,6 +147,8 @@ export interface CardDef {
 }
 
 export interface ProjectMeta {
+  rule_statuses?: import('./rules').RuleStatus[];
+  rule_templates?: { id: string; name: string; program: import('./rules').RuleProgram }[];
   format_version: number;
   pack_id: string;
   name: string;
@@ -272,7 +274,7 @@ export interface RuntimeCatalog {
 
 export function newCard(id: string): CardDef {
   return {
-    format_version: 1,
+    format_version: 3,
     id,
     card_type: 'Attack',
     rarity: 'Common',

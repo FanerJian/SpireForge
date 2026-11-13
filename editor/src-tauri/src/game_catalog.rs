@@ -248,12 +248,62 @@ pub fn read_game_catalog(game_dir: &str) -> Result<RuntimeCatalog, String> {
         return Err("游戏内容目录文件超过 16 MB".into());
     }
     let raw = fs::read_to_string(&path).map_err(|e| format!("读取游戏内容目录失败：{e}"))?;
-    parse_catalog(&raw)
+    let mut catalog = parse_catalog(&raw)?;
+    if let Ok(generated) = metadata.modified() {
+        let sources = [
+            (PathBuf::from(game_dir).join("data_sts2_windows_x86_64").join("sts2.dll"), "游戏"),
+            (path.with_file_name("SpireForgeRuntime.dll"), "SpireForgeRuntime"),
+        ];
+        for (source, label) in sources {
+            let modified = fs::metadata(source).and_then(|m| m.modified());
+            if modified.is_ok_and(|updated| updated > generated) {
+                catalog.issues.push(format!(
+                    "当前目录快照早于{label}文件更新。请重启游戏并进入主菜单，然后刷新目录。"
+                ));
+            }
+        }
+    }
+    Ok(catalog)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn older_snapshots_keep_content_and_report_updated_game_or_runtime() {
+        use std::time::{Duration, SystemTime};
+        let root = std::env::temp_dir().join(format!("sf_catalog_freshness_{}", std::process::id()));
+        let runtime = root.join("mods/SpireForgeRuntime");
+        let game = root.join("data_sts2_windows_x86_64");
+        fs::create_dir_all(&runtime).unwrap();
+        fs::create_dir_all(&game).unwrap();
+        let snapshot = runtime.join("spireforge-catalog.json");
+        fs::write(&snapshot, r#"{"format_version":2,"issues":["existing issue"],"cards":[{"entry":"FOOL_CARD","title":"Fool card"}]}"#).unwrap();
+        let game_dll = game.join("sts2.dll");
+        let runtime_dll = runtime.join("SpireForgeRuntime.dll");
+        fs::write(&game_dll, []).unwrap();
+        fs::write(&runtime_dll, []).unwrap();
+        let earlier = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let later = earlier + Duration::from_secs(60);
+        for file in [&snapshot, &game_dll, &runtime_dll] {
+            fs::OpenOptions::new().write(true).open(file).unwrap().set_modified(earlier).unwrap();
+        }
+        let root_str = root.to_string_lossy();
+        let fresh = read_game_catalog(&root_str).unwrap();
+        assert_eq!(fresh.issues, vec!["existing issue"]);
+        for file in [&game_dll, &runtime_dll] {
+            fs::OpenOptions::new().write(true).open(file).unwrap().set_modified(later).unwrap();
+        }
+        let stale = read_game_catalog(&root_str).unwrap();
+        assert_eq!(stale.cards[0].entry, "FOOL_CARD");
+        assert_eq!(stale.issues.len(), 3);
+        assert!(stale.issues.iter().any(|issue| issue.contains("早于游戏文件更新")));
+        assert!(stale.issues.iter().any(|issue| issue.contains("早于SpireForgeRuntime文件更新")));
+        fs::OpenOptions::new().write(true).open(&snapshot).unwrap().set_modified(later).unwrap();
+        assert_eq!(read_game_catalog(&root_str).unwrap().issues, vec!["existing issue"]);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn parses_minimal_and_fills_defaults() {

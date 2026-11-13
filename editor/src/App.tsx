@@ -1,41 +1,49 @@
-import { useEffect, useState } from 'react';
-import CardLibrary from './components/CardLibrary';
-import CardPreview from './components/CardPreview';
-import PropertyPanel from './components/PropertyPanel';
-import PublishPanel from './components/PublishPanel';
-import ProjectSettingsModal from './components/ProjectSettingsModal';
-import UpdateModal from './components/UpdateModal';
-import BackupRecoveryModal from './components/BackupRecoveryModal';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import Welcome from './components/Welcome';
 import ConfirmationDialog from './components/ConfirmationDialog';
 import { api, pickSaveJsonFile } from './lib/tauri';
 import { useStore } from './lib/store';
 import { setLang, useLang, useT } from './lib/i18n';
 import { grantEntry } from './lib/entry';
-import { bytesToDataUrl, extOf } from './lib/img';
+import { usePortrait } from './lib/usePortrait';
 import { useAutoUpdateCheck, useUpdateInfo } from './lib/update';
 import { Disclosure } from './components/ui';
+import { KitButton } from './components/KitButton';
+
+const CardLibrary = lazy(() => import('./components/CardLibrary'));
+const CardPreview = lazy(() => import('./components/CardPreview'));
+const CardDescription = lazy(() => import('./components/CardPreview').then(module => ({ default: module.CardDescription })));
+const PropertyPanel = lazy(() => import('./components/PropertyPanel'));
+const PublishPanel = lazy(() => import('./components/PublishPanel'));
+const ProjectSettingsModal = lazy(() => import('./components/ProjectSettingsModal'));
+const UpdateModal = lazy(() => import('./components/UpdateModal'));
+const BackupRecoveryModal = lazy(() => import('./components/BackupRecoveryModal'));
 
 function Toast({ msg }: { msg: string }) {
   return (
-    <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-amber-400/30 bg-[#1a1a24]/95 px-4 py-2 text-sm text-amber-200 shadow-xl">
+    <div role="status" aria-live="polite" className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-amber-400/30 bg-[var(--lk-color-surface)]/95 px-4 py-2 text-sm text-amber-200 shadow-xl">
       {msg}
     </div>
   );
 }
 
 function Toolbar({ onPublish, onSettings, onRecovery }: { onPublish: () => void; onSettings: () => void; onRecovery: () => void }) {
-  const { meta, dirtyIds, persistAll, closeProject, showToast, undoStack, redoStack, undo, redo, historyBusy } = useStore();
+  const { meta, dirtyIds, persistAll, closeProject, showToast, undoStack, redoStack, undo, redo, historyBusy } = useStore(useShallow(s => ({
+    meta: s.meta, dirtyIds: s.dirtyIds, persistAll: s.persistAll, closeProject: s.closeProject,
+    showToast: s.showToast, undoStack: s.undoStack, redoStack: s.redoStack,
+    undo: s.undo, redo: s.redo, historyBusy: s.historyBusy,
+  })));
   const t = useT();
   const lang = useLang();
   const dirty = dirtyIds.length > 0;
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState(false);
   return (
-    <div className="flex h-12 items-center gap-2 border-b border-white/10 bg-black/30 px-4">
+    <div className="sf-toolbar">
       <div className="flex items-baseline gap-2">
-        <span className="text-sm font-black tracking-wide text-amber-300">SpireForge</span>
-        <span className="text-xs text-slate-600">{meta?.name}</span>
+        <span className="sf-brand">SpireForge</span>
+        <span className="sf-project-name max-w-52 truncate border-l border-white/15 pl-3 text-xs text-slate-400">{meta?.name}</span>
       </div>
       <div className="flex-1" />
       <button
@@ -66,12 +74,7 @@ function Toolbar({ onPublish, onSettings, onRecovery }: { onPublish: () => void;
       >
         {dirty ? t('app.saveDirty', { n: dirtyIds.length }) : t('app.saved')}
       </button>
-      <button
-        onClick={onPublish}
-        className="whitespace-nowrap rounded-md bg-amber-500/90 px-3 py-1.5 text-xs font-bold text-black transition hover:bg-amber-400"
-      >
-        {t('app.publish')}
-      </button>
+      <KitButton onClick={onPublish} variant="primary">{t('app.publish')}</KitButton>
       <button
         onClick={onSettings}
         className="whitespace-nowrap rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-500 transition hover:border-white/25 hover:text-slate-300"
@@ -105,27 +108,17 @@ function Toolbar({ onPublish, onSettings, onRecovery }: { onPublish: () => void;
 }
 
 function PreviewPane() {
-  const { cards, meta, projectRoot, persistAll, showToast } = useStore();
-  const selectedId = useStore((s) => s.selectedId);
+  const { card, meta, projectRoot, portraitRevision, persistAll, showToast } = useStore(useShallow(s => ({
+    card: s.cards.find(c => c.id === s.selectedId), meta: s.meta, projectRoot: s.projectRoot,
+    portraitRevision: s.portraitRevision, persistAll: s.persistAll, showToast: s.showToast,
+  })));
   const t = useT();
   const [upgraded, setUpgraded] = useState(false);
-  const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
-  const card = cards.find((c) => c.id === selectedId);
+  const portraitUrl = usePortrait(projectRoot, card?.portrait, portraitRevision);
 
   useEffect(() => {
     setUpgraded(false);
-    setPortraitUrl(null);
-    if (!card || !card.portrait || !projectRoot) return;
-    let cancelled = false;
-    api
-      .readPortrait(card.portrait)
-      .then((bytes) => {
-        if (cancelled) return;
-        setPortraitUrl(bytesToDataUrl(new Uint8Array(bytes), extOf(card.portrait)));
-      })
-      .catch(() => { if (!cancelled) setPortraitUrl(null); });
-    return () => { cancelled = true; };
-  }, [card, projectRoot]);
+  }, [card?.id, projectRoot]);
 
   const doExport = async () => {
     if (!card) return;
@@ -159,16 +152,14 @@ function PreviewPane() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-auto bg-[#0c0c12] p-6">
+    <div className="sf-preview-pane">
       {card && meta ? (
         <>
-          <CardPreview card={card} packId={meta.pack_id} portraitUrl={portraitUrl} upgraded={upgraded} />
+          <div className="flex items-center justify-between"><span className="sf-section-label">{t('pv.title')}</span><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={upgraded} onChange={e => setUpgraded(e.target.checked)} />{t('pv.upgraded')}</label></div>
+          <div className="sf-preview-card"><div data-card-preview><CardPreview card={card} packId={meta.pack_id} portraitUrl={portraitUrl} upgraded={upgraded} /></div></div>
+          <div className="sf-preview-description sf-readable"><CardDescription card={card} upgraded={upgraded} /></div>
           <Disclosure title={t('ui.previewTools')} storageKey="preview.actions" className="w-full max-w-[360px]">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
-            <label className="flex items-center gap-1.5 whitespace-nowrap">
-              <input type="checkbox" checked={upgraded} onChange={(e) => setUpgraded(e.target.checked)} />
-              {t('pv.upgraded')}
-            </label>
             <button onClick={doGrant}
               className="whitespace-nowrap rounded border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:border-emerald-400/60">
               {t('pv.grant')}
@@ -190,14 +181,19 @@ function PreviewPane() {
 }
 
 export default function App() {
-  const { projectRoot, meta, toast, refreshSettings } = useStore();
+  const { projectRoot, meta, toast, refreshSettings } = useStore(useShallow(s => ({
+    projectRoot: s.projectRoot, meta: s.meta, toast: s.toast, refreshSettings: s.refreshSettings,
+  })));
   const [publishing, setPublishing] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
   const t = useT();
   const updateInfo = useUpdateInfo();
+  const lang = useLang();
   useAutoUpdateCheck();
+
+  useEffect(() => { document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'; }, [lang]);
 
   useEffect(() => {
     // 启动进入卡包列表，让用户选择；旧版 lastProject 由列表兼容发现。
@@ -240,14 +236,14 @@ export default function App() {
   }, []);
 
   if (!settingsReady) {
-    return <div className="flex h-screen items-center justify-center bg-[#0c0c12] text-sm text-slate-400">{t('projects.loading')}</div>;
+    return <div className="flex h-screen items-center justify-center bg-[var(--lk-color-bg)] text-sm text-slate-400">{t('projects.loading')}</div>;
   }
 
   if (!projectRoot || !meta) {
     return (
       <div className="h-screen text-slate-200">
         <Welcome />
-        {updateInfo && <UpdateModal info={updateInfo} />}
+        <Suspense fallback={null}>{updateInfo && <UpdateModal info={updateInfo} />}</Suspense>
         {toast && <Toast msg={toast} />}
         <ConfirmationDialog />
       </div>
@@ -255,23 +251,25 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[#0c0c12] text-slate-200">
+    <div className="flex h-screen flex-col bg-[var(--lk-color-bg)] text-slate-200">
       <Toolbar onPublish={() => setPublishing(true)} onSettings={() => setSettingsOpen(true)} onRecovery={() => setRecovering(true)} />
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr_400px] overflow-hidden">
-        <div className="min-h-0 border-r border-white/10 bg-black/20">
+      <Suspense fallback={<div role="status" className="flex flex-1 items-center justify-center text-sm text-slate-400">{t('projects.loading')}</div>}>
+      <div className="sf-workspace">
+        <div className="sf-library">
           <CardLibrary />
         </div>
-        <div className="min-h-0">
-          <PreviewPane />
-        </div>
-        <div className="min-h-0 border-l border-white/10 bg-black/20">
+        <main className="sf-editor">
           <PropertyPanel />
-        </div>
+        </main>
+        <aside className="sf-preview"><PreviewPane /></aside>
       </div>
+      </Suspense>
+      <Suspense fallback={null}>
       {publishing && <PublishPanel onClose={() => setPublishing(false)} />}
       {recovering && <BackupRecoveryModal onClose={() => setRecovering(false)} />}
       {settingsOpen && <ProjectSettingsModal onClose={() => setSettingsOpen(false)} />}
       {updateInfo && <UpdateModal info={updateInfo} />}
+      </Suspense>
       {toast && <Toast msg={toast} />}
       <ConfirmationDialog />
     </div>

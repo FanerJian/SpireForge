@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public SHA-256 of the bundled Steam API DLL; verified against tools/uploader/SHA256SUMS"
+regexes = ['''eb17909a76668cf9ae0b92a618a34a50f6c73d3a6787cb4dd8ce36a8b10bfb75''']

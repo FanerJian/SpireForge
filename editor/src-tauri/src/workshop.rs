@@ -33,7 +33,7 @@ pub fn dependencies_for_cards(meta: &ProjectMeta, cards: &[CardDef]) -> Vec<Stri
         }
     }
     for pool in &meta.custom_pools {
-        if used.contains(pool.key.as_str()) {
+        if used.contains(pool.key.as_str()) && crate::content_refs::reference_mod(&pool.key).is_some() {
             if let Some(id) = &pool.workshop_id {
                 ids.insert(id.clone());
             }
@@ -64,10 +64,16 @@ mod custom_pool_tests {
                 type_name: "B.Pool".into(),
                 workshop_id: Some("789".into()),
             },
+            crate::custom_pools::CustomPoolDef {
+                key: "mod:sts2:MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool".into(),
+                label: "愚者".into(), mod_id: "sts2".into(),
+                type_name: "MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool".into(),
+                workshop_id: Some("999".into()),
+            },
         ];
         let mut card = CardDef::default();
         card.pool = "mod:Stale:Stale.Pool".into();
-        card.pools = vec!["mod:A:A.Pool".into()];
+        card.pools = vec!["mod:A:A.Pool".into(), "mod:sts2:MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool".into()];
         let mut override_card = CardDef::default();
         override_card.pool = "mod:B:B.Pool".into();
         override_card.vanilla_id = Some("Vanilla.Entry".into());
@@ -141,6 +147,8 @@ pub fn prepare_workspace(
     cards: &[CardDef],
 ) -> Result<String, String> {
     let pack_id = meta.pack_id.as_str();
+    crate::project::validate_pack_id(pack_id)?;
+    let cards = crate::publish::prepare_cards(root, cards)?;
     let ws = PathBuf::from(out_root).join(format!("{pack_id}_workshop"));
     let content = ws.join("content");
     fs::create_dir_all(&content).map_err(|e| e.to_string())?;
@@ -154,7 +162,7 @@ pub fn prepare_workspace(
         &meta.author,
         &meta.description,
         version,
-        cards,
+        &cards,
     )?;
     for name in [format!("{pack_id}.json"), format!("{pack_id}.pck")] {
         fs::copy(pack_dir.join(&name), content.join(&name)).map_err(|er| er.to_string())?;
@@ -163,7 +171,7 @@ pub fn prepare_workspace(
     // workshop.json（字段名对齐官方 template）
     // dependencies：SpireForge Runtime 的工坊 id（项目设置里配置），
     // 玩家订阅卡包时 Steam 自动安装 Runtime——不写的话卡包加载会失败。
-    let dependencies = dependencies_for_cards(meta, cards);
+    let dependencies = dependencies_for_cards(meta, &cards);
     let visibility_norm = match visibility {
         "public" | "private" | "unlisted" | "friends_only" => visibility,
         _ => "private",
@@ -195,11 +203,13 @@ pub fn prepare_workspace(
 
     // image.png：取第一张卡的立绘；无则写 1×1 透明 PNG 占位
     let mut wrote_preview = false;
-    for card in cards {
+    for card in &cards {
         if !card.portrait.is_empty() {
+            crate::project::validate_rel_path(&card.portrait)?;
             let src = PathBuf::from(root).join(&card.portrait);
             if src.exists() {
-                fs::copy(&src, ws.join("image.png")).map_err(|e| e.to_string())?;
+                let image = crate::project::read_portrait_bytes(root, &card.portrait)?;
+                fs::write(ws.join("image.png"), image).map_err(|e| e.to_string())?;
                 wrote_preview = true;
                 break;
             }
@@ -242,9 +252,25 @@ pub fn source_signature(root: &str, meta: &ProjectMeta, cards: &[CardDef]) -> Re
     let paths: std::collections::BTreeSet<&str> = cards.iter().map(|c| c.portrait.as_str())
         .filter(|p| !p.is_empty()).collect();
     for rel in paths {
-        crate::project::validate_rel_path(rel)?;
         hash.update(rel.as_bytes());
-        hash.update(fs::read(Path::new(root).join(rel)).map_err(|e| format!("读取立绘 {rel} 失败: {e}"))?);
+        hash.update(crate::project::read_portrait_bytes(root, rel).map_err(|e| format!("读取立绘 {rel} 失败: {e}"))?);
+    }
+    let mut icons = BTreeSet::new();
+    for card in cards {
+        let mut bound = card.clone();
+        crate::rules::bind_statuses(&mut bound, &meta.rule_statuses)?;
+        icons.extend(crate::rules::asset_paths(&bound)?);
+    }
+    for rel in icons {
+        crate::project::validate_rel_path(&rel)?;
+        hash.update(rel.as_bytes());
+        // 缺失图标沿用打包时的空白回落。后续新增文件也应使已生成工作区过期。
+        if Path::new(root).join(&rel).exists() {
+            hash.update([1]);
+            hash.update(crate::project::read_portrait_bytes(root, &rel)?);
+        } else {
+            hash.update([0]);
+        }
     }
     Ok(format!("{:x}", hash.finalize()))
 }
@@ -282,6 +308,30 @@ impl PreparedWorkspace {
 #[cfg(test)]
 mod consistency_tests {
     use super::*;
+    #[test]
+    fn source_signature_tracks_nested_effect_icons_and_missing_asset_fallback() {
+        let base = std::env::temp_dir().join("sf_workshop_icon_signature");
+        let _ = fs::remove_dir_all(&base);
+        let root = base.to_string_lossy().into_owned();
+        crate::project::create_project(&root, "TestPack", "Test", "").unwrap();
+        let meta = crate::project::read_meta(&root).unwrap();
+        let card: CardDef = serde_json::from_value(json!({
+            "id": "icon_card", "effects": [{"kind": "delayed", "effects": [
+                {"kind": "delayed", "icon": " assets/powers/nested.png "}
+            ]}]
+        })).unwrap();
+        let cards = [card];
+        let missing = source_signature(&root, &meta, &cards).unwrap();
+        crate::project::save_effect_icon(&root, "nested", "png", b"first").unwrap();
+        let first = source_signature(&root, &meta, &cards).unwrap();
+        assert_ne!(missing, first);
+        crate::project::save_effect_icon(&root, "nested", "png", b"second").unwrap();
+        assert_ne!(first, source_signature(&root, &meta, &cards).unwrap());
+        fs::remove_file(base.join("assets/powers/nested.png")).unwrap();
+        assert_eq!(missing, source_signature(&root, &meta, &cards).unwrap());
+        let _ = fs::remove_dir_all(base);
+    }
+
     #[test]
     fn upload_guard_rejects_changed_settings_sources_images_and_generated_content() {
         let base = std::env::temp_dir().join("sf_workshop_consistency");

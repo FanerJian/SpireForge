@@ -12,6 +12,8 @@ import { buildMonsterCombo, buildPowerCombo, buildHitVfxCombo, buildSfxCombo, bu
 import { useGenDescription } from './useDescription';
 import { effectVarName } from '../../lib/description';
 import { CustomEffectBody, DelayedEffectBody, StandardEffectBody, effectMetaOf } from './effectEditors';
+import { rulesEffect } from '../../lib/rules';
+import { editorIdentity, retainEditorIdentity } from '../../lib/editorIdentity';
 
 export default function EffectsTab({ card }: { card: CardDef }) {
   const { updateCard, cards, meta, fieldFocus } = useStore();
@@ -59,7 +61,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
     setList(fx);
   };
   const patch = (i: number, p: Partial<EffectDef>) =>
-    setList(list.map((e, idx) => (idx === i ? ({ ...e, ...p } as EffectDef) : e)));
+    setList(list.map((e, idx) => (idx === i ? retainEditorIdentity(e, { ...e, ...p } as EffectDef) : e)));
 
   const isPlay = trigger === 'play';
   const hookCtx = !isPlay; // 钩子上下文：无玩家指定目标，需要 target 字段的效果走钩子取敌
@@ -95,9 +97,9 @@ export default function EffectsTab({ card }: { card: CardDef }) {
         const meta = effectMetaOf(e.kind);
         const rowPatch = (p: Partial<EffectDef>) => patch(i, p);
         return (
-          <Disclosure key={`${trigger}:${i}:${e.kind}`} field={`${isPlay ? 'effects' : trigger}.${i}`}
-            storageKey={`effect.${card.id}.${trigger}.${i}.${e.kind}`} defaultOpen={i === list.length - 1}
-            title={<>{pick(meta.label, lang)} <span className="ml-2 font-normal text-slate-500">{e.kind === 'delayed' ? `${e.turns}${t('ui.times')}` : 'amount' in e ? e.amount : ''}</span></>}
+          <Disclosure key={editorIdentity(e)} field={`${isPlay ? 'effects' : trigger}.${i}`}
+            defaultOpen={i === list.length - 1}
+            title={<>{e.kind === 'custom' && e.handler === 'sf_rules' ? lang === 'en' ? 'Rule program' : '规则组合' : pick(meta.label, lang)} <span className="ml-2 font-normal text-slate-500">{e.kind === 'delayed' ? `${e.turns}${t('ui.times')}` : 'amount' in e ? e.amount : ''}</span></>}
             hint={pick(meta.desc, lang) + (isPlay && effectVarName(list, i) ? ` · {${effectVarName(list, i)}}` : '')}
             actions={<>
                 <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={t('pp.moveEffectUp')} className="rounded px-1.5 text-slate-500 hover:bg-white/10 hover:text-slate-200 disabled:opacity-25">↑</button>
@@ -116,7 +118,7 @@ export default function EffectsTab({ card }: { card: CardDef }) {
               />
             ) : e.kind === 'custom' ? (
               <CustomEffectBody
-                scope={`${card.id}.${trigger}.${i}`}
+                scope={`${isPlay ? 'effects' : trigger}.${i}`}
                 e={e as Extract<EffectDef, { kind: 'custom' }>}
                 patch={rowPatch}
                 hookCtx={hookCtx}
@@ -141,7 +143,10 @@ export default function EffectsTab({ card }: { card: CardDef }) {
           </Disclosure>
         );
       })}
-      <Disclosure title={t('ui.addEffect')} storageKey="effects.add" defaultOpen={list.length === 0}>
+      <button onClick={() => setList([...list, rulesEffect()])} className="sf-button w-full">
+        {lang === 'en' ? 'Add rule program' : '添加规则组合'}
+      </button>
+      <Disclosure title={lang === 'en' ? 'Add single effect' : '添加单项效果'} storageKey="effects.add" defaultOpen={list.length === 0}>
         <div>
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{t('pp.coreKinds')}</div>
           <div className="flex flex-wrap gap-1.5">

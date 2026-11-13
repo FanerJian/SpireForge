@@ -4,7 +4,7 @@
 
 | 组件 | 版本 | 用途 | 安装 |
 |---|---|---|---|
-| Node.js + pnpm | 20+ / 10+ | 编辑器前端 | nodejs.org / `npm i -g pnpm` |
+| Node.js + pnpm | Node 20.19+（20.x）或 22.12+ / pnpm 10+ | 编辑器前端；版本范围同步 Vite 的 engines | nodejs.org / `npm i -g pnpm` |
 | Rust (msvc) | stable | 编辑器后端 / pcktool | rustup.rs（默认工具链） |
 | VS BuildTools | 2022 + **Windows SDK** | Rust MSVC 链接 | winget: `Microsoft.VisualStudio.2022.BuildTools`；SDK: `Microsoft.WindowsSDK.10.0.18362` |
 | .NET SDK | 9.0 | Runtime mod 构建 | dotnet.microsoft.com |
@@ -44,12 +44,21 @@ pnpm tauri dev
 # 发行版
 pnpm tauri build                 # 完整（含 MSI 安装器）
 pnpm tauri build --bundles msi   # 只出 MSI
+pnpm tauri build --no-bundle    # 便携 exe，自动启用内嵌资源
 # 独立可执行文件（无需安装器）：src-tauri/target/release/editor.exe
 # MSI 安装器：src-tauri/target/release/bundle/msi/*.msi
 
 # 仅前端类型检查 / 构建
 npx tsc --noEmit && pnpm build
 ```
+
+从 Cargo 直接构建便携版时，先完成前端生产构建，并启用 `tauri/custom-protocol`：
+
+```bash
+cargo build --release --locked --features tauri/custom-protocol --manifest-path editor/src-tauri/Cargo.toml
+```
+
+该命令从仓库根目录执行。发行包检查应包含版本、内嵌前端资源与 DLL/清单哈希。
 
 **发行产物说明**：
 - `target/release/editor.exe`（~20MB，含内置上传器）可**直接双击运行**（依赖系统 WebView2，Win10/11 自带）
@@ -91,6 +100,20 @@ touch "<游戏>/mods/SpireForgeRuntime/SpireForgeRuntime.debug"
 
 ## 三、测试矩阵
 
+日常开发统一运行：
+
+```bash
+node tools/verify.mjs
+# 按范围运行
+node tools/verify.mjs --scope frontend
+node tools/verify.mjs --scope backend
+node tools/verify.mjs --scope runtime
+```
+
+验证器自动发现 `editor/scripts/check-*.cjs` 和 `runtime/tests/*/*.csproj`，逐步记录退出状态、耗时与完整日志到 `work/verification/`。
+验证临时文件位于项目的 `work/`，.NET 隔离回归启用局部 workload resolver 兼容设置。前端 `pnpm test` 运行回归与类型检查，`pnpm check` 追加生产构建。
+以下矩阵中的测试数量为历史记录，当前数量以本次日志为准；本机 MSVC 环境可直接运行 Cargo。
+
 | 层级 | 命令/操作 | 期望 |
 |---|---|---|
 | pcktool 解析器（含损坏输入回归） | `cd tools/pcktool && rustup run stable-x86_64-pc-windows-gnu cargo test` | 8 passed |
@@ -120,24 +143,20 @@ grep -a "SPIREFORGE" "$APPDATA/SlayTheSpire2/logs/godot.log"
 - [ ] Runtime 版本号（`SpireForgeRuntime.json` 的 version + csproj）
 - [ ] （若发布 runtime 到工坊）用 ModUploader 更新条目
 
-## 五、自动更新（应用内检查 + 多源下载）
+## 五、自动更新与发布
 
-编辑器内置更新器：启动 24h 一次静默检查 + 项目设置里手动「检查更新」。
-清单 = 仓库内 `update/latest.json`（GitHub raw 直读，另附两个社区加速镜像源 ghfast.top /
-gh-proxy.com 逐个回落）；载荷 = GitHub Release 上的裸 exe 资产，应用内下载后 SHA256
-校验、原地换文件（旧文件落 `editor.exe.old`，下次启动清理）并自动重启。
+更新清单来自本仓库的 GitHub Raw 地址，载荷来自对应 GitHub Release。后端重新读取清单，校验下载来源、大小和 SHA-256；安装使用一次性已验证记录并在替换前复验。自动检查每 24 小时进行一次，也可在设置中手动检查。
 
-**发新版时**（在发布清单之外多做两步）：
+发布步骤：
 
-```bash
-# 1. 用新编的 exe 重新生成清单（写入真实 sha256/大小/双语更新说明）
-node tools/write-update-manifest.mjs editor/src-tauri/target/release/editor.exe <版本> "中文说明" "English notes"
-# 2. GitHub Release 上除常规 zip 外，额外上传裸 exe 资产 SpireForge-editor-v<版本>.exe
-#    （清单里的下载 URL 指向它），然后提交并推送 update/latest.json
+1. 按 [安全审查](SECURITY-REVIEW-0.4.3.md) 运行发布扫描与依赖审计。
+2. 完成 `node tools/verify.mjs`，以真实游戏程序集构建 Runtime 并更新 `runtime/dist`。
+3. 先构建前端，再使用 `cargo build --release --locked --features tauri/custom-protocol --manifest-path editor/src-tauri/Cargo.toml` 内嵌资源。发布时使用 `RUSTFLAGS` 的 `--remap-path-prefix` 去除本机编译路径。
+4. 打包 ZIP、裸 EXE 和 `SHA256SUMS`，用 `tools/write-update-manifest.mjs` 从实际发布 EXE 生成清单。
+5. 上传 Release 资产并校验远端摘要后，再推送更新清单。
+
+```powershell
+node tools/write-update-manifest.mjs editor/src-tauri/target/release/editor.exe 0.4.3 "中文说明" "English notes"
 ```
 
-要点：
-- 清单里的 `urls` 是逐个回落的下载源（直链 + 镜像），改镜像站时重跑生成脚本即可
-- exe 哈希写死在清单里做完整性校验；镜像只做转发，篡改会校验失败
-- 发布构建必须带 `RUSTFLAGS='--remap-path-prefix=...'`（隐私要求见发布清单），
-  清单生成脚本读的是 target 下的 exe，哈希以实际发布的那个文件为准
+裸 EXE 资产名为 `SpireForge-editor-v<版本>.exe`。运行数据、审查日志与构建缓存留在 `work/`，发布 ZIP 留在 `release/`。

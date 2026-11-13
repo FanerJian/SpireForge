@@ -1,4 +1,21 @@
-# Tauri + React + Typescript
+# SpireForge 编辑器
+
+React + TypeScript 提供卡包编辑界面，Rust 后端处理项目文件和打包。
+开发约定见 [项目规范](../AGENTS.md)，完整入口见 [文档索引](../docs/INDEX.md)。
+
+## 编辑工作区
+
+0.4.0 采用卡牌库、中央编辑区和侧边预览布局。复杂组合在「效果与规则」中编辑，「专注编辑」提供结构导航、状态管理和模板预览。规则及状态名称选择、草稿恢复、主题令牌和控件约定见 [界面规范](../docs/UI.md)，操作示例见 [规则编辑指南](../docs/RULES-GUIDE.md)。
+
+## 开发检查
+
+- `pnpm dev`：前端开发服务；`pnpm tauri dev`：完整桌面应用。
+- `pnpm test`：自动发现前端回归脚本并执行 TypeScript 检查。
+- `pnpm check`：前端回归、TypeScript 检查和生产构建。
+- 仓库根目录 `node tools/verify.mjs`：前端、Rust 与 Runtime 隔离回归；结果写入 `work/verification/`。
+
+导入、切换与恢复共用状态层事务。`runProjectMutation` 负责先保存、互斥与磁盘刷新；新增导入入口复用该函数。
+卡牌预览仅在图片路径、所属项目或图片修订变化时读取。列表以卡牌对象和选中状态作为刷新边界；编辑面板和低频弹窗按需加载。
 
 ## 卡包列表
 
@@ -20,12 +37,6 @@
 发布检查中的问题可直接定位到卡牌、页签和字段。工坊工作区在项目内容或发布配置变化后失效，需重新生成；上传前后端再次核对源文件与生成内容。验证期间不执行 Steam 上传。
 
 回归检查：`node scripts/check-editor-history.cjs`；后端磁盘恢复、检查定位与上传一致性：`cargo test --lib`。
-
-This template should help get you started developing with Tauri, React and Typescript in Vite.
-
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
 ## 效果回归检查
 

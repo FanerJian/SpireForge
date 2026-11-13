@@ -35,6 +35,7 @@ fn read_card(root: &str, key: &str) -> Result<CardDef, String> {
     let expected = format!("cards/{}.json.", card.id);
     if !key.starts_with(&expected) { return Err("备份文件名与卡牌标识不一致".into()); }
     if card.format_version > FORMAT_VERSION { return Err("备份来自更新版本的编辑器，请先升级".into()); }
+    crate::rules::ensure_card(&card)?;
     for rel in [&card.portrait, card.portrait_original.as_deref().unwrap_or("")] {
         if !rel.is_empty() { project::validate_rel_path(rel)?; }
     }
@@ -47,6 +48,8 @@ fn read_meta(root: &str) -> Result<ProjectMeta, String> {
     if meta.format_version > FORMAT_VERSION { return Err("备份来自更新版本的编辑器，请先升级".into()); }
     project::validate_pack_id(&meta.pack_id)?;
     crate::custom_pools::validate_pools(&meta.custom_pools)?;
+    crate::rules::ensure_statuses(&meta.rule_statuses)?;
+    crate::rules::ensure_templates(&meta.rule_templates)?;
     let mut ids = std::collections::HashSet::new();
     for id in &meta.cards {
         project::validate_card_id(id)?;
@@ -110,7 +113,7 @@ pub fn restore(root: &str, key: &str) -> Result<(ProjectMeta, Vec<CardDef>), Str
     if key == "project.json.bak" {
         let meta = read_meta(root)?;
         let missing = project_plan(root, &meta)?;
-        for card in missing { project::write_card(root, &card)?; }
+        for card in missing { project::write_card_with_statuses(root, &card, &meta.rule_statuses)?; }
         project::write_meta(root, &meta)?;
     } else {
         let card = read_card(root, key)?;
@@ -170,6 +173,24 @@ mod tests {
         project::remove_card(&root, "a").unwrap();
         let (meta, cards) = restore(&root, "project.json.bak").unwrap();
         assert_eq!(meta.cards, vec!["a"]); assert_eq!(cards[0].id, "a");
+    }
+    #[test]
+    fn project_backup_preserves_rule_catalog_templates_and_missing_rule_cards() {
+        let root = root("rules");
+        let examples: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../schema/rules-v1.examples.json")).unwrap();
+        let program = examples.iter().find(|example| example["id"] == "spark").unwrap()["program"].clone();
+        let mut meta = project::read_meta(&root).unwrap();
+        meta.rule_statuses = program["statuses"].as_array().unwrap().clone();
+        meta.rule_templates = vec![serde_json::json!({"id":"saved","name":"星火","program":program})];
+        project::write_meta(&root, &meta).unwrap();
+        let card: CardDef = serde_json::from_value(serde_json::json!({"id":"rule","format_version":3,
+            "effects":[{"kind":"custom","handler":"sf_rules","params":program}]})).unwrap();
+        project::add_card(&root, &card).unwrap();
+        project::remove_card(&root,"rule").unwrap();
+        let (restored,cards) = restore(&root,"project.json.bak").unwrap();
+        assert_eq!(restored.rule_statuses,meta.rule_statuses);
+        assert_eq!(restored.rule_templates,meta.rule_templates);
+        assert_eq!(serde_json::to_value(&cards[0]).unwrap()["effects"][0]["params"], program);
     }
     #[test]
     fn project_backup_remains_accessible_when_current_metadata_is_corrupt() {

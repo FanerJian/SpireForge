@@ -16,6 +16,7 @@ import LookTab from './pp/LookTab';
 import LocTab from './pp/LocTab';
 import VanillaSection from './pp/VanillaSection';
 import { confirmAction } from '../lib/confirmation';
+import { officialPoolDefinition } from '../lib/officialPools';
 
 /** 卡牌 id 编辑：失去焦点/回车才提交改名（走后端事务：meta 原位替换 + 立绘跟随）。
  *  改名会改变游戏内 Entry——已发布/安装过的卡会破坏玩家存档引用，必须确认。 */
@@ -69,10 +70,24 @@ function BasicTab({ card }: { card: CardDef }) {
   const lang = useLang();
 
   /** 卡池多选切换：pools 存全量，pool 保持主池（首个）——运行时按 pools 注册进全部池 */
-  const togglePool = (p: Pool) => {
+  const togglePool = async (p: Pool) => {
+    const original = useStore.getState();
+    if (original.historyBusy || !original.meta || original.selectedId !== card.id) return;
     const cur = card.pools?.length ? card.pools : [card.pool];
     const next = cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p];
     if (next.length === 0) return; // 至少保留一个卡池
+    const definition = officialPoolDefinition(p);
+    if (next.includes(p) && definition && !original.meta.custom_pools?.some(pool => pool.key === p)) {
+      try {
+        await original.updateMeta({ custom_pools: [...(original.meta.custom_pools ?? []), { ...definition }] });
+      } catch (error) { original.showToast(String(error)); return; }
+      const current = useStore.getState();
+      if (current.projectRoot !== original.projectRoot || current.selectedId !== card.id
+          || current.cards.find(item => item.id === card.id) !== card) {
+        current.showToast(lang === 'en' ? 'Card changed. Select the pool again.' : '当前卡牌已变化，请重新选择卡池。');
+        return;
+      }
+    }
     updateCard({
       pools: next,
       pool: (next.includes(card.pool) ? card.pool : next[0]) as Pool,
@@ -82,8 +97,8 @@ function BasicTab({ card }: { card: CardDef }) {
   return (
     <div className="space-y-3">
       <Disclosure title={t('pp.tabBasic')} storageKey="basic.main" defaultOpen>
-      <Field label={t('pp.idLabel')} field="id">
-        <IdField card={card} />
+      <Field label={lang === 'en' ? 'Card name' : '卡牌名称'} field="name">
+        <input className={inputCls} value={card.name[lang === 'en' ? 'eng' : 'zhs']} onChange={e => updateCard({ name: { ...card.name, [lang === 'en' ? 'eng' : 'zhs']: e.target.value } })} />
       </Field>
 
       <Field label={t('pp.typeLabel')}>
@@ -154,7 +169,7 @@ function BasicTab({ card }: { card: CardDef }) {
         <fieldset disabled={!!card.source_ref}>
         <div className="flex flex-wrap gap-1">
           {Object.entries(POOL_LABEL).map(([value, label]) => (
-            <button key={value} onClick={() => togglePool(value)}
+            <button key={value} onClick={() => void togglePool(value)} aria-pressed={(card.pools?.length ? card.pools : [card.pool]).includes(value)}
               className={`rounded-md px-2.5 py-1 text-xs ${(card.pools?.length ? card.pools : [card.pool]).includes(value)
                 ? 'bg-amber-500/90 text-black' : 'border border-white/10 text-slate-400 hover:bg-white/5'}`}>
               {pick(label, lang)}
@@ -194,6 +209,7 @@ function BasicTab({ card }: { card: CardDef }) {
           onChange={(e) => updateCard({ keywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
       </Disclosure>
       <Disclosure title={t('ui.more')} storageKey="basic.more">
+        <Field label={t('pp.idLabel')} field="id"><IdField card={card} /></Field>
         <VanillaSection card={card} />
       <div className="grid grid-cols-2 gap-3 pt-1">
         <label className="flex items-center gap-2 whitespace-nowrap text-xs text-slate-400">
@@ -208,11 +224,11 @@ function BasicTab({ card }: { card: CardDef }) {
 }
 
 export default function PropertyPanel() {
-  const { cards, selectedId, removeCard, duplicateCard, dirtyIds, showToast, historyBusy, propertyTab: tab, setPropertyTab: setTab, fieldFocus } = useStore();
+  const { cards, selectedId, removeCard, duplicateCard, showToast, historyBusy, propertyTab: tab, setPropertyTab: setTab, fieldFocus } = useStore();
   const t = useT();
+  const lang = useLang();
   const panelRef = useRef<HTMLDivElement>(null);
   const card = cards.find((c) => c.id === selectedId);
-  const dirty = dirtyIds.length > 0;
 
   useEffect(() => {
     if (!fieldFocus || fieldFocus.cardId !== card?.id) return;
@@ -250,23 +266,19 @@ export default function PropertyPanel() {
 
   return (
     <fieldset disabled={historyBusy} className="flex h-full min-w-0 flex-col">
-      <div className="flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-white/10 px-3 py-2">
+      <div className="sf-editor-heading"><div><p className="sf-section-label mb-1">{lang === 'en' ? 'CARD EDITOR' : '卡牌编辑'}</p><h1>{card.name[lang === 'en' ? 'eng' : 'zhs'] || card.name.zhs || card.name.eng || card.id}</h1></div><p className="sf-muted self-end">{pick(TYPE_LABEL[card.card_type] ?? TYPE_LABEL.Skill, lang)} · {pick(RARITY_LABEL[card.rarity] ?? RARITY_LABEL.Common, lang)}</p></div>
+      <div className="sf-editor-tabs">
         {([['basic', t('pp.tabBasic')], ['effects', t('pp.tabEffects')], ['look', t('pp.tabLook')], ['loc', t('pp.tabLoc')]] as [typeof tab, string][]).map(([k, l]) => (
           <button
             key={k}
+            data-tab={k}
+            data-active={tab === k}
             onClick={() => setTab(k)}
-            className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-              tab === k ? 'bg-white/10 text-amber-300' : 'text-slate-500 hover:text-slate-300'
-            }`}
+            className="whitespace-nowrap"
           >
             {l}
           </button>
         ))}
-        {dirty && (
-          <span className="whitespace-nowrap rounded-md bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300">
-            ● {t('pp.dirtyBadge', { n: dirtyIds.length })}
-          </span>
-        )}
         <div className="flex-1" />
         <button type="button" title={t('ui.expandAll')} aria-label={t('ui.expandAll')} onClick={() => setDisclosuresOpen(panelRef.current, true)} className="rounded p-1 text-slate-500 hover:bg-white/5 hover:text-slate-300"><ChevronsDown size={14} /></button>
         <button type="button" title={t('ui.collapseAll')} aria-label={t('ui.collapseAll')} onClick={() => setDisclosuresOpen(panelRef.current, false)} className="rounded p-1 text-slate-500 hover:bg-white/5 hover:text-slate-300"><ChevronsUp size={14} /></button>
@@ -294,10 +306,10 @@ export default function PropertyPanel() {
         </button>
       </div>
 
-      <div ref={panelRef} className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div ref={panelRef} className="sf-editor-content min-h-0 flex-1 overflow-y-auto">
         {tab === 'basic' && <BasicTab card={card} />}
         {tab === 'effects' && <EffectsTab key={`${card.id}:${fieldFocus?.sequence ?? 0}`} card={card} />}
-        {tab === 'look' && <LookTab card={card} />}
+        {tab === 'look' && <LookTab key={card.id} card={card} />}
         {tab === 'loc' && <LocTab key={`${card.id}:${fieldFocus?.sequence ?? 0}`} card={card} />}
       </div>
     </fieldset>

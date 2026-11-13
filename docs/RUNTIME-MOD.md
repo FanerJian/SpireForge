@@ -220,6 +220,7 @@ cd runtime && dotnet build -c Release
 
 | Runtime 版本 | 游戏版本 | 备注 |
 |---|---|---|
+| 0.2.1 | v0.113.0 public-beta | 真实程序集构建、24项元数据与卡池回归通过；游戏实战验收待完成，见GAME-COMPATIBILITY-0.113.0.md |
 | 0.1.0 | v0.111.0 | 首发；6/6 卡牌 PASS、0 错误；与 BaseLib 448★/RitsuLib 0.6.3 共存验证 |
 
 **建议**：发布时在 mod.json 声明 `min_game_version`（该字段游戏会读取并提示玩家）。

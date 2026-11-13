@@ -31,6 +31,12 @@
 - Rust / npm 依赖均为宽松许可（MIT/Apache-2.0/BSD 等），完整清单见 `Cargo.lock` 与
   `pnpm-lock.yaml`。
 
+## LoomKit / Lit
+
+- 界面按钮使用本地 LoomKit 0.2.0，采用 MIT 许可，与项目代码一起分发。
+- LoomKit 中包含 Lit 3.3.3。其 BSD 3-Clause 许可全文位于 `editor/src/vendor/loomkit/LICENSE.lit`，发布包同时附带该文件。
+- Lit: Copyright (c) 2017 Google LLC. All rights reserved.
+
 ## 商标
 
 《Slay the Spire》《杀戮尖塔》及相关名称归 Mega Crit 所有。本项目为非官方社区工具，

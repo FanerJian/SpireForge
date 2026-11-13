@@ -42,7 +42,7 @@ export default function ProjectSettingsModal({ onClose }: { onClose: () => void 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-[440px] rounded-2xl border border-white/10 bg-[#14141c] p-6 shadow-2xl"
+        className="w-[440px] rounded-2xl border border-white/10 bg-[var(--lk-color-surface)] p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-1 text-lg font-bold text-slate-100">{t('ps.title')}</div>

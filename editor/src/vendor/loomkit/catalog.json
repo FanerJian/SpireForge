@@ -1,0 +1,373 @@
+{
+  "version": "0.2.0",
+  "contractVersion": 1,
+  "themes": [
+    "daylight",
+    "ember",
+    "nocturne",
+    "sakura"
+  ],
+  "styles": [
+    "candy",
+    "edge",
+    "glass"
+  ],
+  "components": {
+    "button": {
+      "tag": "lk-button",
+      "kind": "control",
+      "summary": "按钮",
+      "data": {
+        "label": {
+          "type": "string",
+          "required": true,
+          "summary": "文字"
+        },
+        "variant": {
+          "type": "enum",
+          "values": [
+            "primary",
+            "secondary",
+            "quiet"
+          ],
+          "default": "secondary",
+          "summary": "层级"
+        },
+        "size": {
+          "type": "enum",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md",
+          "summary": "尺寸"
+        },
+        "block": {
+          "type": "boolean",
+          "default": false,
+          "summary": "占满容器宽度"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "summary": "禁用"
+        }
+      },
+      "events": {
+        "press": {
+          "summary": "点击",
+          "detail": {}
+        }
+      },
+      "slots": {}
+    },
+    "input": {
+      "tag": "lk-input",
+      "kind": "control",
+      "summary": "单行输入框",
+      "value": "string",
+      "data": {
+        "label": {
+          "type": "string",
+          "default": "",
+          "summary": "标签"
+        },
+        "value": {
+          "type": "string",
+          "default": "",
+          "summary": "内容"
+        },
+        "placeholder": {
+          "type": "string",
+          "default": "",
+          "summary": "占位文字"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "summary": "禁用"
+        }
+      },
+      "events": {
+        "change": {
+          "summary": "内容改变",
+          "detail": {
+            "value": "string"
+          }
+        }
+      },
+      "slots": {}
+    },
+    "select": {
+      "tag": "lk-select",
+      "kind": "control",
+      "summary": "下拉选择",
+      "value": "string",
+      "data": {
+        "label": {
+          "type": "string",
+          "default": "",
+          "summary": "标签"
+        },
+        "value": {
+          "type": "string",
+          "default": "",
+          "summary": "当前值，缺省为第一项"
+        },
+        "options": {
+          "type": "array",
+          "summary": "选项，字符串或 { value, label }",
+          "required": true
+        },
+        "compact": {
+          "type": "boolean",
+          "default": false,
+          "summary": "紧凑尺寸，用于工具栏"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "summary": "禁用"
+        }
+      },
+      "events": {
+        "change": {
+          "summary": "选择改变",
+          "detail": {
+            "value": "string"
+          }
+        }
+      },
+      "slots": {}
+    },
+    "switch": {
+      "tag": "lk-switch",
+      "kind": "control",
+      "summary": "开关",
+      "value": "boolean",
+      "data": {
+        "label": {
+          "type": "string",
+          "default": "",
+          "summary": "标签"
+        },
+        "checked": {
+          "type": "boolean",
+          "default": false,
+          "summary": "是否开启"
+        },
+        "disabled": {
+          "type": "boolean",
+          "default": false,
+          "summary": "禁用"
+        }
+      },
+      "events": {
+        "change": {
+          "summary": "状态改变",
+          "detail": {
+            "value": "boolean"
+          }
+        }
+      },
+      "slots": {}
+    },
+    "segmented": {
+      "tag": "lk-segmented",
+      "kind": "control",
+      "summary": "分段选择",
+      "value": "string",
+      "data": {
+        "value": {
+          "type": "string",
+          "default": "",
+          "summary": "当前值，缺省为第一项"
+        },
+        "options": {
+          "type": "array",
+          "summary": "选项，字符串或 { value, label }",
+          "required": true
+        }
+      },
+      "events": {
+        "change": {
+          "summary": "选择改变",
+          "detail": {
+            "value": "string"
+          }
+        }
+      },
+      "slots": {}
+    },
+    "card": {
+      "tag": "lk-card",
+      "kind": "control",
+      "summary": "内容卡片",
+      "data": {
+        "title": {
+          "type": "string",
+          "default": "",
+          "summary": "标题"
+        },
+        "badge": {
+          "type": "string",
+          "default": "",
+          "summary": "标题右侧徽标"
+        },
+        "emphasis": {
+          "type": "boolean",
+          "default": false,
+          "summary": "强调外观"
+        }
+      },
+      "events": {},
+      "slots": {
+        "default": {
+          "summary": "内容"
+        },
+        "header": {
+          "summary": "标题行右侧内容"
+        }
+      }
+    },
+    "dialog": {
+      "tag": "lk-dialog",
+      "kind": "control",
+      "summary": "对话层",
+      "data": {
+        "open": {
+          "type": "boolean",
+          "default": false,
+          "summary": "是否打开"
+        },
+        "title": {
+          "type": "string",
+          "default": "",
+          "summary": "标题"
+        },
+        "mode": {
+          "type": "enum",
+          "values": [
+            "modal",
+            "sheet"
+          ],
+          "default": "modal",
+          "summary": "modal 为居中窗口，sheet 为铺满全屏"
+        },
+        "closeLabel": {
+          "type": "string",
+          "default": "关闭",
+          "summary": "关闭按钮文字"
+        }
+      },
+      "events": {
+        "close": {
+          "summary": "用户请求关闭",
+          "detail": {}
+        }
+      },
+      "slots": {
+        "default": {
+          "summary": "内容"
+        },
+        "header": {
+          "summary": "标题旁内容"
+        },
+        "actions": {
+          "summary": "关闭按钮前的操作"
+        }
+      }
+    },
+    "titlebar": {
+      "tag": "lk-titlebar",
+      "kind": "control",
+      "summary": "无边框窗口标题栏",
+      "data": {
+        "title": {
+          "type": "string",
+          "required": true,
+          "summary": "标题"
+        },
+        "subtitle": {
+          "type": "string",
+          "default": "",
+          "summary": "副标题"
+        },
+        "windowControls": {
+          "type": "boolean",
+          "default": false,
+          "summary": "显示窗口按钮"
+        },
+        "maximized": {
+          "type": "boolean",
+          "default": false,
+          "summary": "窗口已最大化"
+        }
+      },
+      "events": {
+        "window": {
+          "summary": "窗口操作",
+          "detail": {
+            "action": "minimize | maximize | close"
+          }
+        }
+      },
+      "slots": {
+        "actions": {
+          "summary": "窗口按钮前的操作"
+        }
+      }
+    },
+    "settings-page": {
+      "tag": "lk-settings-page",
+      "kind": "template",
+      "summary": "分组表单页",
+      "value": "object",
+      "data": {
+        "groups": {
+          "type": "array",
+          "required": true,
+          "summary": "分组：{ id, title, badge?, fields: [{ key, label, type?, placeholder?, options? }] }，type 为 text、select、switch、segmented"
+        },
+        "values": {
+          "type": "object",
+          "default": {},
+          "summary": "字段值，键为 key"
+        },
+        "actions": {
+          "type": "array",
+          "default": [],
+          "summary": "操作按钮：{ id, label, variant? }"
+        },
+        "width": {
+          "type": "number",
+          "default": 680,
+          "summary": "内容最大宽度（像素）"
+        }
+      },
+      "events": {
+        "change": {
+          "summary": "字段改变",
+          "detail": {
+            "key": "string",
+            "value": "any",
+            "values": "object"
+          }
+        },
+        "action": {
+          "summary": "操作按钮点击",
+          "detail": {
+            "id": "string",
+            "values": "object"
+          }
+        }
+      },
+      "slots": {
+        "footer": {
+          "summary": "吸附在底部的内容"
+        }
+      }
+    }
+  }
+}

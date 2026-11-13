@@ -19,7 +19,7 @@
 //! 属于格式兼容要求，不用于安全目的。
 
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::Path;
 
 pub const MAGIC: &[u8; 4] = b"GDPC";
@@ -54,9 +54,13 @@ fn collect_recursive(
     for e in fs::read_dir(dir)? {
         let e = e?;
         let p = e.path();
-        if p.is_dir() {
+        let kind = e.file_type()?;
+        if kind.is_symlink() {
+            return Err(bad("打包源目录包含符号链接，请使用项目内的实际文件"));
+        }
+        if kind.is_dir() {
             collect_recursive(root, &p, prefix, out)?;
-        } else {
+        } else if kind.is_file() {
             let rel = p
                 .strip_prefix(root)
                 .expect("child under root")
@@ -77,7 +81,7 @@ pub fn write_v2(out_path: &Path, entries: &[PackEntry], engine: (u32, u32, u32))
     let mut buf: Vec<u8> = Vec::with_capacity(1 << 20);
     let w = |buf: &mut Vec<u8>, bytes: &[u8]| buf.extend_from_slice(bytes);
 
-    // 头部（固定 96 字节：4 magic + 5×u32 + u64 + 64 保留 + u32 count）
+    // 头部（固定 100 字节：4 magic + 5×u32 + u64 + 64 保留 + u32 count）
     w(&mut buf, MAGIC);
     push_u32(&mut buf, FORMAT_V2);
     push_u32(&mut buf, engine.0);
@@ -169,7 +173,7 @@ struct DirEntryMeta {
 /// 解析头部 + 目录。返回 (file_base, 条目元数据)。
 /// 不按文件中声明的 count 预分配内存（防伪造巨量计数触发 OOM）。
 fn parse_dir(data: &[u8]) -> io::Result<(u64, Vec<DirEntryMeta>)> {
-    if data.len() < 96 {
+    if data.len() < 32 {
         return Err(bad("不是 PCK（文件过短）"));
     }
     let mut r = Reader { data, pos: 0 };
@@ -218,15 +222,29 @@ fn parse_dir(data: &[u8]) -> io::Result<(u64, Vec<DirEntryMeta>)> {
 
 /// 解析现有 PCK（v2/v3），返回文件清单（路径、绝对偏移、大小），用于调试与校验。
 pub fn list(path: &Path) -> io::Result<Vec<(String, u64, u64)>> {
-    let data = fs::read(path)?;
+    let data = read_archive(path)?;
     let (file_base, entries) = parse_dir(&data)?;
-    Ok(entries
+    entries
         .into_iter()
         .map(|e| {
-            let abs = file_base.saturating_add(e.ofs);
-            (e.path, abs, e.size)
+            let abs = file_base.checked_add(e.ofs).ok_or_else(|| bad("条目偏移溢出"))?;
+            Ok((e.path, abs, e.size))
         })
-        .collect())
+        .collect()
+}
+
+fn read_archive(path: &Path) -> io::Result<Vec<u8>> {
+    let file = fs::File::open(path)?;
+    if file.metadata()?.len() > MAX_PCK_BYTES {
+        return Err(bad("PCK 过大（超过 2 GiB 读取上限）"));
+    }
+    // 同时限制实际读取量，覆盖检查后文件继续增长的情况。
+    let mut data = Vec::new();
+    file.take(MAX_PCK_BYTES + 1).read_to_end(&mut data)?;
+    if data.len() as u64 > MAX_PCK_BYTES {
+        return Err(bad("PCK 过大（超过 2 GiB 读取上限）"));
+    }
+    Ok(data)
 }
 
 /// 便捷打包入口（递归目录 → PCK v2）。
@@ -237,13 +255,11 @@ pub fn pack_dir(src: &Path, out: &Path, prefix: &str) -> io::Result<usize> {
 
 /// 读取 PCK（v2/v3）全部条目内容，供编辑器"导入卡包"使用。
 pub fn read_entries(path: &Path) -> io::Result<Vec<(String, Vec<u8>)>> {
-    let data = fs::read(path)?;
-    if data.len() as u64 > MAX_PCK_BYTES {
-        return Err(bad("PCK 过大（超过 2 GiB 读取上限）"));
-    }
+    let data = read_archive(path)?;
     let (file_base, entries) = parse_dir(&data)?;
-    let mut out = Vec::with_capacity(entries.len());
-    for e in entries {
+    // 先校验全部区间与总解包量，再复制内容。重叠条目可能把小包放大数千倍。
+    let mut total = 0u64;
+    for e in &entries {
         let start = file_base
             .checked_add(e.ofs)
             .ok_or_else(|| bad("条目偏移溢出"))?;
@@ -251,6 +267,15 @@ pub fn read_entries(path: &Path) -> io::Result<Vec<(String, Vec<u8>)>> {
         if end > data.len() as u64 {
             return Err(bad("PCK 条目越界（文件截断或损坏）"));
         }
+        total = total.checked_add(e.size).ok_or_else(|| bad("PCK 解包总长度溢出"))?;
+        if total > MAX_PCK_BYTES {
+            return Err(bad("PCK 解包内容过大（超过 2 GiB 读取上限）"));
+        }
+    }
+    let mut out = Vec::with_capacity(entries.len());
+    for e in entries {
+        let start = file_base + e.ofs;
+        let end = start + e.size;
         out.push((e.path, data[start as usize..end as usize].to_vec()));
     }
     Ok(out)
@@ -277,6 +302,54 @@ mod tests {
         let n = pack_dir(&src, &out, "PackA").unwrap();
         assert_eq!(n, 2);
         out
+    }
+
+    #[test]
+    fn oversized_archive_is_rejected_before_loading() {
+        let d = tmp_dir("oversized");
+        let path = d.join("large.pck");
+        fs::File::create(&path).unwrap().set_len(MAX_PCK_BYTES + 1).unwrap();
+        assert!(read_entries(&path).unwrap_err().to_string().contains("2 GiB"));
+        assert!(list(&path).unwrap_err().to_string().contains("2 GiB"));
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn overlapping_entries_are_bounded_before_extracting() {
+        let d = tmp_dir("overlap");
+        let path = d.join("overlap.pck");
+        let count = 4097usize;
+        let entries: Vec<_> = (0..count).map(|i| PackEntry { path: format!("res://Pack/{i}"), data: vec![] }).collect();
+        write_v2(&path, &entries, (4, 5, 1)).unwrap();
+        let mut bytes = fs::read(&path).unwrap();
+        let start = bytes.len() as u64;
+        let size = 512 * 1024u64;
+        let mut cursor = 100;
+        for _ in 0..count {
+            let len = u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().unwrap()) as usize;
+            cursor += 4 + len;
+            bytes[cursor..cursor + 8].copy_from_slice(&start.to_le_bytes());
+            bytes[cursor + 8..cursor + 16].copy_from_slice(&size.to_le_bytes());
+            cursor += 36;
+        }
+        bytes.resize(start as usize + size as usize, 0);
+        fs::write(&path, bytes).unwrap();
+        assert!(read_entries(&path).unwrap_err().to_string().contains("解包内容过大"));
+    }
+
+    #[test]
+    fn empty_v3_archive_parses_without_v2_padding() {
+        let d = tmp_dir("empty_v3");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(MAGIC);
+        for n in [FORMAT_V3, 4, 5, 1, 0] { push_u32(&mut bytes, n); }
+        push_u64(&mut bytes, 0);
+        push_u64(&mut bytes, 40);
+        push_u32(&mut bytes, 0);
+        let path = d.join("empty.pck");
+        fs::write(&path, bytes).unwrap();
+        assert!(read_entries(&path).unwrap().is_empty());
+        assert!(list(&path).unwrap().is_empty());
     }
 
     #[test]

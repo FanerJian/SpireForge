@@ -1,0 +1,213 @@
+[
+  {
+    "id": "branch",
+    "program": {
+      "rules_version": 1,
+      "nodes": [
+        {
+          "type": "action",
+          "effect": {
+            "kind": "damage",
+            "amount": 8,
+            "props": [
+              "Move"
+            ]
+          }
+        },
+        {
+          "type": "if",
+          "match": "all",
+          "conditions": [
+            {
+              "left": {
+                "source": "power_stacks",
+                "subject": "target",
+                "key": "Vulnerable"
+              },
+              "op": "gt",
+              "right": 0
+            }
+          ],
+          "then": [
+            {
+              "type": "action",
+              "effect": {
+                "kind": "damage",
+                "amount": 4,
+                "props": [
+                  "Move"
+                ]
+              }
+            },
+            {
+              "type": "action",
+              "effect": {
+                "kind": "draw",
+                "amount": 1
+              }
+            }
+          ],
+          "else": [
+            {
+              "type": "action",
+              "effect": {
+                "kind": "power",
+                "amount": 2,
+                "power": "Vulnerable"
+              }
+            }
+          ]
+        }
+      ],
+      "statuses": []
+    }
+  },
+  {
+    "id": "block",
+    "program": {
+      "rules_version": 1,
+      "nodes": [
+        {
+          "type": "action",
+          "effect": {
+            "kind": "damage",
+            "amount": 0,
+            "props": [
+              "Move"
+            ]
+          },
+          "amount": {
+            "source": "self_block"
+          }
+        }
+      ],
+      "statuses": []
+    }
+  },
+  {
+    "id": "combo",
+    "program": {
+      "rules_version": 1,
+      "nodes": [
+        {
+          "type": "counter",
+          "key": "combo",
+          "scope": "turn",
+          "operation": "add",
+          "value": 1
+        },
+        {
+          "type": "if",
+          "match": "all",
+          "conditions": [
+            {
+              "left": {
+                "source": "counter",
+                "key": "combo",
+                "scope": "turn"
+              },
+              "op": "gte",
+              "right": 3
+            }
+          ],
+          "then": [
+            {
+              "type": "action",
+              "effect": {
+                "kind": "draw",
+                "amount": 1
+              }
+            },
+            {
+              "type": "counter",
+              "key": "combo",
+              "scope": "turn",
+              "operation": "set",
+              "value": 0
+            }
+          ],
+          "else": []
+        }
+      ],
+      "statuses": []
+    }
+  },
+  {
+    "id": "retrieve",
+    "program": {
+      "rules_version": 1,
+      "nodes": [
+        {
+          "type": "select",
+          "from": "discard",
+          "mode": "choose",
+          "card_type": "Attack",
+          "count": 1,
+          "operations": [
+            {
+              "type": "move",
+              "pile": "hand"
+            },
+            {
+              "type": "cost",
+              "amount": -1,
+              "duration": "turn"
+            }
+          ]
+        }
+      ],
+      "statuses": []
+    }
+  },
+  {
+    "id": "spark",
+    "program": {
+      "rules_version": 1,
+      "statuses": [
+        {
+          "id": "spark",
+          "name": {
+            "zhs": "星火",
+            "eng": "Spark"
+          },
+          "description": {
+            "zhs": "层数：{Amount}",
+            "eng": "Stacks: {Amount}"
+          },
+          "icon": "Poison",
+          "stacking": "add",
+          "max_stacks": 99,
+          "decay": 1,
+          "trigger": "turn_end",
+          "max_triggers_per_turn": 1,
+          "nodes": [
+            {
+              "type": "action",
+              "effect": {
+                "kind": "damage",
+                "amount": 0,
+                "props": [
+                  "Unpowered"
+                ]
+              },
+              "amount": {
+                "source": "status_stacks",
+                "key": "spark",
+                "subject": "target"
+              }
+            }
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "type": "status",
+          "id": "spark",
+          "target": "target",
+          "operation": "apply",
+          "stacks": 3
+        }
+      ]
+    }
+  }
+]

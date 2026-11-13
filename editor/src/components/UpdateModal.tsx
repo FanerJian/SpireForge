@@ -51,7 +51,7 @@ export default function UpdateModal({ info }: { info: UpdateCheck }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6">
-      <div className="w-[30rem] max-w-full rounded-2xl border border-white/10 bg-[#141a24] p-5 shadow-2xl shadow-black/70">
+      <div className="w-[30rem] max-w-full rounded-2xl border border-white/10 bg-[var(--lk-color-surface)] p-5 shadow-2xl shadow-black/70">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-base font-bold text-amber-300">{t('upd.title')}</h2>
           <span className="font-mono text-xs text-slate-500">

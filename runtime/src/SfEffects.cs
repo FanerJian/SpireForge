@@ -32,6 +32,14 @@ public sealed class SfEffectContext
 
     /// <summary>已解析的目标：打出时=玩家指定目标；钩子时按效果 target 字段解析（默认随机敌人）。</summary>
     public Creature? Target { get; init; }
+
+    /// <summary>规则当前目标集合。全体规则共用一个程序上下文，单体上下文沿用 Target。</summary>
+    public IReadOnlyList<Creature>? Targets { get; init; }
+
+    internal IReadOnlyList<Creature> ResolvedTargets => Targets ?? (Target is { } target ? [target] : []);
+
+    /// <summary>规则组合动作继续沿用已解析目标，内部组合处理器透传。</summary>
+    internal bool RuleFixedTarget { get; init; }
 }
 
 /// <summary>自定义效果处理器。</summary>
@@ -45,26 +53,38 @@ public delegate Task SfEffectHandler(SfEffectContext ctx);
 /// </summary>
 public static class SfEffects
 {
-    private static readonly Dictionary<string, SfEffectHandler> Handlers = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, SfEffectDescriptor> Descriptors = new(StringComparer.OrdinalIgnoreCase);
+    private sealed record Registration(SfEffectHandler Handler, SfEffectDescriptor? Descriptor = null);
+    private static readonly object RegistryLock = new();
+    private static readonly Dictionary<string, Registration> Registrations = new(StringComparer.OrdinalIgnoreCase);
 
-    public static SfEffectDescriptor? Describe(string name) => Descriptors.GetValueOrDefault(name);
+    public static SfEffectDescriptor? Describe(string name)
+    {
+        lock (RegistryLock) return Registrations.GetValueOrDefault(name)?.Descriptor;
+    }
 
     /// <summary>Qualified effects cannot silently replace another Mod's handler.</summary>
     public static string Register(SfEffectDescriptor descriptor, SfEffectHandler handler)
     {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentNullException.ThrowIfNull(handler);
         if (string.IsNullOrWhiteSpace(descriptor.ModId) || string.IsNullOrWhiteSpace(descriptor.Name)
             || descriptor.ModId.Contains(':') || descriptor.Name.Contains(':'))
             throw new ArgumentException("A Mod ID and effect name without ':' are required");
         var key = $"effect:{descriptor.ModId}:{descriptor.Name}";
-        if (Handlers.ContainsKey(key)) throw new InvalidOperationException("Effect already registered: " + key);
-        Register(key, handler);
-        Descriptors[key] = descriptor;
+        lock (RegistryLock)
+        {
+            if (!Registrations.TryAdd(key, new(handler, descriptor)))
+                throw new InvalidOperationException("Effect already registered: " + key);
+        }
+        Log.Info($"SPIREFORGE: custom effect registered: {key}");
         return key;
     }
 
-    /// <summary>当前已注册的自定义效果名。</summary>
-    public static IReadOnlyCollection<string> Kinds => Handlers.Keys;
+    /// <summary>当前已注册的自定义效果名快照，可在其他 mod 注册/注销期间安全枚举。</summary>
+    public static IReadOnlyCollection<string> Kinds
+    {
+        get { lock (RegistryLock) return Registrations.Keys.ToArray(); }
+    }
 
     /// <summary>注册/覆盖一个自定义效果处理器。</summary>
     public static void Register(string kind, SfEffectHandler handler)
@@ -74,22 +94,31 @@ public static class SfEffects
             throw new ArgumentException("kind is required", nameof(kind));
         }
         ArgumentNullException.ThrowIfNull(handler);
-        Handlers[kind] = handler;
+        // 字符串重注册同时替换元数据，避免旧处理器的校验契约约束新处理器。
+        lock (RegistryLock) Registrations[kind] = new(handler);
         Log.Info($"SPIREFORGE: custom effect registered: {kind}");
     }
 
     /// <summary>注销一个自定义效果处理器。</summary>
-    public static bool Unregister(string kind) { Descriptors.Remove(kind); return Handlers.Remove(kind); }
+    public static bool Unregister(string kind)
+    {
+        lock (RegistryLock) return Registrations.Remove(kind);
+    }
 
     /// <summary>查询某个自定义效果名是否已注册。</summary>
-    public static bool IsRegistered(string kind) => Handlers.ContainsKey(kind);
+    public static bool IsRegistered(string kind)
+    {
+        lock (RegistryLock) return Registrations.ContainsKey(kind);
+    }
 
     /// <summary>处理器的来源程序集名（目录导出用：编辑器据此标 MOD 徽章；未知返回空串）。</summary>
-    public static string SourceOf(string kind) =>
-        Descriptors.TryGetValue(kind, out var descriptor) ? descriptor.ModId :
-        Handlers.TryGetValue(kind, out var h)
-            ? h.Method.DeclaringType?.Assembly.GetName().Name ?? ""
-            : "";
+    public static string SourceOf(string kind)
+    {
+        Registration? registration;
+        lock (RegistryLock) Registrations.TryGetValue(kind, out registration);
+        return registration?.Descriptor?.ModId
+            ?? registration?.Handler.Method.DeclaringType?.Assembly.GetName().Name ?? "";
+    }
 
     /// <summary>执行自定义效果。返回 false 表示该名字未注册（调用方负责报错）。
     /// 前后触发 SfEvents.BeforeEffect / AfterEffect（插件监听点）。</summary>
@@ -98,20 +127,23 @@ public static class SfEffects
         // 编辑器保存的自定义效果是 {"kind":"custom","handler":"名字"}；
         // 文档风格则是 {"kind":"名字"} 直接把 kind 当处理器名。两种都接受。
         SfEvents.RaiseBeforeEffect(ctx);
-        var key = ctx.Effect.KindName;
+        var key = ctx.Effect.KindName ?? "";
         if (string.Equals(key, "custom", StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(ctx.Effect.Handler))
         {
             key = ctx.Effect.Handler;
         }
-        if (!Handlers.TryGetValue(key, out var handler))
+        Registration? registration;
+        lock (RegistryLock) Registrations.TryGetValue(key, out registration);
+        if (registration == null)
         {
             SfEvents.RaiseAfterEffect(ctx, invoked: false);
             return false;
         }
         try
         {
-            if (Descriptors.TryGetValue(key, out var descriptor))
+            // 同一次执行始终使用同一组处理器与契约；await 期间允许独立注册/注销。
+            if (registration.Descriptor is { } descriptor)
             {
                 if (descriptor.AllowedTriggers is { Length: > 0 } && !descriptor.AllowedTriggers.Contains(ctx.Trigger))
                     throw new InvalidOperationException("This effect does not support trigger: " + ctx.Trigger);
@@ -138,7 +170,7 @@ public static class SfEffects
                         throw new InvalidOperationException("Invalid effect number: " + parameter.Name);
                 }
             }
-            await handler(ctx);
+            await registration.Handler(ctx);
             return true;
         }
         catch (Exception e)

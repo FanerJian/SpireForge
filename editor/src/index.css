@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./vendor/loomkit/tokens.css";
+@import "./theme.css";
 
 @theme {
   --font-sans: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
@@ -10,8 +12,8 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #0c0c12;
-  color: #e2e8f0;
+  background: var(--lk-color-bg);
+  color: var(--lk-color-text);
   font-family: var(--font-sans);
   user-select: none;
 }
@@ -56,5 +58,5 @@ select {
 }
 
 select option {
-  background: #16161f;
+  background: var(--lk-color-surface);
 }

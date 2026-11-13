@@ -117,8 +117,16 @@ Godot 编辑器导出的 PCK 里 PNG 已转为 `.ctex` + `.remap`；导出版运
 
 ## 前端结构
 
+项目级磁盘操作通过 `store.ts` 的事务入口串行编排；`runProjectMutation` 在保存完成后执行导入，并在成功或部分失败时刷新磁盘快照。迟到的元数据读取按项目和当前快照判定有效性。异步图片请求固定到原项目路径，图片修订显式驱动缓存刷新。
+
+编辑区与低频弹窗使用 React lazy/Suspense 按需加载。卡牌列表通过稳定属性和局部状态订阅减少重复渲染；`usePortrait.ts` 隔离图片读取，使文字与数值编辑保持图片和升级预览。
+
+Runtime 的公开效果入口负责 X 费展开，组合效果共用执行核心并传递原触发上下文。扩展注册表将 handler 与 descriptor 作为一个注册项更新，目录调用取得稳定快照。
+
 - `lib/types.ts` — 数据模型镜像 + Entry 派生 + 中文标签表
 - `lib/tauri.ts` — 全部后端命令的类型化封装
 - `lib/store.ts` — zustand 全局状态（项目/卡牌/选中/脏标记/toast）
-- `components/` — Welcome（项目向导）、CardLibrary（左）、PropertyPanel（右，4 个标签页）、
-  CardPreview（中，官方规格卡面渲染 + BBCode/占位符解析）、PublishPanel（发布弹窗）
+- `components/` — Welcome（项目向导）、CardLibrary（左）、PropertyPanel（中央，4 个标签页）、
+  CardPreview（右，卡面渲染 + BBCode/占位符解析）、PublishPanel（发布弹窗）
+
+界面主题、共享控件、规则展示、草稿会话与焦点约定见 [UI.md](UI.md)。纯规则编排工具与草稿模块通过独立回归检查，展示身份采用 WeakMap，保持卡牌 JSON 契约稳定。

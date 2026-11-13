@@ -1,5 +1,7 @@
 #[path = "../../../editor/src-tauri/src/content_refs.rs"]
 mod content_refs;
+#[path = "../../../editor/src-tauri/src/rules.rs"]
+mod rules;
 #[path = "../../../editor/src-tauri/src/game_catalog.rs"]
 mod game_catalog;
 // 独立验证宿主：把编辑器后端的 model.rs / project.rs / publish.rs / import.rs 直接纳入编译。

@@ -57,14 +57,18 @@ pub fn validate_pack_id(id: &str) -> Result<(), String> {
     if !rest_ok || id.len() < 2 || id.len() > 64 {
         return Err("包 id 只能包含字母、数字和下划线（2–64 位，字母开头）".into());
     }
+    if is_device_name(id) {
+        return Err(format!("包 id 不能使用 Windows 保留名 {id}"));
+    }
+    Ok(())
+}
+
+fn is_device_name(name: &str) -> bool {
     const RESERVED: [&str; 22] = [
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
         "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
-    if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(id)) {
-        return Err(format!("包 id 不能使用 Windows 保留名 {id}"));
-    }
-    Ok(())
+    RESERVED.iter().any(|r| r.eq_ignore_ascii_case(name))
 }
 
 /// 卡牌 id 校验（文件名基础）：小写字母/数字/下划线，非空 ≤64
@@ -78,6 +82,9 @@ pub fn validate_card_id(id: &str) -> Result<(), String> {
     {
         return Err("卡牌 id 只能包含小写字母、数字和下划线".into());
     }
+    if is_device_name(id) {
+        return Err(format!("卡牌 id 不能使用 Windows 保留名 {id}"));
+    }
     Ok(())
 }
 
@@ -85,6 +92,15 @@ pub fn validate_card_id(id: &str) -> Result<(), String> {
 pub fn validate_rel_path(rel: &str) -> Result<(), String> {
     if rel.is_empty() {
         return Err("路径不能为空".into());
+    }
+    // Windows 的备用数据流、设备名与尾部别名会绕过普通路径成分检查。
+    for part in rel.split(['/', '\\']) {
+        if part.chars().any(|c| c.is_control() || "<>:\"|?*".contains(c))
+            || part.ends_with(['.', ' '])
+            || is_device_name(part.split('.').next().unwrap_or_default())
+        {
+            return Err(format!("路径包含非法文件名: {rel}"));
+        }
     }
     let p = Path::new(rel);
     if p.is_absolute() {
@@ -121,8 +137,23 @@ pub fn read_meta(root: &str) -> Result<ProjectMeta, String> {
             meta.format_version, FORMAT_VERSION
         ));
     }
+    validate_meta_ids(&meta)?;
     crate::custom_pools::validate_pools(&meta.custom_pools)?;
+    crate::rules::ensure_statuses(&meta.rule_statuses)?;
+    crate::rules::ensure_templates(&meta.rule_templates)?;
     Ok(meta)
+}
+
+fn validate_meta_ids(meta: &ProjectMeta) -> Result<(), String> {
+    validate_pack_id(&meta.pack_id)?;
+    let mut ids = std::collections::HashSet::new();
+    for id in &meta.cards {
+        validate_card_id(id)?;
+        if !ids.insert(id) {
+            return Err(format!("项目索引中卡牌 id 重复: {id}"));
+        }
+    }
+    Ok(())
 }
 
 /// 新建项目的默认根目录：编辑器 exe 同级的 projects\（便携约定，项目跟着编辑器走）。
@@ -197,23 +228,68 @@ pub fn create_project(root: &str, pack_id: &str, name: &str, author: &str) -> Re
 }
 
 pub fn write_meta(root: &str, meta: &ProjectMeta) -> Result<(), String> {
+    validate_meta_ids(meta)?;
     crate::custom_pools::validate_pools(&meta.custom_pools)?;
-    let raw = serde_json::to_string_pretty(meta).map_err(|e| e.to_string())?;
+    crate::rules::ensure_statuses(&meta.rule_statuses)?;
+    crate::rules::ensure_templates(&meta.rule_templates)?;
+    let mut meta = meta.clone();
+    if !meta.rule_statuses.is_empty() || !meta.rule_templates.is_empty() { meta.format_version = meta.format_version.max(3); }
+    let raw = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
     atomic_write(&meta_path(root), raw.as_bytes())
 }
 
 pub fn read_card(root: &str, id: &str) -> Result<CardDef, String> {
+    validate_card_id(id)?;
     let raw = fs::read_to_string(card_path(root, id)).map_err(|e| e.to_string())?;
     let card: CardDef = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    if card.id != id {
+        return Err(format!("卡牌文件名与内容 id 不一致: {id} / {}", card.id));
+    }
     check_card_version(card.format_version)?;
     Ok(card)
 }
 
 pub fn write_card(root: &str, card: &CardDef) -> Result<(), String> {
+    let statuses = if meta_path(root).exists() { read_meta(root)?.rule_statuses } else { vec![] };
+    write_card_with_statuses(root, card, &statuses)
+}
+
+pub fn write_card_with_statuses(root: &str, card: &CardDef, statuses: &[serde_json::Value]) -> Result<(), String> {
     validate_card_id(&card.id)?;
+    check_card_version(card.format_version)?;
+    let mut card = card.clone();
+    crate::rules::bind_statuses(&mut card, statuses)?;
+    crate::content_refs::enrich(&mut card, None);
     fs::create_dir_all(PathBuf::from(root).join("cards")).map_err(|e| e.to_string())?;
-    let raw = serde_json::to_string_pretty(card).map_err(|e| e.to_string())?;
+    let raw = serde_json::to_string_pretty(&card).map_err(|e| e.to_string())?;
     atomic_write(&card_path(root, &card.id), raw.as_bytes())
+}
+
+fn write_asset_bytes(root: &str, rel: &str, bytes: &[u8]) -> Result<(), String> {
+    validate_rel_path(rel)?;
+    let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let relative = Path::new(rel);
+    let mut parent = root.clone();
+    // 每创建一级前，先确认上一级仍位于项目内，覆盖 assets 本身是链接的情况。
+    for component in relative.parent().ok_or("资源路径缺少父目录")?.components() {
+        parent.push(component);
+        if !parent.exists() {
+            fs::create_dir(&parent).map_err(|e| e.to_string())?;
+        }
+        parent = fs::canonicalize(&parent).map_err(|e| e.to_string())?;
+        if !parent.starts_with(&root) {
+            return Err(format!("资源目录位于项目目录之外: {rel}"));
+        }
+    }
+    let path = parent.join(relative.file_name().ok_or("资源路径缺少文件名")?);
+    // symlink_metadata 同时识别悬空链接，避免写入时跟随它在项目外创建文件。
+    if fs::symlink_metadata(&path).is_ok() {
+        let resolved = fs::canonicalize(&path).map_err(|e| e.to_string())?;
+        if !resolved.starts_with(&root) {
+            return Err(format!("资源文件位于项目目录之外: {rel}"));
+        }
+    }
+    fs::write(path, bytes).map_err(|e| e.to_string())
 }
 
 /// 保存立绘到 assets/cards/<id>.<ext>，返回相对路径
@@ -226,10 +302,7 @@ pub fn save_portrait(root: &str, id: &str, ext: &str, bytes: &[u8]) -> Result<St
         _ => "png",
     };
     let rel = format!("assets/cards/{id}.{ext}");
-    validate_rel_path(&rel)?;
-    let p = PathBuf::from(root).join(&rel);
-    fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
-    fs::write(&p, bytes).map_err(|e| e.to_string())?;
+    write_asset_bytes(root, &rel, bytes)?;
     Ok(rel)
 }
 
@@ -245,16 +318,18 @@ pub fn save_effect_icon(root: &str, name: &str, ext: &str, bytes: &[u8]) -> Resu
         _ => "png",
     };
     let rel = format!("assets/powers/{name}.{ext}");
-    validate_rel_path(&rel)?;
-    let p = PathBuf::from(root).join(&rel);
-    fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
-    fs::write(&p, bytes).map_err(|e| e.to_string())?;
+    write_asset_bytes(root, &rel, bytes)?;
     Ok(rel)
 }
 
 pub fn read_portrait_bytes(root: &str, rel: &str) -> Result<Vec<u8>, String> {
     validate_rel_path(rel)?;
-    fs::read(PathBuf::from(root).join(rel)).map_err(|e| e.to_string())
+    let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let path = fs::canonicalize(root.join(rel)).map_err(|e| e.to_string())?;
+    if !path.starts_with(&root) {
+        return Err(format!("文件位于项目目录之外: {rel}"));
+    }
+    fs::read(path).map_err(|e| e.to_string())
 }
 
 /// 打开项目：读 meta + 全部卡牌（版本不符的卡会让打开失败——静默降级比报错更危险）
@@ -269,8 +344,11 @@ pub fn load_project(root: &str) -> Result<(ProjectMeta, Vec<CardDef>), String> {
 
 /// 新建卡：写卡文件 + 登记到 meta（去重）
 pub fn add_card(root: &str, card: &CardDef) -> Result<(), String> {
-    write_card(root, card)?;
     let mut meta = read_meta(root)?;
+    let mut card = card.clone();
+    crate::rules::bind_statuses(&mut card, &meta.rule_statuses)?;
+    crate::content_refs::enrich(&mut card, None);
+    write_card_with_statuses(root, &card, &meta.rule_statuses)?;
     let changed = !meta.cards.contains(&card.id) || meta.format_version < card.format_version;
     if !meta.cards.contains(&card.id) { meta.cards.push(card.id.clone()); }
     meta.format_version = meta.format_version.max(card.format_version);
@@ -309,6 +387,7 @@ pub fn restore_deleted_card(root: &str, card: &CardDef, index: usize) -> Result<
     }
     write_card(root, card)?;
     meta.cards.insert(index.min(meta.cards.len()), card.id.clone());
+    meta.format_version = meta.format_version.max(card.format_version);
     write_meta(root, &meta)
 }
 
@@ -316,7 +395,9 @@ pub fn restore_deleted_card(root: &str, card: &CardDef, index: usize) -> Result<
 /// 默认命名的立绘（assets/cards/<旧id>.<ext>）同步改名。
 /// Entry 随 id 改变：已发布/安装过的卡改名会破坏游戏内存档引用，调用方需先警告。
 pub fn rename_card(root: &str, old_id: &str, new_id: &str) -> Result<(), String> {
+    validate_card_id(old_id)?;
     validate_card_id(new_id)?;
+    let mut meta = read_meta(root)?;
     if old_id == new_id {
         return Ok(());
     }
@@ -361,7 +442,6 @@ pub fn rename_card(root: &str, old_id: &str, new_id: &str) -> Result<(), String>
 
     card.id = new_id.to_string();
     write_card(root, &card)?;
-    let mut meta = read_meta(root)?;
     if let Some(pos) = meta.cards.iter().position(|c| c == old_id) {
         meta.cards[pos] = new_id.to_string();
     } else if !meta.cards.contains(&new_id.to_string()) {
@@ -377,13 +457,16 @@ pub fn import_card_json(root: &str, raw: &str) -> Result<CardDef, String> {
     let card: CardDef = serde_json::from_str(raw).map_err(|e| format!("JSON 解析失败: {e}"))?;
     check_card_version(card.format_version)?;
     add_card(root, &card)?;
-    Ok(card)
+    read_card(root, &card.id)
 }
 
 pub fn export_card_json(root: &str, id: &str) -> Result<String, String> {
-    let raw = fs::read_to_string(card_path(root, id)).map_err(|e| e.to_string())?;
-    let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    serde_json::to_string_pretty(&v).map_err(|e| e.to_string())
+    let mut card = read_card(root, id)?;
+    let meta = read_meta(root)?;
+    crate::rules::bind_statuses(&mut card, &meta.rule_statuses)?;
+    crate::rules::ensure_publish(&card)?;
+    crate::content_refs::enrich(&mut card, None);
+    serde_json::to_string_pretty(&card).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -441,9 +524,95 @@ mod tests {
             "/abs/x.png",
             "a/../b",
             "",
+            "assets/cards/a.png:stream",
+            "assets/cards/CON.png",
+            "assets/cards/trailing. ",
         ] {
             assert!(validate_rel_path(bad).is_err(), "{bad} must be rejected");
         }
+    }
+
+    #[test]
+    fn asset_writes_create_project_directories_and_preserve_bytes() {
+        let root = tmp_root("asset_writes");
+        fs::create_dir_all(&root).unwrap();
+        let portrait = save_portrait(&root, "card", "png", b"portrait").unwrap();
+        let icon = save_effect_icon(&root, "icon", "webp", b"icon").unwrap();
+        assert_eq!(read_portrait_bytes(&root, &portrait).unwrap(), b"portrait");
+        assert_eq!(read_portrait_bytes(&root, &icon).unwrap(), b"icon");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(any(windows, unix))]
+    #[test]
+    fn asset_writes_reject_linked_directories_outside_project() {
+        let base = PathBuf::from(tmp_root("asset_directory_links"));
+        for (index, relative) in ["assets", "assets/cards", "assets/powers"].iter().enumerate() {
+            let root = base.join(format!("project_{index}"));
+            let outside = base.join(format!("outside_{index}"));
+            let link = root.join(relative);
+            fs::create_dir_all(link.parent().unwrap()).unwrap();
+            fs::create_dir_all(&outside).unwrap();
+            fs::write(outside.join("card.png"), b"original").unwrap();
+            #[cfg(windows)]
+            {
+                let output = std::process::Command::new("cmd")
+                    .args(["/C", "mklink", "/J"])
+                    .arg(link.to_string_lossy().replace('/', "\\"))
+                    .arg(outside.to_string_lossy().replace('/', "\\"))
+                    .output().unwrap();
+                assert!(output.status.success(), "junction: {}", String::from_utf8_lossy(&output.stderr));
+            }
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            let root = root.to_str().unwrap();
+            if *relative != "assets/powers" {
+                assert!(save_portrait(root, "card", "png", b"changed").is_err());
+            }
+            if *relative != "assets/cards" {
+                assert!(save_effect_icon(root, "card", "png", b"changed").is_err());
+            }
+            assert_eq!(fs::read(outside.join("card.png")).unwrap(), b"original");
+            assert_eq!(fs::read_dir(&outside).unwrap().count(), 1);
+            #[cfg(windows)]
+            fs::remove_dir(link).unwrap();
+            #[cfg(unix)]
+            fs::remove_file(link).unwrap();
+        }
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn corrupt_index_and_mismatched_cards_are_rejected_before_mutation() {
+        let root = tmp_root("invalid_index");
+        create_project(&root, "TestPack", "T", "a").unwrap();
+        add_card(&root, &sample_card("a")).unwrap();
+        let original = fs::read(card_path(&root, "a")).unwrap();
+        let mut meta = read_meta(&root).unwrap();
+        meta.cards.push("../outside".into());
+        fs::write(meta_path(&root), serde_json::to_vec(&meta).unwrap()).unwrap();
+        assert!(load_project(&root).is_err());
+        let mut changed = sample_card("a");
+        changed.cost = 99;
+        assert!(add_card(&root, &changed).is_err());
+        assert_eq!(fs::read(card_path(&root, "a")).unwrap(), original);
+        assert!(rename_card(&root, "a", "new").is_err());
+        assert!(!card_path(&root, "new").exists());
+        assert!(read_card(&root, "../outside").is_err());
+        assert!(export_card_json(&root, "../outside").is_err());
+
+        meta.cards = vec!["a".into(), "a".into()];
+        assert!(write_meta(&root, &meta).is_err());
+        fs::write(meta_path(&root), serde_json::to_vec(&meta).unwrap()).unwrap();
+        assert!(read_meta(&root).is_err());
+        meta.cards.truncate(1);
+        write_meta(&root, &meta).unwrap();
+        fs::write(card_path(&root, "a"), serde_json::to_vec(&sample_card("other")).unwrap()).unwrap();
+        assert!(load_project(&root).is_err());
+        assert!(rename_card(&root, "a", "new").is_err());
+        assert!(validate_card_id("con").is_err());
+        assert!(validate_card_id("lpt1").is_err());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

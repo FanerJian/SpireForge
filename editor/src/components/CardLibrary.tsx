@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useStore } from '../lib/store';
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { runProjectMutation, useStore } from '../lib/store';
 import { api, pickJsonRaw, pickPckFile } from '../lib/tauri';
 import type { CardDef, CardType } from '../lib/types';
 import { CARD_TEMPLATES } from '../lib/templates';
+import { Disclosure, inputCls, selectCls } from './ui';
 import { pick, RARITY_LABEL, TYPE_LABEL, useLang, useT } from '../lib/i18n';
-import VanillaImportModal from './VanillaImportModal';
-import ModContentModal from './ModContentModal';
+const VanillaImportModal = lazy(() => import('./VanillaImportModal'));
+const ModContentModal = lazy(() => import('./ModContentModal'));
 import { createThumbnailCache, thumbnailKey } from '../lib/thumbnails';
 
 const TYPE_DOT: Record<string, string> = {
@@ -30,7 +32,7 @@ const thumbCache = createThumbnailCache(async (projectRoot, rel) => {
 });
 
 function CardThumb({ portrait }: { portrait: string }) {
-  const { projectRoot, portraitRevision } = useStore();
+  const { projectRoot, portraitRevision } = useStore(useShallow(s => ({ projectRoot: s.projectRoot, portraitRevision: s.portraitRevision })));
   const key = thumbnailKey(projectRoot ?? '', portrait, portraitRevision);
   const [image, setImage] = useState<{ key: string; url: string } | null>(null);
   useEffect(() => {
@@ -45,16 +47,16 @@ function CardThumb({ portrait }: { portrait: string }) {
   return <img src={image.url} alt="" draggable={false} className="h-9 w-12 shrink-0 rounded object-cover" />;
 }
 
-function CardTile({ card, active, onClick }: { card: CardDef; active: boolean; onClick: () => void }) {
+const CardTile = memo(function CardTile({ card, active, onSelect }: { card: CardDef; active: boolean; onSelect: (id: string) => void }) {
   const t = useT();
   const lang = useLang();
   return (
     <button
       data-card-id={card.id}
-      onClick={onClick}
+      onClick={() => onSelect(card.id)}
       className={`group flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-all ${
         active
-          ? 'border-amber-400/70 bg-amber-400/10 shadow-[0_0_12px_rgba(251,191,36,0.15)]'
+          ? 'border-amber-400/70 bg-amber-400/10 '
           : 'border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]'
       }`}
     >
@@ -80,12 +82,15 @@ function CardTile({ card, active, onClick }: { card: CardDef; active: boolean; o
       </div>
     </button>
   );
-}
+});
 
-const TYPE_FILTERS: (CardType | 'all')[] = ['all', 'Attack', 'Skill', 'Power', 'Curse', 'Status'];
+const TYPE_FILTERS: (CardType | 'all')[] = ['all', ...Object.keys(TYPE_LABEL) as CardType[]];
 
 export default function CardLibrary() {
-  const { cards, selectedId, select, createCard, openProject, projectRoot, showToast, fieldFocus } = useStore();
+  const { cards, selectedId, select, createCard, showToast, fieldFocus } = useStore(useShallow(s => ({
+    cards: s.cards, selectedId: s.selectedId, select: s.select, createCard: s.createCard,
+    showToast: s.showToast, fieldFocus: s.fieldFocus,
+  })));
   const t = useT();
   const lang = useLang();
   const [showVanilla, setShowVanilla] = useState(false);
@@ -110,19 +115,12 @@ export default function CardLibrary() {
     });
   }, [cards, query, typeFilter]);
 
-  const reload = async (selectId?: string) => {
-    if (projectRoot) {
-      await openProject(projectRoot);
-      if (selectId) select(selectId);
-    }
-  };
-
   const doImport = async () => {
     const raw = await pickJsonRaw();
     if (!raw) return;
     try {
-      const reports = await api.importCardsAny(raw);
-      await reload(reports[0]?.card.id);
+      const reports = await runProjectMutation(() => api.importCardsAny(raw));
+      if (reports[0]) select(reports[0].card.id);
       const names = reports.map((r) => r.card.name.zhs || r.card.id).join('、');
       const foreign = reports.filter((r) => !r.native);
       let msg = t('lib.imported', { n: reports.length, names });
@@ -140,8 +138,8 @@ export default function CardLibrary() {
     const path = await pickPckFile();
     if (!path) return;
     try {
-      const result = await api.importPackPck(path);
-      await reload(result.imported[0]?.card.id);
+      const result = await runProjectMutation(() => api.importPackPck(path));
+      if (result.imported[0]) select(result.imported[0].card.id);
       let msg = t('lib.pckImported', { n: result.imported.length });
       if (result.errors.length > 0) {
         msg += t('lib.pckErrors', { n: result.errors.length });
@@ -160,63 +158,17 @@ export default function CardLibrary() {
 
   return (
     <div className="relative flex h-full flex-col">
-      <div className="border-b border-white/10 px-3 py-2.5">
-        <div className="flex items-center justify-between">
-          <div className="shrink-0 text-sm font-semibold text-slate-200">
-            {t('lib.title')}
-            <span className="ml-1.5 text-[11px] font-normal text-slate-500">{t('lib.count', { n: cards.length })}</span>
-          </div>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => setShowVanilla(true)}
-              className="whitespace-nowrap rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-200 transition hover:bg-sky-500/20"
-            >
-              {t('lib.vanilla')}
-            </button>
-            <button
-              onClick={doImportPck}
-              className="whitespace-nowrap rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
-            >
-              {t('lib.pack')}
-            </button>
-            <button
-              onClick={doImport}
-              className="whitespace-nowrap rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-white/30"
-            >
-              {t('lib.import')}
-            </button>
-          </div>
-        </div>
-        <div className="mt-2 flex gap-1.5">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('lib.search')}
-            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-amber-400/60"
-          />
-          <button
-            onClick={() => setShowTpl((v) => !v)}
-            className="shrink-0 whitespace-nowrap rounded-md bg-amber-500/90 px-2.5 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-400"
-          >
-            {t('lib.newCard')}
-          </button>
-        </div>
-        <button onClick={() => setShowModContent(true)} className="mt-2 w-full rounded-md border border-white/10 px-2 py-1.5 text-xs text-slate-300 hover:bg-white/5">{lang === 'en' ? 'Mod content' : 'Mod 内容'}</button>
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {TYPE_FILTERS.map((tp) => (
-            <button
-              key={tp}
-              onClick={() => setTypeFilter(tp)}
-              className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
-                typeFilter === tp
-                  ? 'bg-white/15 text-amber-300'
-                  : 'text-slate-500 hover:bg-white/5 hover:text-slate-300'
-              }`}
-            >
-              {tp === 'all' ? t('lib.all') : pick(TYPE_LABEL[tp], lang)}
-            </button>
-          ))}
-        </div>
+      <div className="space-y-3 border-b border-white/10 p-3">
+        <div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{t('lib.title')}</span><span className="sf-muted">{t('lib.count', { n: cards.length })}</span></div>
+        <button onClick={() => setShowTpl(v => !v)} className="sf-button sf-button-primary w-full">{t('lib.newCard')}</button>
+        <input aria-label={t('lib.search')} value={query} onChange={e => setQuery(e.target.value)} placeholder={t('lib.search')} className={inputCls} />
+        <select aria-label={lang === 'en' ? 'Card type filter' : '筛选卡牌类型'} className={selectCls} value={typeFilter} onChange={e => setTypeFilter(e.target.value as CardType | 'all')}>{TYPE_FILTERS.map(tp => <option key={tp} value={tp}>{tp === 'all' ? lang === 'en' ? 'All types' : '全部类型' : pick(TYPE_LABEL[tp], lang)}</option>)}</select>
+        <Disclosure title={lang === 'en' ? 'Import and sources' : '导入与素材'} storageKey="library.import">
+          <button onClick={() => setShowVanilla(true)} className="sf-button w-full">{lang === 'en' ? 'Bundled card catalog' : '内置原版目录'}</button>
+          <button onClick={doImportPck} className="sf-button w-full">{lang === 'en' ? 'Import card pack' : '导入卡包'}</button>
+          <button onClick={doImport} className="sf-button w-full">{lang === 'en' ? 'Import card JSON' : '导入卡牌 JSON'}</button>
+          <button onClick={() => setShowModContent(true)} className="sf-button w-full">{lang === 'en' ? 'Current game content' : '当前游戏内容'}</button>
+        </Disclosure>
       </div>
 
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
@@ -252,14 +204,14 @@ export default function CardLibrary() {
           <div className="mt-8 text-center text-xs text-slate-600">{t('lib.noMatch')}</div>
         )}
         {filtered.map((c) => (
-          <CardTile key={c.id} card={c} active={c.id === selectedId} onClick={() => select(c.id)} />
+          <CardTile key={c.id} card={c} active={c.id === selectedId} onSelect={select} />
         ))}
       </div>
 
       {showTpl && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setShowTpl(false)} />
-          <div className="absolute right-3 top-[104px] z-40 w-64 rounded-xl border border-white/10 bg-[#17171f] p-1.5 shadow-2xl">
+          <div className="absolute left-3 top-[96px] z-40 w-64 rounded-xl border border-white/10 bg-[var(--lk-color-surface)] p-1.5 shadow-2xl">
             <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
               {t('lib.tplTitle')}
             </div>
@@ -276,8 +228,10 @@ export default function CardLibrary() {
           </div>
         </>
       )}
-      {showVanilla && <VanillaImportModal onClose={() => setShowVanilla(false)} />}
-      {showModContent && <ModContentModal onClose={() => setShowModContent(false)} />}
+      <Suspense fallback={null}>
+        {showVanilla && <VanillaImportModal onClose={() => setShowVanilla(false)} />}
+        {showModContent && <ModContentModal onClose={() => setShowModContent(false)} />}
+      </Suspense>
     </div>
   );
 }

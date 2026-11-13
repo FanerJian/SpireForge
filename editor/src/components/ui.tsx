@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 
-export const inputCls =
-  'w-full rounded-md border border-white/10 bg-black/40 px-2.5 py-1.5 text-sm text-slate-200 outline-none transition focus:border-amber-400/60 focus:bg-black/60';
+export const inputCls = 'sf-input';
 
 export const selectCls = inputCls + ' appearance-none';
 
@@ -20,7 +19,7 @@ export function Disclosure({ title, children, defaultOpen = false, storageKey, a
   });
   return (
     <details data-disclosure data-field={field} data-effect-field={effectField} open={open}
-      className={'min-w-0 rounded-md border border-white/10 ' + className}
+      className={'sf-disclosure ' + className}
       onToggle={event => {
         const next = event.currentTarget.open;
         setOpen(next);
@@ -31,7 +30,7 @@ export function Disclosure({ title, children, defaultOpen = false, storageKey, a
         <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
         {actions && <span className="flex shrink-0 items-center gap-1" onClick={event => event.stopPropagation()}>{actions}</span>}
       </summary>
-      <div className="space-y-3 border-t border-white/5 px-3 py-3">{children}</div>
+      <div className="sf-disclosure-body">{children}</div>
     </details>
   );
 }
@@ -98,13 +97,14 @@ export function Segmented<T extends string>({ value, options, onChange }: {
   value: T; options: { v: T; label: string }[]; onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1 rounded-lg border border-white/10 bg-black/30 p-1">
+    <div className="sf-segmented">
       {options.map((o) => (
         <button
           key={o.v}
+          aria-pressed={value === o.v}
           onClick={() => onChange(o.v)}
           className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition ${
-            value === o.v ? 'bg-amber-500/90 text-black' : 'text-slate-400 hover:bg-white/10 hover:text-slate-200'
+            value === o.v ? '' : 'hover:bg-white/5'
           }`}
         >
           {o.label}

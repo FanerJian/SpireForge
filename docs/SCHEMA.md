@@ -1,9 +1,13 @@
-# 卡牌 JSON Schema（v1）
+# 卡牌 JSON Schema（格式版本 1–3）
 
 > 编辑器、Runtime、导入导出共用的唯一契约。
 > Rust 权威定义：`editor/src-tauri/src/model.rs`
 > TS 镜像：`editor/src/lib/types.ts`
 > Runtime 侧：`runtime/src/SfCardDef.cs`
+
+格式3增加可视化规则及项目共享状态/组合模板。规则沿用 `custom` 效果结构，`handler:"sf_rules"`，`params.rules_version:1`；完整契约见 [RULES.md](RULES.md)。
+项目元数据增加可选 `rule_statuses` 和 `rule_templates`，缺省为空。规则程序携带所用状态快照，项目目录中的同ID定义在保存/导出/打包时更新该快照。发布格式3卡包要求 Runtime 0.2.0。
+以下格式1示例继续展示基础字段；编辑器兼容读取格式1、2、3。
 
 ## 项目结构（.sfp 项目目录）
 
@@ -326,3 +330,7 @@ gold/spawn/summon 的描述带得失/去向措辞，编辑器生成字面数值�
   `format_version` 高于支持版本时编辑器拒载并提示升级
 - `id` 与 `pack_id` 一旦发布不得改名（Entry 派生自二者，改名破坏存档/工坊引用）
 - 同包内 id 唯一；跨包不冲突（Entry 含 packId 前缀）
+
+## 扩展原版卡池（Runtime 0.2.1）
+
+新增原版卡池复用 `custom_pools`：`mod_id` 为保留值 `sts2`，`key` 为 `mod:sts2:<完整卡池类型名>`。类型精确解析到游戏程序集，`workshop_id` 可为空。既有原版池键保持稳定。发布时按实际使用的扩展原版池声明Runtime最低版本0.2.1。

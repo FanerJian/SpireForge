@@ -12,6 +12,7 @@ import { bytesToDataUrl, extOf } from '../../lib/img';
 import { useStore } from '../../lib/store';
 import { composeDelayedBuffText } from '../../lib/description';
 import type { CardDef, EffectDef, UpgradeDef } from '../../lib/types';
+import RulesEditor from './RulesEditor';
 
 type DelayedDef = Extract<EffectDef, { kind: 'delayed' }>;
 type CustomDef = Extract<EffectDef, { kind: 'custom' }>;
@@ -83,7 +84,7 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
 }) {
   const t = useT();
   const lang = useLang();
-  const { showToast } = useStore();
+  const { showToast, projectRoot } = useStore();
   const [buffLanguage, setBuffLanguage] = useState<'zhs' | 'eng'>(lang === 'en' ? 'eng' : 'zhs');
   const sectionKey = `delayed.${cardId}.${path ?? 'root'}`;
   const iconFileRef = useRef<HTMLInputElement>(null);
@@ -112,25 +113,36 @@ export function DelayedEffectBody({ e, patch, powerCombo, vfxCombo, cardId, path
 
   // 自定义图标路径 → 预览（项目资产经 readPortrait 读取，与立绘同一条链）
   useEffect(() => {
-    if (!e.icon || !e.icon.includes('/')) {
+    if (!e.icon || !e.icon.includes('/') || !projectRoot) {
       setIconUrl('');
       return;
     }
     let cancelled = false;
-    api.readPortrait(e.icon).then((bytes) => {
+    setIconUrl('');
+    api.readPortrait(e.icon, projectRoot).then((bytes) => {
       if (!cancelled) setIconUrl(bytesToDataUrl(new Uint8Array(bytes), extOf(e.icon!)));
     }).catch(() => {
       if (!cancelled) setIconUrl('');
     });
     return () => { cancelled = true; };
-  }, [e.icon]);
+  }, [e.icon, projectRoot]);
 
   const onIconFile = async (f: File) => {
+    const snapshot = useStore.getState();
+    const originalCard = snapshot.cards.find(c => c.id === cardId);
+    if (!originalCard || !projectRoot) return;
+    const isCurrent = () => {
+      const current = useStore.getState();
+      return current.projectRoot === projectRoot && current.selectedId === cardId
+        && !current.historyBusy && current.cards.find(c => c.id === cardId) === originalCard;
+    };
     try {
       const buf = new Uint8Array(await f.arrayBuffer());
+      if (!isCurrent()) { showToast(t('st.portraitTargetChanged')); return; }
       const dot = f.name.lastIndexOf('.');
       const ext = dot >= 0 ? f.name.slice(dot + 1).toLowerCase() : 'png';
-      const rel = await api.saveEffectIcon(`${cardId}_${Date.now()}`, ext, buf);
+      const rel = await api.saveEffectIcon(`${cardId}_${Date.now()}`, ext, buf, projectRoot);
+      if (!isCurrent()) { showToast(t('st.portraitTargetChanged')); return; }
       patch({ icon: rel } as Partial<EffectDef>);
     } catch (err) {
       showToast(t('pp.iconUploadFail', { e: String(err) }));
@@ -365,6 +377,8 @@ export function CustomEffectBody({ e, patch, hookCtx, scope }: {
   );
   const descriptor = runtime?.custom_effects?.find(h => h.name === e.handler);
   const unregistered = !!e.handler && !registered.has(e.handler.toLowerCase());
+
+  if (e.handler === 'sf_rules') return <RulesEditor effect={e} onChange={patch} scope={scope} />;
 
   const pickHandler = (name: string) => {
     if (!e.params && starterParamsFor(name)) {

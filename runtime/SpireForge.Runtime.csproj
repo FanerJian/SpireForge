@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpireForgeRuntime</AssemblyName>
+    <!-- 源码 mod 清单是版本来源，程序集与目录导出使用同一版本。 -->
+    <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/SpireForgeRuntime.json')), '(?s).*&quot;version&quot;\s*:\s*&quot;([^&quot;]+)&quot;.*', '$1'))</Version>
     <RootNamespace>SpireForge.Runtime</RootNamespace>
     <!-- 游戏自带全部依赖，禁止拷贝到输出目录 -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>

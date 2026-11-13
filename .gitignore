@@ -20,9 +20,21 @@ tools/uploader/_sandbox/
 tools/testproject-out/
 *.log
 *.tmp
+/work/
 
 # ---- ZCode/Mimosa 钩子状态 ----
 .mimosa/
+.codegraph/
+
+# Local credentials and editor state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.local
 
 # ---- Godot / Tauri 自动生成 ----
 runtime/.godot/

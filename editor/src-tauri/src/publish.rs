@@ -125,36 +125,38 @@ const LANGS: [&str; 2] = ["eng", "zhs"];
 /// 递归改写 delayed 效果的图标路径：项目相对 `assets/powers/<file>` → PCK 内
 /// `images/powers/<file>`（与立绘 images/cards 同款约定），图片字节入 files；
 /// 力量名形态（不含 assets/ 前缀）原样保留；文件缺失时清空回落空白图标。
-fn pack_effect_icons(
-    effects: &mut [EffectDef],
+fn pack_card_icons(
+    card: &mut CardDef,
     root: &str,
     pack_id: &str,
     files: &mut BTreeMap<String, Vec<u8>>,
-) {
-    for e in effects {
-        if let EffectDef::Delayed { icon, effects: inner, .. } = e {
-            if let Some(spec) = icon.as_mut() {
-                let s = spec.trim().to_string();
-                if s.starts_with("assets/") {
-                    let src = PathBuf::from(root).join(&s);
-                    match fs::read(&src) {
-                        Ok(bytes) => {
-                            let fname = src
-                                .file_name()
-                                .map(|f| f.to_string_lossy().into_owned())
-                                .unwrap_or_else(|| "icon.png".to_string());
-                            *spec = format!("images/powers/{fname}");
-                            files.insert(format!("res://{pack_id}/images/powers/{fname}"), bytes);
-                        }
-                        Err(_) => {
-                            *spec = String::new();
-                        }
-                    }
-                }
-            }
-            pack_effect_icons(inner, root, pack_id, files);
-        }
+) -> Result<(), String> {
+    crate::rules::transform_icons(card, |spec| {
+        let path = spec.trim();
+        if !path.starts_with("assets/") { return Ok(spec.into()); }
+        crate::project::validate_rel_path(path)?;
+        let source = PathBuf::from(root).join(path);
+        if !source.exists() { return Ok(String::new()); }
+        let bytes = crate::project::read_portrait_bytes(root, path)?;
+        let filename = source.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "icon.png".into());
+        files.insert(format!("res://{pack_id}/images/powers/{filename}"), bytes);
+        Ok(format!("images/powers/{filename}"))
+    })
+}
+
+pub fn prepare_cards(root: &str, cards: &[CardDef]) -> Result<Vec<CardDef>, String> {
+    let statuses = if crate::project::meta_path(root).exists() {
+        crate::project::read_meta(root)?.rule_statuses
+    } else { vec![] };
+    let mut cards = cards.to_vec();
+    for card in &mut cards {
+        crate::rules::bind_statuses(card, &statuses)?;
+        crate::rules::ensure_publish(card)?;
+        crate::content_refs::enrich(card, None);
     }
+    Ok(cards)
 }
 
 /// 构建卡包文件集合：res://<PackId>/{cards,images,localization}
@@ -163,13 +165,16 @@ pub fn build_pack_files(
     pack_id: &str,
     cards: &[CardDef],
 ) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    validate_pack_id(pack_id)?;
+    let cards = prepare_cards(root, cards)?;
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut loc: BTreeMap<&str, serde_json::Map<String, serde_json::Value>> = BTreeMap::new();
     for l in LANGS {
         loc.insert(l, serde_json::Map::new());
     }
 
-    for card in cards {
+    for card in &cards {
+        crate::project::validate_card_id(&card.id)?;
         // 原版卡覆盖：本地化键 = 原版 Entry（如 BASH.title），游戏合并本地化时覆盖原版文案。
         // 原版 Entry 已是游戏的最终 Slugify 形态，不能再过 slugify（BASH 会被拆成 B_A_S_H），
         // 只做大写规范化 + 剔除非法字符。
@@ -185,11 +190,12 @@ pub fn build_pack_files(
         packed_card.portrait_original = None;
         // 延迟效果图标：项目 assets/powers/*.png → PCK images/powers/*（递归内嵌清单），
         // 力量名形态原样保留；文件缺失时清空（运行时回落空白图标）
-        pack_effect_icons(&mut packed_card.effects, root, pack_id, &mut files);
+        pack_card_icons(&mut packed_card, root, pack_id, &mut files)?;
         if !card.portrait.is_empty() {
+            crate::project::validate_rel_path(&card.portrait)?;
             let src = PathBuf::from(root).join(&card.portrait);
             if src.exists() {
-                let bytes = fs::read(&src).map_err(|e| e.to_string())?;
+                let bytes = crate::project::read_portrait_bytes(root, &card.portrait)?;
                 let fname = src
                     .file_name()
                     .map(|s| s.to_string_lossy().into_owned())
@@ -258,16 +264,6 @@ fn mod_ids_used(cards: &[CardDef]) -> Vec<String> {
     let mut ids = std::collections::BTreeSet::new();
     for card in cards {
         ids.extend(crate::content_refs::mod_ids(card));
-        for pool in crate::custom_pools::active_pool_keys(card) {
-            if let Some(rest) = pool.strip_prefix("mod:") {
-                if let Some((mod_id, type_name)) = rest.split_once(':') {
-                    if !mod_id.is_empty() && !type_name.is_empty() && mod_id != "SpireForgeRuntime"
-                    {
-                        ids.insert(mod_id.to_string());
-                    }
-                }
-            }
-        }
     }
     ids.into_iter().collect()
 }
@@ -286,7 +282,18 @@ pub fn build_manifest_for_cards(
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .map(|id| {
-            let minimum = if id == "SpireForgeRuntime" && cards.iter().any(|c| c.format_version >= 2) { Some("0.1.16") } else { None };
+            let minimum = if id != "SpireForgeRuntime" {
+                None
+            } else if cards.iter().any(|card| crate::custom_pools::active_pool_keys(card)
+                .iter().any(|pool| pool.starts_with("mod:sts2:"))) {
+                Some("0.2.1")
+            } else if cards.iter().any(|c| c.format_version >= 3 || crate::rules::has_rules(c)) {
+                Some("0.2.0")
+            } else if cards.iter().any(|c| c.format_version >= 2) {
+                Some("0.1.16")
+            } else {
+                None
+            };
             json!({"id": id, "min_version": minimum})
         })
         .collect();
@@ -316,13 +323,14 @@ pub fn build_pack(
     cards: &[CardDef],
 ) -> Result<PathBuf, String> {
     validate_pack_id(pack_id)?;
-    let files = build_pack_files(root, pack_id, cards)?;
+    let cards = prepare_cards(root, cards)?;
+    let files = build_pack_files(root, pack_id, &cards)?;
     let pack_dir = PathBuf::from(out_dir).join(pack_id);
     fs::create_dir_all(&pack_dir).map_err(|e| e.to_string())?;
     write_pck(&pack_dir.join(format!("{pack_id}.pck")), &files)?;
     atomic_write(
         &pack_dir.join(format!("{pack_id}.json")),
-        build_manifest_for_cards(pack_id, name, author, description, version, cards).as_bytes(),
+        build_manifest_for_cards(pack_id, name, author, description, version, &cards).as_bytes(),
     )?;
     Ok(pack_dir)
 }
@@ -364,7 +372,8 @@ pub fn preflight_with_pools(
                         card.id, pool
                     )));
                 } else if let Some(def) = declared.get(pool) {
-                    if def.workshop_id.as_deref().unwrap_or("").is_empty() {
+                    if crate::content_refs::reference_mod(&def.key).is_some()
+                        && def.workshop_id.as_deref().unwrap_or("").is_empty() {
                         issues.push(issue(&card.id, "basic", "pools", format!(
                             "自定义卡池 {} 未填写工坊 ID；请手动添加准确的依赖 ID", def.label
                         )));
@@ -376,6 +385,8 @@ pub fn preflight_with_pools(
 
     let mut ids: HashSet<&str> = HashSet::new();
     for c in cards {
+        issues.extend(crate::rules::validate_card(c).into_iter().map(|problem|
+            issue(&c.id, "effects", &problem.field, problem.message)));
         if !ids.insert(c.id.as_str()) {
             issues.push(issue(&c.id, "basic", "id", format!("卡牌 id 重复: {}", c.id)));
         }
@@ -474,11 +485,52 @@ fn check_effect_refs(card_id: &str, fx: &EffectDef, path: &str, issues: &mut Vec
         }
         _ => {}
     }
+    if let EffectDef::Custom { params: Some(params), .. } = fx {
+        check_embedded_refs(card_id, &serde_json::Value::Object(params.clone()), &format!("{path}.params"), issues);
+    }
+}
+
+fn check_embedded_refs(card_id: &str, value: &serde_json::Value, path: &str, issues: &mut Vec<ValidationIssue>) {
+    if value.get("kind").and_then(serde_json::Value::as_str).is_some() {
+        if let Ok(effect) = serde_json::from_value::<EffectDef>(value.clone()) {
+            check_effect_refs(card_id, &effect, path, issues);
+            return;
+        }
+    }
+    match value {
+        serde_json::Value::Array(list) => for (index, item) in list.iter().enumerate() {
+            check_embedded_refs(card_id, item, &format!("{path}.{index}"), issues);
+        },
+        serde_json::Value::Object(map) => for (key, item) in map {
+            check_embedded_refs(card_id, item, &format!("{path}.{key}"), issues);
+        },
+        _ => {}
+    }
 }
 
 #[cfg(test)]
 mod custom_pool_tests {
     use super::*;
+
+    #[test]
+    fn base_game_extension_pools_require_metadata_and_runtime_021() {
+        let pool = crate::custom_pools::CustomPoolDef {
+            key: "mod:sts2:MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool".into(),
+            label: "愚者".into(), mod_id: "sts2".into(),
+            type_name: "MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool".into(), workshop_id: None,
+        };
+        let card = CardDef {
+            id: "fool_copy".into(), pool: pool.key.clone(),
+            name: crate::model::LocText { zhs: "新卡".into(), eng: "New card".into() },
+            ..Default::default()
+        };
+        assert!(preflight("Pack", &[card.clone()]).iter().any(|issue| issue.field == "pools"));
+        assert!(preflight_with_pools("Pack", &[card.clone()], &[pool]).is_empty());
+        let manifest: serde_json::Value = serde_json::from_str(&build_manifest_for_cards(
+            "Pack", "n", "a", "d", "1", &[card],
+        )).unwrap();
+        assert_eq!(manifest["dependencies"], json!([{"id":"SpireForgeRuntime","min_version":"0.2.1"}]));
+    }
     #[test]
     fn issues_locate_hook_and_nested_effect_fields_without_parsing_messages() {
         let card = CardDef { id: "a".into(), on_draw: vec![serde_json::from_value(json!({ "kind": "custom", "handler": "" })).unwrap()], ..Default::default() };
@@ -522,7 +574,7 @@ mod custom_pool_tests {
             .as_array()
             .unwrap()
             .iter()
-            .all(|d| if d["id"] == "SpireForgeRuntime" { d["min_version"] == "0.1.16" } else { d["min_version"].is_null() }));
+            .all(|d| if d["id"] == "SpireForgeRuntime" { d["min_version"] == "0.2.0" } else { d["min_version"].is_null() }));
     }
 }
 
@@ -660,10 +712,35 @@ mod tests {
             icon: Some("assets/powers/missing.png".into()),
             effects: vec![],
         };
-        let files2 = build_pack_files(dir.to_str().unwrap(), "IconPack", &[card]).unwrap();
+        let files2 = build_pack_files(dir.to_str().unwrap(), "IconPack", &[card.clone()]).unwrap();
         let v2: serde_json::Value =
             serde_json::from_slice(&files2["res://IconPack/cards/iconic.json"]).unwrap();
         assert_eq!(v2["effects"][0]["icon"], "");
+
+        if let EffectDef::Delayed { icon, .. } = &mut card.effects[0] {
+            *icon = Some("assets/../../outside.png".into());
+        }
+        assert!(build_pack_files(dir.to_str().unwrap(), "IconPack", &[card]).is_err());
+    }
+
+    #[test]
+    fn portrait_paths_are_validated_before_reading_or_missing_file_fallback() {
+        let dir = std::env::temp_dir().join("sf_publish_portrait_paths");
+        fs::create_dir_all(dir.join("assets/cards")).unwrap();
+        fs::write(dir.join("assets/cards/valid.png"), b"portrait").unwrap();
+        let mut card = CardDef { id: "safe".into(), ..Default::default() };
+        for rel in ["../outside.png", "assets/../../outside.png", "assets/cards/valid.png:stream"] {
+            card.portrait = rel.into();
+            assert!(build_pack_files(dir.to_str().unwrap(), "TestPack", &[card.clone()]).is_err(), "{rel}");
+        }
+        card.portrait = "assets/cards/valid.png".into();
+        let files = build_pack_files(dir.to_str().unwrap(), "TestPack", &[card.clone()]).unwrap();
+        assert_eq!(files["res://TestPack/images/cards/valid.png"], b"portrait");
+        card.portrait = "assets/cards/missing.png".into();
+        let files = build_pack_files(dir.to_str().unwrap(), "TestPack", &[card]).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&files["res://TestPack/cards/safe.json"]).unwrap();
+        assert_eq!(value["portrait"], "");
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

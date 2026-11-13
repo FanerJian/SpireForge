@@ -71,19 +71,15 @@ export function useRuntimeCatalog(): RuntimeCatalog | null {
   return useRuntimeCatalogState().catalog;
 }
 
-// ---- mod 目录条目过滤（只保留内置目录没有的）----
+// ---- 游戏快照优先，内置目录用于缺失条目的离线回落 ----
 
 export function modPowers(runtime: RuntimeCatalog | null): RuntimePower[] {
-  if (!runtime) return [];
-  const known = new Set(POWERS.map((p) => p.name.toLowerCase()));
-  return runtime.powers.filter((p) => p.mod_id ? p.mod_id !== 'sts2' || !known.has(p.name.toLowerCase()) : !known.has(p.name.toLowerCase()));
+  return runtime?.powers.filter(p => !p.capabilities?.includes('inspect')) ?? [];
 }
-
 export function modMonsters(runtime: RuntimeCatalog | null): RuntimeMonster[] {
-  if (!runtime) return [];
-  const known = new Set(MONSTERS.map((m) => m.name.toLowerCase()));
-  return runtime.monsters.filter((m) => m.mod_id ? m.mod_id !== 'sts2' || !known.has(m.name.toLowerCase()) : !known.has(m.name.toLowerCase()));
+  return runtime?.monsters.filter(m => !m.capabilities?.includes('inspect')) ?? [];
 }
+const isBase = (entry: { mod_id?: string; source?: string; key?: string }) => entry.mod_id === 'sts2' || entry.source === 'sts2' || entry.key?.startsWith('game:');
 
 // ---- 自定义效果处理器（SfEffects 注册表）----
 
@@ -271,14 +267,18 @@ export function buildPowerCombo(lang: Lang, mods: RuntimePower[]): ComboItem[] {
     keywords: lang === 'en' ? p.zh : p.en,
   }));
   for (const p of mods) {
-    items.push({
-      value: p.key || p.name,
+    const index = isBase(p) ? items.findIndex(item => item.value.toLowerCase() === p.name.toLowerCase()) : -1;
+    const current = index >= 0 ? items[index] : undefined;
+    const item: ComboItem = {
+      ...current,
+      value: current?.value || p.key || p.name,
       primary: p.title || p.name,
       secondary: [p.mod_name || p.source, stripBbcode(p.description) || p.entry].filter(Boolean).join(" · "),
-      badge: p.type === 'debuff' ? (lang === 'en' ? 'Debuff' : '减益') : 'MOD',
+      badge: p.type === 'debuff' ? (lang === 'en' ? 'Debuff' : '减益') : isBase(p) ? (lang === 'en' ? 'Game' : '原版') : 'MOD',
       badgeTone: p.type === 'debuff' ? ('danger' as const) : ('neutral' as const),
-      keywords: [p.name, p.entry, p.class_name, p.source].filter(Boolean).join(' '),
-    });
+      keywords: [current?.keywords, current?.primary, p.name, p.entry, p.class_name, p.source].filter(Boolean).join(' '),
+    };
+    if (index >= 0) items[index] = item; else items.push(item);
   }
   return items;
 }
@@ -294,19 +294,23 @@ export function buildMonsterCombo(lang: Lang, mods: RuntimeMonster[]): ComboItem
     keywords: lang === 'en' ? m.zh : m.en,
   }));
   for (const m of mods) {
-    items.push({
-      value: m.key || m.name,
+    const index = isBase(m) ? items.findIndex(item => item.value.toLowerCase() === m.name.toLowerCase()) : -1;
+    const current = index >= 0 ? items[index] : undefined;
+    const item: ComboItem = {
+      ...current,
+      value: current?.value || m.key || m.name,
       primary: m.title || m.name,
       secondary: [m.mod_name || m.source, m.hp ? `HP ${m.hp}` : m.entry].filter(Boolean).join(' · '),
-      badge: 'MOD',
+      badge: isBase(m) ? (lang === 'en' ? 'Game' : '原版') : 'MOD',
       badgeTone: 'neutral' as const,
-      keywords: [m.name, m.entry, m.source].filter(Boolean).join(' '),
-    });
+      keywords: [current?.keywords, current?.primary, m.name, m.entry, m.source].filter(Boolean).join(' '),
+    };
+    if (index >= 0) items[index] = item; else items.push(item);
   }
   return items;
 }
 
-/** 生成卡牌下拉：本项目卡优先，其后原版卡，最后游戏内导出卡（mod 卡等）按 Entry 去重追加；
+/** 生成卡牌下拉：本项目卡优先，其后当前游戏导出卡与内置目录，当前快照按 Entry 覆盖内置数据；
  *  次要行显示 Entry（同名卡/变体靠它区分） */
 export function buildSpawnCombo(args: {
   cards: CardDef[];
@@ -330,8 +334,9 @@ export function buildSpawnCombo(args: {
         keywords: c.id,
       };
     });
+  const liveEntries = new Set(runtime?.cards.filter(c => isBase(c)).map(c => c.entry.toUpperCase()) ?? []);
   for (const v of vanilla) {
-    if (items.some((i) => i.value === v.entry)) continue;
+    if (liveEntries.has(v.entry.toUpperCase()) || items.some((i) => i.value === v.entry)) continue;
     items.push({
       value: v.entry,
       primary: lang === 'en' ? (v.name_en || v.name) : v.name,

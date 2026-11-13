@@ -29,10 +29,10 @@ const H_ANCIENT = Math.round((W * 852) / 606); // 先古原图 606×852 ≈ 250�
 type Node = React.ReactNode;
 
 const TAG_CLASS: Record<string, string> = {
-  gold: 'text-amber-300 font-semibold',
-  red: 'text-red-400 font-semibold',
-  green: 'text-emerald-400 font-semibold',
-  blue: 'text-sky-400 font-semibold',
+  gold: 'sf-card-rich-gold font-semibold',
+  red: 'sf-card-rich-red font-semibold',
+  green: 'sf-card-rich-green font-semibold',
+  blue: 'sf-card-rich-blue font-semibold',
   unplayable: 'text-slate-400',
 };
 
@@ -131,11 +131,8 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
 
   return (
     <div className="relative select-none" style={{ width: W, height: H }}>
-      {/* 外发光（稀有度） */}
-      <div
-        className="absolute -inset-2 rounded-[28px] opacity-40 blur-lg"
-        style={{ background: `radial-gradient(ellipse at center, ${RARITY_GLOW[card.rarity] ?? '#666'}55, transparent 70%)` }}
-      />
+      <div className="absolute -inset-2 rounded-[28px] opacity-40 blur-lg"
+        style={{ background: `radial-gradient(ellipse at center, ${RARITY_GLOW[card.rarity] ?? '#666'}55, transparent 70%)` }} />
       {/* 框体 */}
       <div
         className="absolute inset-0 rounded-2xl border-[3px]"
@@ -214,4 +211,11 @@ export default function CardPreview({ card, packId, portraitUrl, upgraded }: {
       )}
     </div>
   );
+}
+
+/** Readable companion to the scaled card; shares the same rich-text and upgrade rules. */
+export function CardDescription({ card, upgraded }: { card: CardDef; upgraded: boolean }) {
+  const en = useLang() === 'en', t = useT();
+  const description = (en ? card.description.eng || card.description.zhs : card.description.zhs || card.description.eng) || '';
+  return <>{description ? parseRich(description, previewEffectVars(card, upgraded)) : t('pv.descriptionEmpty')}</>;
 }

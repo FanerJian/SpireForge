@@ -39,6 +39,8 @@ public static class SfBuiltinEffects
                          "Randomly run pick entry(ies) from the inner effect list (default 1)"),
         ["sf_cond"] = ("when 条件全部成立时执行内嵌效果清单（hp/手牌/敌人数）",
                        "Run the inner effect list when every 'when' condition holds (hp/hand/enemies)"),
+        ["sf_rules"] = ("执行可视化规则、动态数值、计数器、状态与选牌操作",
+                        "Execute visual rules, dynamic values, counters, statuses and card selection"),
         ["demo_kaka"] = ("示例：召唤改名「咔咔」的邪教徒，自身获得 1 层仪式",
                          "Demo: spawn a Cultist renamed Kaka, gain 1 Ritual"),
         ["sf_test_echo"] = ("调试：日志回显效果参数（仅调试模式注册）",
@@ -51,6 +53,7 @@ public static class SfBuiltinEffects
         SfEffects.Register("sf_repeat", RepeatAsync);
         SfEffects.Register("sf_random", RandomAsync);
         SfEffects.Register("sf_cond", CondAsync);
+        SfEffects.Register("sf_rules", SfRulesEngine.RunAsync);
     }
 
     private static async Task RepeatAsync(SfEffectContext ctx)
@@ -61,10 +64,16 @@ public static class SfBuiltinEffects
             SfLog.Error(ctx.Card.Id + ": sf_repeat needs params.effects (list)");
             return;
         }
-        var times = System.Math.Max(1, (int)ctx.Effect.Amount);
+        if (inner.Count == 0) return;
+        var times = (int)System.Math.Clamp(ctx.Effect.Amount, 1, SfRulesBudget.MaxRepeat);
+        if (ctx.Effect.Amount > SfRulesBudget.MaxRepeat)
+            SfLog.Warn("sf_repeat: count " + ctx.Effect.Amount + " clamped to " + SfRulesBudget.MaxRepeat);
+        var budget = SfRulesBudget.Current ?? new SfRulesBudget();
+        using var scope = SfRulesBudget.Enter(budget);
         for (var i = 0; i < times; i++)
         {
-            await RunInner(ctx, inner, "sf_repeat");
+            budget.Spend();
+            await SfEffectEngine.RunNestedAsync(ctx, inner);
         }
     }
 
@@ -88,7 +97,7 @@ public static class SfBuiltinEffects
                 break;
             }
             pool.Remove(chosen);
-            await RunInner(ctx, [chosen], "sf_random");
+            await SfEffectEngine.RunNestedAsync(ctx, [chosen]);
         }
     }
 
@@ -104,7 +113,7 @@ public static class SfBuiltinEffects
         {
             return; // 条件不成立：静默跳过（这是预期行为，不是错误）
         }
-        await RunInner(ctx, inner, "sf_cond");
+        await SfEffectEngine.RunNestedAsync(ctx, inner);
     }
 
     // ---- 内嵌清单与参数解析 ----
@@ -206,9 +215,4 @@ public static class SfBuiltinEffects
 
     private static decimal EnemyCount(CardModel card) =>
         card.Owner?.Creature?.CombatState?.HittableEnemies.Count ?? 0;
-
-    /// <summary>内嵌清单执行：字面数值、目标按钩子语义解析、失败逐条隔离。</summary>
-    private static Task RunInner(SfEffectContext ctx, List<SfEffect> inner, string via) =>
-        SfEffectEngine.RunAsync(ctx.Card, inner, ctx.Choice, ctx.Play, ctx.Trigger + ":" + via,
-            useVarBinding: false);
 }

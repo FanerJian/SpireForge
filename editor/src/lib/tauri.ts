@@ -38,8 +38,8 @@ export const api = {
   savePortrait: (id: string, ext: string, bytes: Uint8Array) =>
     invoke<string>('save_portrait', { id, ext, bytes: Array.from(bytes) }),
   /** 延迟效果图标：name = 卡 id + 时间戳拼名，落 assets/powers/<name>.<ext> */
-  saveEffectIcon: (name: string, ext: string, bytes: Uint8Array) =>
-    invoke<string>('save_effect_icon', { name, ext, bytes: Array.from(bytes) }),
+  saveEffectIcon: (name: string, ext: string, bytes: Uint8Array, projectRoot?: string) =>
+    invoke<string>('save_effect_icon', { name, ext, bytes: Array.from(bytes), projectRoot }),
   readPortrait: (rel: string, projectRoot?: string) =>
     invoke<number[]>('read_portrait', { rel, projectRoot }),
 
@@ -63,7 +63,7 @@ export const api = {
   publishWorkshop: (workspace: string, version: string, visibility: string, changeNote: string, runtimeDependency: number | null) =>
     invoke<string>('publish_workshop', { workspace, version, visibility, changeNote, runtimeDependency }),
 
-  /** 自动更新：清单多源检查 / 逐源下载+SHA256 校验 / 原地换 exe 并重启 */
+  /** 自动更新：官方清单检查 / 后端校验下载与安装记录 / 原地换 exe 并重启 */
   checkUpdate: () => invoke<UpdateCheckInfo | null>('check_update'),
   downloadUpdate: (c: { urls: string[]; sha256: string; size: number }) =>
     invoke<string>('download_update', { urls: c.urls, sha256: c.sha256, size: c.size }),

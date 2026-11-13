@@ -29,7 +29,7 @@ export default function BackupRecoveryModal({ onClose, projectPath }: { onClose:
   };
   return <div data-editor-modal role="dialog" aria-modal="true" aria-label={t('recovery.title')}
     className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { if (!historyBusy) onClose(); }}>
-    <div className="max-h-[80vh] w-[640px] overflow-y-auto rounded-2xl border border-white/10 bg-[#14141c] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="max-h-[80vh] w-[640px] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--lk-color-surface)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
       <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold">{t('recovery.title')}</h2>
         <button disabled={historyBusy} onClick={onClose} className="rounded px-2 py-1 text-slate-400">✕</button></div>
       <p className="mb-4 text-xs leading-relaxed text-slate-400">{t('recovery.note')}</p>

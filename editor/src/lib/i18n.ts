@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { OFFICIAL_POOL_ADDITIONS } from './officialPools';
 
 // ---- 界面语言（中/英切换）----
 // 持久化在 localStorage；默认中文。字典 key 扁平化，值 = 双语对象；en 缺失时回退 zh。
@@ -70,7 +71,7 @@ export function useT(): (key: string, vars?: Record<string, string | number>) =>
 // ---- 界面文案字典 ----
 
 const STRINGS: Record<string, L> = {
-  'ui.more': { zh: '更多', en: 'More' },
+  'ui.more': { zh: '高级设置', en: 'Advanced' },
   'ui.help': { zh: '说明', en: 'Help' },
   'ui.expandAll': { zh: '全部展开', en: 'Expand all' },
   'ui.collapseAll': { zh: '全部收起', en: 'Collapse all' },
@@ -88,9 +89,9 @@ const STRINGS: Record<string, L> = {
   'ui.reference': { zh: '原版信息', en: 'Vanilla info' },
   'ui.previewTools': { zh: '预览操作', en: 'Preview actions' },
   // 工具栏（App.tsx）
-  'app.undo': { zh: '↶ 撤销', en: '↶ Undo' },
-  'app.redo': { zh: '↷ 重做', en: '↷ Redo' },
-  'app.saveDirty': { zh: '保存 ●（{n}）', en: 'Save ● ({n})' },
+  'app.undo': { zh: '撤销', en: 'Undo' },
+  'app.redo': { zh: '重做', en: 'Redo' },
+  'app.saveDirty': { zh: '保存（{n}）', en: 'Save ({n})' },
   'app.saved': { zh: '已保存', en: 'Saved' },
   'app.publish': { zh: '发布 / 安装', en: 'Publish / Install' },
   'app.settings': { zh: '项目设置', en: 'Project Settings' },
@@ -98,7 +99,9 @@ const STRINGS: Record<string, L> = {
   'app.toEnglish': { zh: 'EN', en: '中文' },
 
   // 预览区（App.tsx PreviewPane + CardPreview）
-  'pv.upgraded': { zh: '预览升级数值', en: 'Preview upgraded values' },
+  'pv.title': { zh: '卡牌预览', en: 'CARD PREVIEW' },
+  'pv.descriptionEmpty': { zh: '添加效果后，可在规则页生成卡牌描述。', en: 'Add effects, then generate a description from Rules.' },
+  'pv.upgraded': { zh: '升级后', en: 'Upgraded' },
   'pv.grant': { zh: '添加至卡组', en: 'Add to Deck' },
   'pv.grantQueued': { zh: '已登记 {total} 张（新增 {added}）', en: 'Queued {total} card(s) ({added} new)' },
   'pv.grantNoGame': { zh: '游戏未运行，请先启动游戏并进入一局', en: 'The game is not running — start it and enter a run first' },
@@ -110,7 +113,7 @@ const STRINGS: Record<string, L> = {
   'pv.exported': { zh: '已导出卡牌 JSON', en: 'Card JSON exported' },
   'pv.exportFailed': { zh: '导出失败：{e}', en: 'Export failed: {e}' },
   'pv.empty': { zh: '请选择或创建一张卡牌', en: 'Select or create a card to start editing' },
-  'pv.entry': { zh: '游戏内 Entry', en: 'In-game Entry' },
+  'pv.entry': { zh: '游戏标识', en: 'Game ID' },
   'pv.idInvalid': { zh: 'id 无效', en: 'invalid id' },
 
   // 欢迎页（Welcome.tsx）
@@ -161,13 +164,13 @@ const STRINGS: Record<string, L> = {
   'lib.vanilla': { zh: '原版卡', en: 'Vanilla' },
   'lib.pack': { zh: '卡包', en: 'Pack' },
   'lib.import': { zh: '导入', en: 'Import' },
-  'lib.search': { zh: '搜索名称 / id…', en: 'Search name / id…' },
-  'lib.newCard': { zh: '+ 新卡牌', en: '+ New Card' },
+  'lib.search': { zh: '搜索卡牌', en: 'Search cards' },
+  'lib.newCard': { zh: '新建卡牌', en: 'New card' },
   'lib.all': { zh: '全部', en: 'All' },
   'lib.emptyLine1': { zh: '尚无卡牌', en: 'No cards yet.' },
   'lib.emptyLine2': { zh: '可从下方模板新建，或改写原版卡', en: 'Create one from a template below, or override a vanilla card.' },
   'lib.vanillaCta': { zh: '改写原版卡', en: 'Override a vanilla card' },
-  'lib.vanillaCtaSub': { zh: '从游戏 577 张卡中选取', en: 'Pick from the game\'s 577 cards' },
+  'lib.vanillaCtaSub': { zh: '从游戏卡牌中选择', en: 'Choose a game card' },
   'lib.noMatch': { zh: '没有符合筛选条件的卡牌', en: 'No cards match the filter' },
   'lib.tplTitle': { zh: '新建卡牌', en: 'New Card' },
   'lib.vanillaTag': { zh: '原版', en: 'vanilla' },
@@ -180,10 +183,10 @@ const STRINGS: Record<string, L> = {
   'lib.pckErrorTitle': { zh: '部分文件导入失败：', en: 'Some files failed to import:' },
 
   // 属性面板（PropertyPanel.tsx）
-  'pp.tabBasic': { zh: '基础', en: 'Basic' },
-  'pp.tabEffects': { zh: '效果', en: 'Effects' },
-  'pp.tabLook': { zh: '外观', en: 'Art' },
-  'pp.tabLoc': { zh: '文本', en: 'Text' },
+  'pp.tabBasic': { zh: '卡牌信息', en: 'Card' },
+  'pp.tabEffects': { zh: '效果与规则', en: 'Rules' },
+  'pp.tabLook': { zh: '立绘', en: 'Artwork' },
+  'pp.tabLoc': { zh: '文案', en: 'Text' },
   'pp.copy': { zh: '复制', en: 'Duplicate' },
   'pp.delete': { zh: '删除', en: 'Delete' },
   'pp.deleteConfirm': { zh: '删除「{name}」？删除后可通过工具栏撤销，也可在「备份恢复」中恢复。', en: 'Delete "{name}"? You can undo this from the toolbar or restore it from Backups.' },
@@ -194,7 +197,7 @@ const STRINGS: Record<string, L> = {
   'pp.vanillaCover': { zh: '覆盖原版卡', en: 'Override vanilla card' },
   'pp.vanillaActive': { zh: '覆盖原版卡 {id}', en: 'Overriding vanilla {id}' },
   'pp.vanillaCancel': { zh: '取消覆盖', en: 'Stop overriding' },
-  'pp.vanillaEntryPh': { zh: '原版 Entry，如 BASH', en: 'Vanilla Entry, e.g. BASH' },
+  'pp.vanillaEntryPh': { zh: '原版卡牌标识，如 BASH', en: 'Game card ID, e.g. BASH' },
   'pp.statsCover': { zh: '数值覆盖', en: 'Stat overrides' },
   'pp.upgCover': { zh: '升级增量', en: 'Upgrade deltas' },
   'pp.addStat': { zh: '+ 数值', en: '+ Stat' },
@@ -207,7 +210,7 @@ const STRINGS: Record<string, L> = {
   'pp.prefillFail': { zh: '原版数据无法映射为效果清单，请手动编辑', en: 'Vanilla data can\'t be mapped to effects — edit manually' },
   'pp.upgradeSummary': { zh: '升级：{list}', en: 'Upgrades: {list}' },
   'pp.idLabel': { zh: '卡牌 ID', en: 'Card id' },
-  'pp.idRenameConfirm': { zh: '将卡牌 id 从「{a}」改为「{b}」？游戏内 Entry 将随之变更，已发布的卡牌需重新发布。', en: 'Change card id from "{a}" to "{b}"? The in-game Entry changes; republish already released packs.' },
+  'pp.idRenameConfirm': { zh: '将卡牌标识从「{a}」改为「{b}」？游戏内标识将同步变更，已发布的卡牌需要重新发布。', en: 'Change card ID from "{a}" to "{b}"? The game ID changes; republish released packs.' },
   'pp.renamed': { zh: '已改名', en: 'Renamed' },
   'pp.renameFailed': { zh: '改名失败：{e}', en: 'Rename failed: {e}' },
   'pp.poolLabel': { zh: '卡池', en: 'Pools' },
@@ -299,7 +302,7 @@ const STRINGS: Record<string, L> = {
   'pp.playTargetDefault': { zh: '跟随卡牌目标', en: 'Follow card target' },
   'pp.targetSelf': { zh: '自身', en: 'Self' },
   'pp.targetAllEnemies': { zh: '全体敌人', en: 'All enemies' },
-  'pp.spawnEntry': { zh: '卡牌 Entry', en: 'Card Entry' },
+  'pp.spawnEntry': { zh: '卡牌标识', en: 'Card ID' },
   'pp.orbType': { zh: '球类型', en: 'Orb type' },
   'pp.monster': { zh: '怪物', en: 'Monster' },
   'pp.summonHp': { zh: '生命', en: 'HP' },
@@ -401,7 +404,7 @@ const STRINGS: Record<string, L> = {
   'ps.name': { zh: '项目名称', en: 'Project name' },
   'ps.author': { zh: '作者', en: 'Author' },
   'ps.desc': { zh: '简介', en: 'Description' },
-  'ps.descPh': { zh: '这个卡包里有什么？玩法/主题/卡牌数量…', en: 'What\'s in this pack? Theme/mechanics/card count…' },
+  'ps.descPh': { zh: '简述主题、玩法和卡牌内容', en: 'Describe the theme, mechanics, and cards' },
   'ps.cancel': { zh: '取消', en: 'Cancel' },
   'ps.save': { zh: '保存', en: 'Save' },
   'ps.saved': { zh: '项目信息已保存', en: 'Project info saved' },
@@ -409,7 +412,7 @@ const STRINGS: Record<string, L> = {
   // 原版导入（VanillaImportModal.tsx）
   'vi.title': { zh: '导入原版卡', en: 'Import vanilla card' },
   'vi.metaLine': { zh: '{n} 张 · 游戏 v{v} · 以覆盖卡载入', en: '{n} cards · game v{v} · loaded as an override' },
-  'vi.search': { zh: '搜索卡名（中/英）或 Entry', en: 'Search name (zh/en) or Entry' },
+  'vi.search': { zh: '搜索卡牌名称或标识', en: 'Search card name or ID' },
   'vi.noMatch': { zh: '没有匹配的卡牌', en: 'No matching cards' },
   'vi.imported': { zh: '已导入原版卡「{name}」（覆盖 {entry}）', en: 'Imported vanilla "{name}" (overriding {entry})' },
   'vi.importFailed': { zh: '导入失败：{e}', en: 'Import failed: {e}' },
@@ -417,6 +420,8 @@ const STRINGS: Record<string, L> = {
   // store 提示
   'st.partialSaveFail': { zh: '部分修改保存失败，请重试', en: 'Some edits failed to save — please retry' },
   'st.operationBusy': { zh: '正在处理卡牌，请完成后再操作', en: 'A card operation is in progress. Please wait.' },
+  'st.noProject': { zh: '请先打开卡包', en: 'Open a pack first' },
+  'st.portraitTargetChanged': { zh: '请在当前卡包重新选择立绘', en: 'Choose the portrait again in the current pack' },
   'st.historyCardMissing': { zh: '历史记录对应的卡牌不存在', en: 'The card referenced by this history entry is missing.' },
   'st.historyFailed': { zh: '撤销或重做失败：{e}', en: 'Undo or redo failed: {e}' },
   'pub.wsStale': { zh: '项目内容或发布配置已变化，请重新生成工坊工作区后上传。', en: 'Project content or publish settings changed. Create the workshop workspace again before uploading.' },
@@ -480,6 +485,7 @@ export const POOL_LABEL: Record<string, L> = {
   regent: { zh: '储君', en: 'Regent' },
   necrobinder: { zh: '亡灵契约师', en: 'Necrobinder' },
   defect: { zh: '故障机器人', en: 'Defect' },
+  ...Object.fromEntries(OFFICIAL_POOL_ADDITIONS.map(pool => [pool.key, pool.label])),
 };
 
 /** 原版目录 color 字段（含非卡池分类） */

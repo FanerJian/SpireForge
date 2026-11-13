@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLang } from '../lib/i18n';
 
 export interface ComboItem {
@@ -43,6 +43,8 @@ export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceh
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const listId = useId();
 
   const byValue = useMemo(() => new Map(items.map((i) => [i.value, i])), [items]);
   const current = byValue.get(value);
@@ -73,7 +75,8 @@ export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceh
       setQuery('');
       setActive(0);
       // 等弹层渲染完再聚焦搜索框
-      requestAnimationFrame(() => searchRef.current?.focus());
+      const frame = requestAnimationFrame(() => searchRef.current?.focus());
+      return () => cancelAnimationFrame(frame);
     }
   }, [open]);
 
@@ -88,10 +91,17 @@ export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceh
   };
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, filtered.length - 1)); }
+    // 中文输入法的候选确认由输入法处理。
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.max(0, Math.min(a + 1, filtered.length - 1))); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); const it = filtered[active]; if (it) pick(it.value); }
-    else if (e.key === 'Escape') { setOpen(false); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const it = filtered[active];
+      if (it) pick(it.value);
+      else if (!filtered.length && allowRaw && query.trim()) pick(query.trim());
+    }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); buttonRef.current?.focus(); }
   };
 
   const exact = filtered.some((i) => i.value.toLowerCase() === query.trim().toLowerCase());
@@ -103,7 +113,11 @@ export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceh
   return (
     <div ref={rootRef} data-effect-field={field} className={`relative ${widthClass}`}>
       <button
+        ref={buttonRef}
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
         className="flex w-full items-center justify-between gap-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-left text-sm text-slate-200 hover:border-white/20"
         onClick={() => setOpen((o) => !o)}
         title={current?.secondary ?? display}
@@ -113,10 +127,16 @@ export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceh
         <span className="shrink-0 text-[10px] text-slate-500">▼</span>
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 w-[min(22rem,80vw)] rounded-xl border border-white/10 bg-[#141a24] shadow-2xl shadow-black/60">
+        <div className="absolute z-50 mt-1 w-[min(22rem,80vw)] rounded-xl border border-white/10 bg-[var(--lk-color-surface)] shadow-2xl shadow-black/60">
           <div className="border-b border-white/10 p-2">
             <input
               ref={searchRef}
+              role="combobox"
+              aria-label={searchPlaceholder}
+              aria-expanded={open}
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={filtered[active] ? `${listId}-${active}` : undefined}
               className="w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-sky-400/40"
               placeholder={searchPlaceholder}
               value={query}
@@ -124,10 +144,14 @@ export function Combobox({ value, items, onChange, fallbackDisplay, searchPlaceh
               onKeyDown={onKey}
             />
           </div>
-          <div ref={listRef} className="max-h-72 overflow-y-auto p-1">
+          <div id={listId} role="listbox" aria-label={searchPlaceholder} ref={listRef} className="max-h-72 overflow-y-auto p-1">
             {filtered.map((it, idx) => (
               <button
                 key={it.value}
+                id={`${listId}-${idx}`}
+                role="option"
+                aria-selected={it.value === value}
+                tabIndex={-1}
                 type="button"
                 className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left ${idx === active ? 'bg-sky-500/15' : 'hover:bg-white/5'}`}
                 onMouseEnter={() => setActive(idx)}

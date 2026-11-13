@@ -15,6 +15,8 @@ namespace SpireForge.Runtime;
 /// </summary>
 public static class PackLoader
 {
+    private const ulong MaxCardJsonBytes = 16 * 1024 * 1024;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -70,11 +72,19 @@ public static class PackLoader
                 try
                 {
                     using var f = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Read);
+                    if (f.GetLength() > MaxCardJsonBytes)
+                    {
+                        throw new System.IO.InvalidDataException("Card json exceeds 16 MiB");
+                    }
                     var raw = f.GetAsText();
                     var def = JsonSerializer.Deserialize<SfCardDef>(raw, JsonOpts);
                     if (def == null || string.IsNullOrWhiteSpace(def.Id))
                     {
                         Log.Error($"SPIREFORGE: invalid card json {path}");
+                    }
+                    else if (def.FormatVersion < 1 || def.FormatVersion > 3)
+                    {
+                        Log.Error($"SPIREFORGE: unsupported card format {def.FormatVersion} ({path})");
                     }
                     else if (!string.IsNullOrWhiteSpace(def.VanillaId))
                     {

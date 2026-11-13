@@ -159,4 +159,12 @@ mod tests {
     fn rejects_duplicate_identity_in_catalog() {
         assert!(validate_pools(&[def("A", "Pool"), def("B", "Pool")]).is_err());
     }
+
+    #[test]
+    fn imports_base_game_extension_pools_with_exact_type_identity() {
+        let pools = parse_catalog(r#"{"format_version":1,"pools":[{"key":"mod:sts2:MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool","label":"  愚者  ","mod_id":"sts2","type_name":"MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool"}]}"#).unwrap();
+        assert_eq!(pools[0].label, "愚者");
+        assert_eq!(pools[0].workshop_id, None);
+        assert_eq!(crate::content_refs::reference_mod(&pools[0].key), None);
+    }
 }

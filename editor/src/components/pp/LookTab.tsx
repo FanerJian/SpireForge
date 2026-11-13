@@ -1,7 +1,7 @@
 // 立绘页签：上传/重新裁剪/移除立绘，尺寸合格性提示（比例锁卡型）。
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/tauri';
-import { useStore } from '../../lib/store';
+import { saveCardPortrait, useStore } from '../../lib/store';
 import { Disclosure } from '../ui';
 import PortraitCropper from '../PortraitCropper';
 import { bytesToDataUrl, extOf } from '../../lib/img';
@@ -15,13 +15,14 @@ export default function LookTab({ card }: { card: CardDef }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dim, setDim] = useState<string>('');
   // 裁剪弹窗数据源：url 给 <img>，bytes 用于另存原图；isRecrop 区分新上传/重裁剪
-  const [crop, setCrop] = useState<{ url: string; bytes: Uint8Array; ext: string; isRecrop: boolean } | null>(null);
+  const [crop, setCrop] = useState<{ url: string; bytes: Uint8Array; ext: string; isRecrop: boolean; root: string; cardId: string } | null>(null);
   // 卡型比例：先古卡 = 整卡满幅 250:351，其余 = 立绘窗 250:190
   const aspect = card.rarity === 'Ancient' ? 250 / 351 : 250 / 190;
   useEffect(() => {
-    if (!card.portrait) { setDim(''); return; }
+    if (!card.portrait || !projectRoot) { setDim(''); return; }
+    setDim('');
     let cancelled = false;
-    api.readPortrait(card.portrait).then((bytes) => {
+    api.readPortrait(card.portrait, projectRoot).then((bytes) => {
       if (cancelled) return;
       const url = bytesToDataUrl(new Uint8Array(bytes), extOf(card.portrait));
       const img = new Image();
@@ -33,17 +34,24 @@ export default function LookTab({ card }: { card: CardDef }) {
   }, [card.portrait, projectRoot, portraitRevision]);
 
   const onFile = async (f: File) => {
-    const buf = new Uint8Array(await f.arrayBuffer());
-    const ext = extOf(f.name);
-    setCrop({ url: bytesToDataUrl(buf, ext), bytes: buf, ext, isRecrop: false });
+    if (!projectRoot) return;
+    try {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      const current = useStore.getState();
+      if (current.projectRoot !== projectRoot || current.selectedId !== card.id) return;
+      const ext = extOf(f.name);
+      setCrop({ url: bytesToDataUrl(buf, ext), bytes: buf, ext, isRecrop: false, root: projectRoot, cardId: card.id });
+    } catch { showToast(t('pp.portraitLoadFail')); }
   };
 
   const openRecrop = async () => {
     const rel = card.portrait_original;
-    if (!rel) return;
+    if (!rel || !projectRoot) return;
     try {
-      const bytes = new Uint8Array(await api.readPortrait(rel));
-      setCrop({ url: bytesToDataUrl(bytes, extOf(rel)), bytes, ext: extOf(rel), isRecrop: true });
+      const bytes = new Uint8Array(await api.readPortrait(rel, projectRoot));
+      const current = useStore.getState();
+      if (current.projectRoot !== projectRoot || current.selectedId !== card.id) return;
+      setCrop({ url: bytesToDataUrl(bytes, extOf(rel)), bytes, ext: extOf(rel), isRecrop: true, root: projectRoot, cardId: card.id });
     } catch {
       showToast(t('pp.portraitLoadFail'));
     }
@@ -57,13 +65,7 @@ export default function LookTab({ card }: { card: CardDef }) {
     setCrop(null);
     try {
       // 裁剪结果统一存 PNG；原图另存一份供「重新裁剪」（重裁剪时原图不变）
-      const rel = await api.savePortrait(card.id, 'png', png);
-      if (src.isRecrop) {
-        updateCard({ portrait: rel });
-      } else {
-        const origRel = await api.savePortrait(`${card.id}_original`, src.ext, src.bytes);
-        updateCard({ portrait: rel, portrait_original: origRel });
-      }
+      await saveCardPortrait(src.root, src.cardId, png, src.isRecrop ? undefined : { ext: src.ext, bytes: src.bytes });
       showToast(t('pp.portraitSaved'));
     } catch (e) {
       showToast(t('pp.portraitSaveFailed', { e: String(e) }));

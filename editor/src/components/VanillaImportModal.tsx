@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/tauri';
-import { useStore } from '../lib/store';
+import { runProjectMutation, useStore } from '../lib/store';
 import { newCard, type CardDef, type CardType, type VanillaCatalog, type VanillaEntry } from '../lib/types';
 import { pick, VI_COLOR_LABEL, useLang, useT } from '../lib/i18n';
 
@@ -40,7 +40,8 @@ export function cardFromVanilla(v: VanillaEntry, existingIds: Set<string>): Card
 
 /** 导入原版卡：从内嵌目录（577 张，v0.111.0 数据）选择并作为可编辑覆盖卡载入 */
 export default function VanillaImportModal({ onClose }: { onClose: () => void }) {
-  const { cards, openProject, projectRoot, select, showToast } = useStore();
+  const select = useStore(s => s.select);
+  const showToast = useStore(s => s.showToast);
   const t = useT();
   const lang = useLang();
   const [catalog, setCatalog] = useState<VanillaCatalog | null>(null);
@@ -63,13 +64,12 @@ export default function VanillaImportModal({ onClose }: { onClose: () => void })
   const doImport = async (v: VanillaEntry) => {
     setBusy(true);
     try {
-      await useStore.getState().persistAll();
-      const card = cardFromVanilla(v, new Set(cards.map((c) => c.id)));
-      await api.saveCard(card);
-      if (projectRoot) {
-        await openProject(projectRoot);
-        select(card.id);
-      }
+      const card = await runProjectMutation(async () => {
+        const card = cardFromVanilla(v, new Set(useStore.getState().cards.map(c => c.id)));
+        await api.saveCard(card);
+        return card;
+      });
+      select(card.id);
       showToast(t('vi.imported', { name: v.name || v.name_en, entry: v.entry }));
       onClose();
     } catch (e) {
@@ -80,9 +80,9 @@ export default function VanillaImportModal({ onClose }: { onClose: () => void })
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div data-editor-modal className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { if (!busy) onClose(); }}>
       <div
-        className="flex max-h-[85vh] w-[560px] flex-col rounded-2xl border border-white/10 bg-[#14141c] p-5 shadow-2xl"
+        className="flex max-h-[85vh] w-[560px] flex-col rounded-2xl border border-white/10 bg-[var(--lk-color-surface)] p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3">

@@ -3,6 +3,7 @@ using System.Runtime.Loader;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.CardPools;
 
 namespace SpireForge.Runtime;
 
@@ -23,7 +24,20 @@ public sealed record SfPoolCatalogEntry(
 /// </summary>
 public static class SfPoolRegistry
 {
+    public const string GameModId = "sts2";
     private const string LogTag = "SPIREFORGE";
+    private static readonly Dictionary<string, Type> LegacyPools = new(StringComparer.Ordinal)
+    {
+        ["colorless"] = typeof(ColorlessCardPool),
+        ["curse"] = typeof(CurseCardPool),
+        ["status"] = typeof(StatusCardPool),
+        ["ironclad"] = typeof(IroncladCardPool),
+        ["silent"] = typeof(SilentCardPool),
+        ["regent"] = typeof(RegentCardPool),
+        ["necrobinder"] = typeof(NecrobinderCardPool),
+        ["defect"] = typeof(DefectCardPool),
+    };
+    private static readonly SfPoolMod Game = new(GameModId, "Slay the Spire 2", null, []);
     private static readonly Dictionary<string, List<SfPoolMod>> ModsById = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, List<(SfPoolMod Mod, Type Type)>> PoolsByKey = new(StringComparer.Ordinal);
 
@@ -72,7 +86,7 @@ public static class SfPoolRegistry
 
         foreach (SfPoolMod mod in mods)
         {
-            if (string.IsNullOrEmpty(mod.Id))
+            if (string.IsNullOrEmpty(mod.Id) || mod.Id == GameModId)
                 continue;
             if (!ModsById.TryGetValue(mod.Id, out var sameId))
                 ModsById[mod.Id] = sameId = new List<SfPoolMod>();
@@ -91,12 +105,22 @@ public static class SfPoolRegistry
         }
     }
 
-    public static Type? Resolve(string key, out string? failure)
+    public static Type? Resolve(string? key, out string? failure)
     {
         failure = null;
+        if (key != null && LegacyPools.TryGetValue(key, out var legacy)) return legacy;
         if (!TryParseKey(key, out string modId, out string typeName))
         {
             failure = "expected mod:<mod_id>:<Namespace.TypeName>";
+            return null;
+        }
+        // The reserved game identity always resolves inside sts2.dll, including on older games
+        // where a newer pool is absent. A loaded Mod cannot provide or shadow this identity.
+        if (modId == GameModId)
+        {
+            var gameType = typeof(CardPoolModel).Assembly.GetType(typeName, throwOnError: false);
+            if (gameType != null && IsSupportedPoolType(gameType)) return gameType;
+            failure = $"concrete game card pool '{typeName}' was not found in sts2.dll";
             return null;
         }
         if (!ModsById.TryGetValue(modId, out var mods))
@@ -129,13 +153,18 @@ public static class SfPoolRegistry
         return candidates[0].Type;
     }
 
-    public static Type? Resolve(string key) => Resolve(key, out _);
+    public static Type? Resolve(string? key) => Resolve(key, out _);
 
     public static bool TryGetModForPool(Type type, out SfPoolMod? mod)
     {
         mod = null;
         string? fullName = type.FullName;
         if (string.IsNullOrEmpty(fullName)) return false;
+        if (type.Assembly == typeof(CardPoolModel).Assembly && IsSupportedPoolType(type))
+        {
+            mod = Game;
+            return true;
+        }
 
         var matches = PoolsByKey.Values
             .SelectMany(items => items)
@@ -153,6 +182,17 @@ public static class SfPoolRegistry
         .ToArray();
 
     public static string KeyOf(string modId, string typeName) => $"mod:{modId}:{typeName}";
+
+    public static bool IsLegacyPool(Type type) => LegacyPools.ContainsValue(type);
+
+    /// <summary>Legacy built-in keys remain stable. Additional game pools use the reserved sts2 identity.</summary>
+    public static string PoolKeyFor(Type type)
+    {
+        foreach (var (key, legacyType) in LegacyPools)
+            if (type == legacyType) return key;
+        return TryGetModForPool(type, out var mod) && mod != null && type.FullName is string fullName
+            ? KeyOf(mod.Id, fullName) : "";
+    }
 
     public static bool TryParseKey(string? key, out string modId, out string typeName)
     {

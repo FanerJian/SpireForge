@@ -2,7 +2,7 @@
 // 用法（仓库根目录）：
 //   node tools/write-update-manifest.mjs editor/src-tauri/target/release/editor.exe 0.2.0 "中文说明" "English notes"
 // exe 下载地址按惯例指向 GitHub Release 的裸 exe 资产（SpireForge-editor-v<版本>.exe），
-// 另附两个社区加速镜像前缀（国内直连）；应用内下载失败会自动换源。
+// 清单和载荷均使用本项目的官方 GitHub 地址。
 import { createHash } from 'node:crypto';
 import { createReadStream, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -13,6 +13,7 @@ if (!exe || !version) {
   process.exit(1);
 }
 const V = version.replace(/^v/, '');
+if (!/^\d+\.\d+\.\d+$/.test(V)) throw new Error('版本须为 major.minor.patch');
 const size = statSync(exe).size;
 const hash = createHash('sha256');
 await new Promise((ok, bad) => {
@@ -32,7 +33,7 @@ const manifest = {
   exe: {
     sha256,
     size,
-    urls: [gh, `https://ghfast.top/${gh}`, `https://gh-proxy.com/${gh}`],
+    urls: [gh],
   },
 };
 mkdirSync('update', { recursive: true });

@@ -87,6 +87,7 @@ public static class RuntimeEntry
         SfKaka.Install(harmony);
         // 延迟效果力量图标：PowerModel.Icon/BigIcon 非虚属性，后缀改写（仅 SfDelayedPower 实例生效）
         SfDelayedPower.InstallIconHook(harmony);
+        SfRulePower.InstallIconHook(harmony);
         // 拿卡登记只在同一次游戏会话内有效：清掉上个会话遗留的清单
         SfGrant.ClearStaleQueue();
 
@@ -397,18 +398,7 @@ public static class RuntimeEntry
         });
     }
 
-    private static Type? PoolFor(string pool) => pool switch
-    {
-        "colorless" => typeof(ColorlessCardPool),
-        "curse" => typeof(CurseCardPool),
-        "status" => typeof(StatusCardPool),
-        "ironclad" => typeof(IroncladCardPool),
-        "silent" => typeof(SilentCardPool),
-        "regent" => typeof(RegentCardPool),
-        "necrobinder" => typeof(NecrobinderCardPool),
-        "defect" => typeof(DefectCardPool),
-        _ => SfPoolRegistry.Resolve(pool),
-    };
+    private static Type? PoolFor(string pool) => SfPoolRegistry.Resolve(pool);
 
     // ---- 自检（ExecuteEssential postfix：ModelDb 已 Init+InitIds）----
 
@@ -498,6 +488,8 @@ public static class RuntimeEntry
                 try
                 {
                     Type type = pool.GetType();
+                    if (SfPoolRegistry.IsLegacyPool(type) || pool.IsMock)
+                        continue;
                     if (!SfPoolRegistry.TryGetModForPool(type, out var mod) || mod == null)
                         continue;
 

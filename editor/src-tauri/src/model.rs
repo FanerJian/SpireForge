@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 /// 卡牌类型：字符串与游戏 CardType 枚举名一致
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -344,7 +344,7 @@ pub struct CardDef {
     /// X 费卡
     pub costs_x: bool,
     pub keywords: Vec<String>,
-    /// colorless | curse | status | ironclad | silent | regent | necrobinder | defect
+    /// 内置卡池别名或 mod:<mod_id>:<完整卡池类型>；扩展原版卡池使用 mod_id=sts2。
     pub pool: String,
     /// 额外卡池：非空时本卡注册进全部列出池（多池卡）；为空时只有 pool
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -456,6 +456,11 @@ pub struct ProjectMeta {
     /// 项目使用的第三方角色卡池声明；旧项目缺字段时兼容为空。
     #[serde(default)]
     pub custom_pools: Vec<crate::custom_pools::CustomPoolDef>,
+    /// 共享规则状态目录；旧项目缺字段时保留空目录。
+    #[serde(default)]
+    pub rule_statuses: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub rule_templates: Vec<serde_json::Value>,
 }
 
 impl Default for ProjectMeta {
@@ -471,6 +476,8 @@ impl Default for ProjectMeta {
             last_version: None,
             runtime_workshop_id: None,
             custom_pools: vec![],
+            rule_statuses: vec![],
+            rule_templates: vec![],
         }
     }
 }

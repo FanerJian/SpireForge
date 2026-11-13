@@ -4,6 +4,7 @@ import { HOOK_FIELDS, type CardDef, type EffectDef, type HookField, type TargetT
 import { LEGACY_UPGRADE } from './effects';
 import { POWER_ZH } from './powers';
 import { MONSTER_ZH } from './monsters';
+import { bindProgramStatuses, describeRules, ruleProgram, type RuleStatus } from './rules';
 
 const PILE_ZH: Record<string, string> = { draw: '抽牌堆', hand: '手牌', discard: '弃牌堆' };
 
@@ -223,6 +224,10 @@ function effectSentence(fx: EffectDef, varName: string | null, xCost: boolean, c
       // 纯视觉演出：不入卡面文本（官方卡面也不描述打击特效）
       return { zhs: '', eng: '' };
     case 'custom':
+      if (fx.handler === 'sf_rules') {
+        const program = ruleProgram(fx.params);
+        if (program) return { zhs: describeRules(program.nodes, false, program.statuses), eng: describeRules(program.nodes, true, program.statuses) };
+      }
       return { zhs: `【${fx.handler || '自定义效果'}】`, eng: `[custom:${fx.handler || '?'}]` };
     case 'delayed': {
       const n = context.templateVars || (context.delayedVars && fx.upgrade_turns)
@@ -301,7 +306,19 @@ export function composeHookDescription(trigger: HookField, list: EffectDef[], de
 }
 
 /** 全卡描述统一入口，与当前查看的触发页签无关。 */
-export function composeCardDescription(card: CardDef): { zhs: string; eng: string } | null {
+export function composeCardDescription(card: CardDef, sharedStatuses: RuleStatus[] = []): { zhs: string; eng: string } | null {
+  if (sharedStatuses.length) {
+    card = JSON.parse(JSON.stringify(card, (_key, value: unknown) => {
+      if (value && typeof value === 'object') {
+        const effect = value as Extract<EffectDef, { kind: 'custom' }>;
+        if (effect.kind === 'custom' && effect.handler === 'sf_rules') {
+          const program = ruleProgram(effect.params);
+          if (program) return { ...effect, params: bindProgramStatuses(program, sharedStatuses) };
+        }
+      }
+      return value;
+    })) as CardDef;
+  }
   const sections = [composeDescription(card), ...HOOK_FIELDS.map((trigger) => composeHookDescription(trigger, card[trigger] ?? [], true))]
     .filter((s): s is { zhs: string; eng: string } => s !== null);
   if (!sections.length) return null;

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { api, pickDirectory } from '../lib/tauri';
 import { useStore } from '../lib/store';
 import { setLang, useLang, useT } from '../lib/i18n';
 import ProjectLibrary from './ProjectLibrary';
-import BackupRecoveryModal from './BackupRecoveryModal';
+const BackupRecoveryModal = lazy(() => import('./BackupRecoveryModal'));
 import { Disclosure } from './ui';
 
 // 与后端 project::validate_pack_id 一致：字母开头，字母/数字/下划线，2–64 位
@@ -145,12 +145,12 @@ export default function Welcome() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0c0c12] px-6 py-8">
+    <div className="h-full overflow-y-auto bg-[var(--lk-color-bg)] px-6 py-8">
       <div className="mx-auto grid w-full max-w-[1100px] items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-      <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-2xl">
+      <div className="min-w-0 rounded-md border border-white/10 bg-[var(--lk-color-bar)] p-6">
         <div className="flex items-start justify-between">
           <div>
-            <div className="text-2xl font-black tracking-wide text-amber-300">SpireForge 尖塔锻炉</div>
+            <div className="sf-brand">SpireForge</div>
             <div className="mt-1 text-sm text-slate-500">{t('w.subtitle')}</div>
           </div>
           <button
@@ -254,7 +254,7 @@ export default function Welcome() {
       </div>
       <ProjectLibrary busy={working} onOpen={(path) => doOpen(path)} onRecover={setRecoveryPath} />
       </div>
-      {recoveryPath && <BackupRecoveryModal projectPath={recoveryPath} onClose={() => setRecoveryPath(null)} />}
+      <Suspense fallback={null}>{recoveryPath && <BackupRecoveryModal projectPath={recoveryPath} onClose={() => setRecoveryPath(null)} />}</Suspense>
     </div>
   );
 }

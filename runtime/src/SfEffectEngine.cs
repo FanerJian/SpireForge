@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -28,14 +29,29 @@ public static class SfEffectEngine
     /// 原版覆盖卡：编辑器数值是字面语义，不得错绑原版同名变量——覆盖 STRIKE 后伤害 15 会被
     /// 原版 Damage=6 变量静默顶掉，游戏日志实锤）。
     /// X 费卡打出时效果整段重复 X 次（官方惯例：串刺/旋风斩「造成N点伤害X次」，X 含修正）。</summary>
-    public static async Task RunAsync(
+    public static Task RunAsync(
         CardModel card, List<SfEffect> effects, PlayerChoiceContext? ctx, CardPlay? play, string trigger,
-        bool useVarBinding = true)
+        bool useVarBinding = true) =>
+        RunCoreAsync(card, effects, ctx, play, trigger, useVarBinding, repeatForEnergyX: true);
+
+    /// <summary>组合处理器共享打出上下文与生命周期时机；X 次数由外层打出结算。</summary>
+    internal static Task RunNestedAsync(SfEffectContext context, List<SfEffect> effects) =>
+        RunCoreAsync(context.Card, effects, context.Choice, context.Play, context.Trigger,
+            useVarBinding: false, repeatForEnergyX: false, fixedContext: context.RuleFixedTarget ? context : null);
+
+    /// <summary>规则动作沿用已经选定的目标，显式 target 字段仍可覆盖。</summary>
+    internal static Task RunRuleActionAsync(SfEffectContext context, List<SfEffect> effects) =>
+        RunCoreAsync(context.Card, effects, context.Choice, context.Play, context.Trigger,
+            useVarBinding: false, repeatForEnergyX: false, fixedContext: context, countRuleAction: false);
+
+    private static async Task RunCoreAsync(
+        CardModel card, List<SfEffect> effects, PlayerChoiceContext? ctx, CardPlay? play, string trigger,
+        bool useVarBinding, bool repeatForEnergyX, SfEffectContext? fixedContext = null, bool countRuleAction = true)
     {
         // OstyCmd.Summon 同款兜底：无上下文钩子给一个不阻塞、不信号选择的官方上下文
         ctx ??= new BlockingPlayerChoiceContext();
         var xTimes = 1;
-        if (play != null && card.EnergyCost != null && card.EnergyCost.CostsX)
+        if (repeatForEnergyX && play != null && card.EnergyCost != null && card.EnergyCost.CostsX)
         {
             xTimes = System.Math.Max(0, card.ResolveEnergyXValue());
         }
@@ -44,10 +60,11 @@ public static class SfEffectEngine
             var e = effects[i];
             for (var rep = 0; rep < xTimes; rep++)
             {
+                if (fixedContext != null && countRuleAction) SfRulesBudget.Current?.Spend();
                 try
                 {
                     await RunOne(card, e, ctx, play, trigger,
-                        useVarBinding ? SfVarNaming.Name(effects, i) : null);
+                        useVarBinding ? SfVarNaming.Name(effects, i) : null, fixedContext);
                 }
                 catch (System.Exception ex)
                 {
@@ -71,12 +88,24 @@ public static class SfEffectEngine
     }
 
     private static async Task RunOne(
-        CardModel card, SfEffect e, PlayerChoiceContext? ctx, CardPlay? play, string trigger, string? varName)
+        CardModel card, SfEffect e, PlayerChoiceContext? ctx, CardPlay? play, string trigger, string? varName,
+        SfEffectContext? fixedContext = null)
     {
         switch (e.Kind)
         {
             case SfEffectKind.Damage:
             {
+                if (fixedContext != null)
+                {
+                    var targets = RuleTargets(card, e, play, fixedContext);
+                    if (targets.Count == 0) break;
+                    if (play != null && trigger == "play")
+                        await SfAttacks.RunCardAttack(card, targets.ToList(), Amount(card, e, varName), e, ctx,
+                            play, targets.Count == 1 ? targets[0] : null, allOpponents: targets.Count > 1);
+                    else
+                        await SfAttacks.RunTargetsAttack(card, targets, Amount(card, e, varName), e, ctx);
+                    break;
+                }
                 var fxTarget = (e.Target ?? "").Trim();
                 if (play != null)
                 {
@@ -214,7 +243,7 @@ public static class SfEffectEngine
                     SfLog.Error("card " + card.Id + ": unknown power '" + powerName + "'");
                     break;
                 }
-                foreach (var target in ResolveTargetList(card, e, play))
+                foreach (var target in RuleTargets(card, e, play, fixedContext))
                 {
                     await SfPowerResolver.Apply(ctx!, powerType, target, Amount(card, e, varName), card.Owner.Creature, card);
                 }
@@ -459,7 +488,7 @@ public static class SfEffectEngine
                         }
                         break;
                     default:
-                        foreach (var t in ResolveTargetList(card, e, play))
+                        foreach (var t in RuleTargets(card, e, play, fixedContext))
                         {
                             SfVfx.PlayOnCreature(t, spec);
                             PlaySfx(sfx);
@@ -471,10 +500,14 @@ public static class SfEffectEngine
 
             case SfEffectKind.Custom:
             {
-                Creature? target = play?.Target;
-                if (target == null && play == null)
+                Creature? target = InheritsRuleTarget(e, fixedContext) ? fixedContext!.Target : play?.Target;
+                IReadOnlyList<Creature>? targets = null;
+                var rules = e.Handler == "sf_rules" || e.KindName == "sf_rules";
+                if (fixedContext != null || rules || target == null && play == null)
                 {
-                    var picks = ResolveTargets(card, e);
+                    var picks = fixedContext != null ? RuleTargets(card, e, play, fixedContext)
+                        : rules ? ResolveTargetList(card, e, play) : ResolveTargets(card, e);
+                    if (fixedContext != null || rules) targets = picks.ToArray();
                     target = picks.Count > 0 ? picks[0] : null;
                 }
                 var invoked = await SfEffects.TryInvoke(new SfEffectContext
@@ -485,6 +518,8 @@ public static class SfEffectEngine
                     Play = play,
                     Trigger = trigger,
                     Target = target,
+                    Targets = targets,
+                    RuleFixedTarget = fixedContext != null,
                 });
                 if (!invoked)
                 {
@@ -496,6 +531,15 @@ public static class SfEffectEngine
             }
         }
     }
+
+    private static bool InheritsRuleTarget(SfEffect effect, SfEffectContext? context) =>
+        context != null && (string.IsNullOrWhiteSpace(effect.Target)
+            || string.Equals(effect.Target, "target", System.StringComparison.OrdinalIgnoreCase));
+
+    private static IReadOnlyList<Creature> RuleTargets(CardModel card, SfEffect effect, CardPlay? play,
+        SfEffectContext? context) => InheritsRuleTarget(effect, context)
+            ? context!.ResolvedTargets
+            : ResolveTargetList(card, effect, play);
 
     /// <summary>召唤落位：当前遭遇的站位表（Encounter.Slots，场景 Marker2D 名单）里
     /// 随机挑一个未被占用的；全部占用时随机复用既有站位（视觉重叠可接受）；
@@ -768,6 +812,13 @@ internal static class SfOrbResolver
 
 internal static class SfPowerResolver
 {
+    private static readonly System.Lazy<MethodInfo> OpenApply = new(() => typeof(PowerCmd)
+        .GetMethods(BindingFlags.Public | BindingFlags.Static)
+        .First(m => m.Name == "Apply" && m.IsGenericMethodDefinition
+                    && m.GetParameters().Length == 6
+                    && m.GetParameters()[1].ParameterType == typeof(Creature)));
+    private static readonly ConcurrentDictionary<Type, MethodInfo> ApplyMethods = new();
+
     public static Type? Find(string name) => SfContentRegistry.Find<PowerModel>(name)?.GetType();
 
     /// <summary>调 PowerCmd.Apply&lt;T&gt;（单目标泛型重载，6 参）</summary>
@@ -775,12 +826,7 @@ internal static class SfPowerResolver
         PlayerChoiceContext ctx, System.Type powerType, Creature target,
         decimal amount, Creature applier, CardModel cardSource)
     {
-        var open = typeof(PowerCmd)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .First(m => m.Name == "Apply" && m.IsGenericMethodDefinition
-                        && m.GetParameters().Length == 6
-                        && m.GetParameters()[1].ParameterType == typeof(Creature));
-        var closed = open.MakeGenericMethod(powerType);
+        var closed = ApplyMethods.GetOrAdd(powerType, type => OpenApply.Value.MakeGenericMethod(type));
         await (Task)(closed.Invoke(null, [ctx, target, amount, applier, cardSource, false])
                      ?? Task.CompletedTask);
     }

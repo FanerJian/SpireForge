@@ -124,35 +124,173 @@ check('buff generation uses live remaining count and resolved value placeholders
   assert.ok(!text.description.zhs.includes('打出后'));
 });
 async function checkActions() {
-  let c = { ...newCard('a'), effects: [damage()], on_draw: [{ kind: 'draw', amount: 1 }] };
+  const projects = new Map();
+  const { useStore: store } = load('lib/store.ts', {
+    zustand: { create: require('zustand').create },
+    './tauri': { api: {
+      saveCard: async () => {}, deleteCard: async () => {}, updateProjectMeta: async () => {},
+      openProject: async (root) => structuredClone(projects.get(root)),
+      getSettings: async () => ({ game_dir: '', runtime_version: null, uploader_path: null }),
+    } },
+    './i18n': { tr: (key) => key },
+    './templates': {},
+    './types': { newCard },
+  });
   let writes = 0;
   const messages = [];
+  const updateCard = store.getState().updateCard;
+  store.setState({
+    updateCard: (patch) => { writes++; updateCard(patch); },
+    showToast: (message) => messages.push(message),
+  });
+  const currentCard = () => store.getState().cards.find(card => card.id === store.getState().selectedId);
+  const manualCard = (id) => ({ ...newCard(id), effects: [damage()], description: { zhs: `手写 ${id}`, eng: `Custom ${id}` } });
+  function prepare(cards = [manualCard('a')], root = 'D:/packs/current') {
+    assert.equal(confirmation.confirmationStore.get(), null);
+    const meta = { cards: cards.map(card => card.id), rule_statuses: [] };
+    projects.set(root, [meta, cards]);
+    store.setState({ projectRoot: root, meta, cards, selectedId: cards[0].id,
+      dirtyIds: [], undoStack: [], redoStack: [], historyBusy: false });
+    return currentCard();
+  }
   const confirmation = load('lib/confirmation.ts');
   const { useGenDescription } = load('components/pp/useDescription.ts', {
-    '../../lib/store': { useStore: () => ({ updateCard: (p) => { c = { ...c, ...p }; writes++; }, showToast: (m) => messages.push(m) }) },
-    '../../lib/i18n': { useT: () => (key) => key },
+    '../../lib/store': { useStore: Object.assign(() => store.getState(), { getState: store.getState }) },
+    '../../lib/i18n': { useT: () => (key) => key, useLang: () => 'zh' },
     '../../lib/confirmation': confirmation,
   });
-    const generate = useGenDescription();
-    await generate(c); await generate(c);
-    assert.equal(writes, 1); assert.equal(confirmation.confirmationStore.get(), null);
-    c = { ...c, description: { zhs: '手写描述', eng: 'Custom text' } };
-    const cancelled = generate(c);
-    assert.equal(writes, 1); assert.ok(confirmation.confirmationStore.get());
-    confirmation.finishConfirmation(false); await cancelled;
-    assert.equal(c.description.zhs, '手写描述'); assert.equal(writes, 1);
-    const approved = generate(c);
-    assert.equal(writes, 1); // A pending Promise must never approve an action.
-    confirmation.finishConfirmation(true); await approved;
-    assert.equal(writes, 2);
-    assert.equal((c.description.zhs.match(/抽到时/g) ?? []).length, 1);
-    checks.push('generation waits for confirmation, preserves manual text on cancel, and is idempotent');
-    const first = confirmation.confirmAction('first');
-    assert.equal(await confirmation.confirmAction('second'), false);
-    assert.equal(confirmation.confirmationStore.get().message, 'first');
-    confirmation.finishConfirmation(true); assert.equal(await first, true);
-    confirmation.finishConfirmation(false); // Safe with no pending request.
-    checks.push('concurrent confirmation requests cannot authorize duplicate actions');
-    console.log(JSON.stringify({ result: 'PASS', groups: checks.length, checks }, null, 2));
+  const generate = useGenDescription();
+  prepare([{ ...newCard('a'), effects: [damage()], on_draw: [{ kind: 'draw', amount: 1 }] }]);
+  await generate(currentCard()); await generate(currentCard());
+  assert.equal(writes, 1); assert.equal(confirmation.confirmationStore.get(), null);
+  store.setState({ cards: [{ ...currentCard(), description: { zhs: '手写描述', eng: 'Custom text' } }] });
+  const cancelled = generate(currentCard());
+  assert.equal(writes, 1); assert.ok(confirmation.confirmationStore.get());
+  confirmation.finishConfirmation(false); await cancelled;
+  assert.equal(currentCard().description.zhs, '手写描述'); assert.equal(writes, 1);
+  const approved = generate(currentCard());
+  assert.equal(writes, 1); // A pending Promise must never approve an action.
+  confirmation.finishConfirmation(true); await approved;
+  assert.equal(writes, 2);
+  assert.equal((currentCard().description.zhs.match(/抽到时/g) ?? []).length, 1);
+  await store.getState().persistAll();
+  checks.push('generation waits for confirmation, preserves manual text on cancel, and is idempotent');
+
+  const first = confirmation.confirmAction('first');
+  assert.equal(await confirmation.confirmAction('second'), false);
+  assert.equal(confirmation.confirmationStore.get().message, 'first');
+  confirmation.finishConfirmation(true); assert.equal(await first, true);
+  confirmation.finishConfirmation(false); // Safe with no pending request.
+  checks.push('concurrent confirmation requests cannot authorize duplicate actions');
+
+  {
+    const source = prepare([manualCard('a'), manualCard('b')]);
+    const pending = generate(source);
+    assert.ok(confirmation.confirmationStore.get());
+    store.getState().select('b');
+    const before = store.getState();
+    const count = writes;
+    confirmation.finishConfirmation(true); await pending;
+    assert.equal(writes, count);
+    assert.equal(store.getState().cards, before.cards);
+    assert.equal(store.getState().undoStack, before.undoStack);
+    assert.equal(store.getState().dirtyIds, before.dirtyIds);
+    assert.equal(currentCard().id, 'b');
+    assert.match(messages.at(-1), /重新生成描述/);
+    checks.push('approval after changing selection preserves both cards and their editing history');
+  }
+  {
+    const source = prepare();
+    projects.set('D:/packs/other', [{ cards: ['a'], rule_statuses: [] }, [manualCard('a')]]);
+    const pending = generate(source);
+    await store.getState().openProject('D:/packs/other');
+    store.getState().select('a');
+    const before = store.getState();
+    const count = writes;
+    confirmation.finishConfirmation(true); await pending;
+    assert.equal(writes, count);
+    assert.equal(store.getState().projectRoot, 'D:/packs/other');
+    assert.equal(store.getState().cards, before.cards);
+    assert.equal(currentCard().description.zhs, '手写 a');
+    checks.push('approval remains bound to its original project even when card IDs match');
+  }
+  {
+    const source = prepare();
+    const pending = generate(source);
+    await store.getState().openProject('D:/packs/current');
+    store.getState().select('a');
+    assert.notEqual(currentCard(), source);
+    const before = store.getState().cards;
+    const count = writes;
+    confirmation.finishConfirmation(true); await pending;
+    assert.equal(writes, count);
+    assert.equal(store.getState().cards, before);
+    checks.push('same-path project reopens retain their fresh card snapshots after old approvals');
+  }
+  for (const patch of [
+    { description: { zhs: '最新手写内容', eng: 'Latest text' } },
+    { effects: [damage(99)] },
+  ]) {
+    const source = prepare();
+    const pending = generate(source);
+    store.getState().updateCard(patch);
+    const before = store.getState();
+    const count = writes;
+    confirmation.finishConfirmation(true); await pending;
+    assert.equal(writes, count);
+    assert.equal(store.getState().cards, before.cards);
+    assert.equal(store.getState().undoStack, before.undoStack);
+    assert.equal(currentCard().description.zhs, patch.description?.zhs ?? source.description.zhs);
+    await store.getState().persistAll();
+  }
+  checks.push('edits to descriptions and effect inputs during confirmation preserve the newest card snapshot');
+  {
+    const source = prepare();
+    const pending = generate(source);
+    await store.getState().removeCard(source.id);
+    const before = store.getState();
+    const count = writes;
+    confirmation.finishConfirmation(true); await pending;
+    assert.equal(writes, count);
+    assert.equal(store.getState().cards, before.cards);
+    assert.equal(store.getState().selectedId, null);
+    checks.push('deleting the original card safely finishes its pending description approval');
+  }
+  {
+    const source = prepare();
+    const pending = generate(source);
+    await store.getState().updateMeta({ rule_statuses: [{ id: 'renamed' }] });
+    const count = writes;
+    confirmation.finishConfirmation(true); await pending;
+    assert.equal(writes, count);
+    assert.equal(currentCard(), source);
+    checks.push('shared status definition changes invalidate the generated description snapshot');
+  }
+  {
+    const source = prepare();
+    store.getState().updateCard({ effects: [damage(8)] });
+    const count = writes;
+    await generate(source);
+    assert.equal(writes, count);
+    assert.equal(confirmation.confirmationStore.get(), null);
+    await store.getState().persistAll();
+    checks.push('stale card callbacks finish before opening an overwrite confirmation');
+  }
+  {
+    const source = prepare([manualCard('a'), manualCard('b')]);
+    const pending = generate(source);
+    store.getState().select('b');
+    store.getState().updateCard({ effects: [damage(8)] });
+    await store.getState().persistAll();
+    store.getState().select('a');
+    const count = writes;
+    confirmation.finishConfirmation(true); await pending;
+    assert.equal(writes, count + 1);
+    assert.equal(currentCard().description.zhs, composeCardDescription(source).zhs);
+    assert.equal(store.getState().cards.find(card => card.id === 'b').effects[0].amount, 8);
+    await store.getState().persistAll();
+    checks.push('unrelated card edits allow approval after returning to the unchanged original card');
+  }
+  console.log(JSON.stringify({ result: 'PASS', groups: checks.length, checks }, null, 2));
 }
 checkActions().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -11,6 +11,26 @@
 use crate::model::{CardDef, CardType, CardRarity, EffectDef, FORMAT_VERSION, LocText, MultiplayerConstraint, TargetType};
 use serde::Serialize;
 use serde_json::Value;
+use std::io::Read;
+
+pub const MAX_JSON_BYTES: usize = 16 * 1024 * 1024;
+
+fn check_json_size(size: u64) -> Result<(), String> {
+    if size > MAX_JSON_BYTES as u64 {
+        return Err("导入 JSON 超过 16 MiB 大小上限".into());
+    }
+    Ok(())
+}
+
+pub fn read_json_file(path: &std::path::Path) -> Result<String, String> {
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    check_json_size(file.metadata().map_err(|e| e.to_string())?.len())?;
+    let mut bytes = Vec::new();
+    file.take(MAX_JSON_BYTES as u64 + 1)
+        .read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    check_json_size(bytes.len() as u64)?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportReport {
@@ -33,37 +53,38 @@ fn check_card_version(fmt: u32) -> Result<(), String> {
 
 /// 从任意 JSON 文本导入一张卡。
 pub fn import_any(raw: &str) -> Result<ImportReport, String> {
+    check_json_size(raw.len() as u64)?;
     let v: Value = serde_json::from_str(raw).map_err(|e| format!("JSON 解析失败: {e}"))?;
-
-    // 1) 原生格式
-    if v.get("card_type").is_some() && v.get("effects").is_some() {
-        let card: CardDef = serde_json::from_value(v).map_err(|e| format!("SpireForge 格式校验失败: {e}"))?;
-        check_card_version(card.format_version)?;
-        return Ok(ImportReport { card, notes: vec!["SpireForge 原生格式，完整导入".into()], native: true });
+    let container = v.as_array().or_else(|| v.get("cards").and_then(Value::as_array));
+    if let Some(items) = container {
+        let first = items.first().ok_or("容器中没有任何卡牌")?;
+        let mut report = import_value(first.clone())?;
+        report.notes.push(format!("文件包含 {} 张卡，本次导入第一张（批量导入可导入全部卡牌）", items.len()));
+        return Ok(report);
     }
+    import_value(v)
+}
 
-    // 2) 多个对象的容器（如 {"cards": [...]} / [...]）：取第一张并提示
-    let obj = if let Some(arr) = v.as_array() {
-        arr.first().cloned().ok_or("数组中没有任何卡牌")?
-    } else if let Some(cards) = v.get("cards").and_then(|c| c.as_array()) {
-        let mut notes = vec![format!("文件包含 {} 张卡，本次导入第一张（其余可用同法逐张导入）", cards.len())];
-        let first = cards.first().cloned().ok_or("cards 数组为空")?;
-        let mut r = import_object(first, &mut notes)?;
-        r.notes.extend(notes);
-        return Ok(ImportReport { card: r.card, notes: r.notes, native: false });
+fn import_value(value: Value) -> Result<ImportReport, String> {
+    let native = value.get("card_type").is_some() && value.get("effects").is_some();
+    let partial = if native {
+        let card: CardDef = serde_json::from_value(value)
+            .map_err(|e| format!("SpireForge 格式校验失败: {e}"))?;
+        check_card_version(card.format_version)?;
+        Partial { card, notes: vec!["SpireForge 原生格式，完整导入".into()] }
     } else {
-        v.clone()
+        import_object(value)?
     };
-
-    let mut notes = Vec::new();
-    let r = import_object(obj, &mut notes)?;
-    Ok(ImportReport { card: r.card, notes: r.notes, native: false })
+    crate::project::validate_card_id(&partial.card.id)?;
+    crate::rules::ensure_card(&partial.card)?;
+    Ok(ImportReport { card: partial.card, notes: partial.notes, native })
 }
 
 /// PCK 内的立绘文件（file_name = images/ 下的最后一段文件名，如 pack_strike.png）
 #[derive(Debug, Clone)]
 pub struct PckImage {
     pub file_name: String,
+    pub path: String,
     pub data: Vec<u8>,
 }
 
@@ -81,6 +102,7 @@ pub struct PckImportResult {
 /// 批量导入：容器（数组 / {cards:[...]}）逐张导入。
 /// 原生条目完整保真；外来条目走启发式映射；单对象时退回 import_any。
 pub fn import_many(raw: &str) -> Result<Vec<ImportReport>, String> {
+    check_json_size(raw.len() as u64)?;
     let v: Value = serde_json::from_str(raw).map_err(|e| format!("JSON 解析失败: {e}"))?;
     let items: Vec<Value> = if let Some(arr) = v.as_array() {
         arr.clone()
@@ -91,18 +113,7 @@ pub fn import_many(raw: &str) -> Result<Vec<ImportReport>, String> {
     };
     let mut out = Vec::new();
     for item in items {
-        let mut notes = Vec::new();
-        let native = item.get("card_type").is_some() && item.get("effects").is_some();
-        let partial = if native {
-            let card: CardDef = serde_json::from_value(item)
-                .map_err(|e| format!("SpireForge 格式校验失败: {e}"))?;
-            check_card_version(card.format_version)?;
-            notes.push("SpireForge 原生格式，完整导入".into());
-            Partial { card, notes }
-        } else {
-            import_object(item, &mut notes)?
-        };
-        out.push(ImportReport { card: partial.card, notes: partial.notes, native });
+        out.push(import_value(item)?);
     }
     if out.is_empty() {
         return Err("容器中没有任何卡牌".into());
@@ -144,8 +155,9 @@ pub fn import_pck(path: &str) -> Result<PckImportResult, String> {
                 .next()
                 .unwrap_or_default()
                 .to_string();
-            if seen_images.insert(file_name.clone()) {
-                images.push(PckImage { file_name, data });
+            let path = name.split_once("/images/").map(|(_, rest)| format!("images/{rest}")).unwrap_or_else(|| name.clone());
+            if seen_images.insert(path.clone()) {
+                images.push(PckImage { file_name, path, data });
             }
         }
     }
@@ -155,12 +167,29 @@ pub fn import_pck(path: &str) -> Result<PckImportResult, String> {
     Ok(PckImportResult { imported, errors, images })
 }
 
+pub fn find_image<'a>(images: &'a [PckImage], reference: &str) -> Option<&'a PckImage> {
+    images.iter().find(|image| image.path == reference).or_else(|| {
+        let name = reference.rsplit('/').next().unwrap_or_default();
+        images.iter().find(|image| image.file_name == name)
+    })
+}
+
+pub fn restore_effect_icons(root: &str, card: &mut CardDef, images: &[PckImage]) -> Result<(), String> {
+    crate::rules::transform_icons(card, |icon| {
+        if !icon.starts_with("images/") { return Ok(icon.into()); }
+        let image = find_image(images, icon).ok_or_else(|| format!("包内图标缺少资源 {icon}"))?;
+        let ext = image.file_name.rsplit('.').next().unwrap_or("png");
+        let name = format!("import_{:x}", md5::compute(&image.data));
+        crate::project::save_effect_icon(root, &name, ext, &image.data)
+    })
+}
+
 struct Partial {
     card: CardDef,
     notes: Vec<String>,
 }
 
-fn import_object(v: Value, _outer_notes: &mut Vec<String>) -> Result<Partial, String> {
+fn import_object(v: Value) -> Result<Partial, String> {
     if !v.is_object() {
         return Err("不是有效的卡牌对象".into());
     }
@@ -364,7 +393,8 @@ fn sanitize_id(s: &str) -> String {
     while out.contains("__") {
         out = out.replace("__", "_");
     }
-    out.trim_matches('_').to_string()
+    let id: String = out.trim_matches('_').chars().take(64).collect();
+    if id.is_empty() { "imported_card".into() } else { id }
 }
 
 fn parse_type(s: &str) -> CardType {
@@ -409,6 +439,77 @@ fn parse_target(s: &str) -> TargetType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_import_size_limit_applies_to_direct_text_and_files() {
+        let path = std::env::temp_dir().join("sf_import_json_size.json");
+        let mut raw = " ".repeat(MAX_JSON_BYTES);
+        std::fs::write(&path, &raw).unwrap();
+        assert_eq!(read_json_file(&path).unwrap().len(), MAX_JSON_BYTES);
+        raw.push(' ');
+        std::fs::write(&path, &raw).unwrap();
+        assert!(read_json_file(&path).unwrap_err().contains("16 MiB"));
+        assert!(import_any(&raw).unwrap_err().contains("16 MiB"));
+        assert!(import_many(&raw).unwrap_err().contains("16 MiB"));
+        std::fs::write(&path, "{\"name\":\"中文\"}").unwrap();
+        assert_eq!(read_json_file(&path).unwrap(), "{\"name\":\"中文\"}");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn native_import_preserves_base_game_extension_pool_and_source() {
+        let pool = "mod:sts2:MegaCrit.Sts2.Core.Models.CardPools.FoolCardPool";
+        let source = "game:MegaCrit.Sts2.Core.Models.Cards.FoolCard";
+        let card = CardDef { id: "fool_copy".into(), pool: pool.into(), ..Default::default() };
+        let copied = import_any(&serde_json::to_string(&card).unwrap()).unwrap().card;
+        assert_eq!(copied.pool, pool);
+        assert_eq!(copied.source_ref, None);
+        let mut card = card;
+        card.vanilla_id = Some("FOOL_CARD".into());
+        card.source_ref = Some(source.into());
+        let imported = import_any(&serde_json::to_string(&card).unwrap()).unwrap().card;
+        assert_eq!(imported.pool, pool);
+        assert_eq!(imported.source_ref.as_deref(), Some(source));
+        assert!(crate::custom_pools::active_pool_keys(&imported).is_empty());
+    }
+
+    #[test]
+    fn native_cards_in_single_import_containers_preserve_fields_and_version_guards() {
+        let card = CardDef {
+            id: "native_card".into(),
+            pool: "colorless".into(),
+            portrait: "assets/cards/native.png".into(),
+            effects: vec![EffectDef::Damage {
+                amount: 12.0, props: vec!["Unblockable".into()], target: None,
+                vfx: None, sfx: None, attacker_vfx: None, hit_count: Some(3.0), upgrade_amount: 4.0,
+            }],
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&card).unwrap();
+        for container in [serde_json::json!([value.clone()]), serde_json::json!({"cards": [value.clone()]})] {
+            let report = import_any(&container.to_string()).unwrap();
+            assert!(report.native);
+            assert_eq!(serde_json::to_value(report.card).unwrap(), value);
+            assert!(report.notes.iter().any(|note| note.contains("本次导入第一张")));
+            let mut future = container;
+            if let Some(items) = future.as_array_mut() {
+                items[0]["format_version"] = serde_json::json!(FORMAT_VERSION + 1);
+            } else {
+                future["cards"][0]["format_version"] = serde_json::json!(FORMAT_VERSION + 1);
+            }
+            assert!(import_any(&future.to_string()).is_err());
+            assert!(import_many(&future.to_string()).is_err());
+        }
+    }
+
+    #[test]
+    fn foreign_ids_are_usable_and_native_invalid_ids_are_rejected() {
+        let foreign = import_any(r#"{"id":"你好！？","name":"测试"}"#).unwrap();
+        assert_eq!(foreign.card.id, "imported_card");
+        let foreign = import_any(&serde_json::json!({"id":"x".repeat(100)}).to_string()).unwrap();
+        assert_eq!(foreign.card.id.len(), 64);
+        assert!(import_any(r#"{"id":"../escape","card_type":"Attack","effects":[]}"#).is_err());
+    }
 
     /// 用 tools/testpack-vanilla 的真实 PCK 做往返测试：
     /// 编辑器打出的覆盖卡包 → pcktool 读回 → import_pck 解析出覆盖卡。

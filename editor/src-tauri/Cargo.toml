@@ -1,8 +1,8 @@
 [package]
 name = "editor"
-version = "0.2.8"
-description = "A Tauri App"
-authors = ["you"]
+version = "0.4.3"
+description = "SpireForge card pack editor"
+authors = ["SpireForge contributors"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

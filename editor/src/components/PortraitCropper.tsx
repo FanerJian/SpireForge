@@ -137,7 +137,7 @@ export default function PortraitCropper({ srcUrl, aspect, onConfirm, onCancel }:
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="flex max-h-full w-[min(860px,92vw)] flex-col rounded-xl border border-white/15 bg-[#14141c] shadow-2xl">
+      <div className="flex max-h-full w-[min(860px,92vw)] flex-col rounded-xl border border-white/15 bg-[var(--lk-color-surface)] shadow-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <span className="text-sm font-semibold text-slate-200">{t('pp.cropTitle')}</span>
           <button onClick={onCancel} className="text-slate-500 hover:text-slate-200">✕</button>

@@ -91,7 +91,7 @@ public static class SfCatalogExport
                 .Select(v => new { name = v.Name, path = v.Path, source = v.Source }).ToArray();
             var catalog = new
             {
-                format_version = 2, runtime_version = "0.1.16", game_version = typeof(ModelDb).Assembly.GetName().Version?.ToString() ?? "",
+                format_version = 2, runtime_version = typeof(RuntimeEntry).Assembly.GetName().Version?.ToString(3) ?? "", game_version = GameVersion(),
                 session_id = SfContentRegistry.SessionId, generated_at_utc = DateTime.UtcNow.ToString("O"),
                 language = LocManager.Instance?.Language ?? "", mods = SfContentRegistry.Mods,
                 powers, monsters, cards, models = other, custom_effects = customs, vfx, issues,
@@ -119,10 +119,28 @@ public static class SfCatalogExport
             ["mod_id"] = mod?.Id ?? (type.Assembly == typeof(ModelDb).Assembly ? "sts2" : ""),
             ["mod_name"] = mod?.Name ?? "", ["mod_version"] = mod?.Version ?? "", ["workshop_id"] = mod?.WorkshopId };
     }
-    private static string PoolKey(CardPoolModel pool)
+    private static string PoolKey(CardPoolModel pool) => SfPoolRegistry.PoolKeyFor(pool.GetType());
+    private static string GameVersion()
     {
-        if (pool.GetType().Assembly != typeof(ModelDb).Assembly) return SfContentRegistry.Key(pool.GetType());
-        return pool.GetType().Name.Replace("CardPool", "", StringComparison.Ordinal).ToLowerInvariant();
+        var assembly = typeof(ModelDb).Assembly;
+        try
+        {
+            var dataDirectory = Path.GetDirectoryName(assembly.Location);
+            var gameDirectory = dataDirectory == null ? null : Path.GetDirectoryName(dataDirectory);
+            if (gameDirectory != null)
+            {
+                using var release = JsonDocument.Parse(File.ReadAllText(Path.Combine(gameDirectory, "release_info.json")));
+                if (release.RootElement.TryGetProperty("version", out var version)
+                    && version.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(version.GetString()))
+                    return version.GetString()!;
+            }
+        }
+        catch (Exception e)
+        {
+            SfLog.Warn("catalog game version: " + e.Message);
+        }
+        return assembly.GetName().Version?.ToString() ?? "";
     }
     private static string Display(object? value) => value is LocString loc ? Text(loc) : value?.ToString() ?? "";
     private static string Text(LocString? value) => Safe(() => value != null && value.Exists() ? value.GetRawText() ?? "" : "");

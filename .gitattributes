@@ -10,3 +10,6 @@
 *.zip binary
 *.ico binary
 *.ttf binary
+
+# Vendored Lit templates contain meaningful trailing whitespace in string literals.
+editor/src/vendor/loomkit/*.js text eol=lf whitespace=-blank-at-eol

@@ -89,22 +89,20 @@ export const useStore = create<EditorStore>((set, get) => ({
     set({ settings });
   },
 
-  newProject: async (packId, name, author) => {
-    if (get().historyBusy) throw new Error(tr('st.operationBusy'));
+  newProject: (packId, name, author) => runExclusive(async () => {
     await get().persistAll();
     const path = await api.newProject(packId, name, author);
     const [meta, cards] = await api.openProject(path);
     set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [], undoStack: [], redoStack: [], fieldFocus: null, portraitRevision: get().portraitRevision + 1 });
     await get().refreshSettings().catch(() => {});
-  },
+  }),
 
-  openProject: async (path) => {
-    if (get().historyBusy) throw new Error(tr('st.operationBusy'));
+  openProject: (path) => runExclusive(async () => {
     await get().persistAll();
     const [meta, cards] = await api.openProject(path);
     set({ projectRoot: path, meta, cards, selectedId: null, dirtyIds: [], undoStack: [], redoStack: [], fieldFocus: null, portraitRevision: get().portraitRevision + 1 });
     await get().refreshSettings().catch(() => {});
-  },
+  }),
 
   select: (id) => {
     // 切卡前把未保存修改落盘（异步兜底，不阻塞选中）
@@ -317,26 +315,102 @@ export const useStore = create<EditorStore>((set, get) => ({
   }),
 
   reloadMeta: async () => {
-    if (!get().projectRoot) return;
+    const { projectRoot, meta: previous } = get();
+    if (!projectRoot) return;
     const meta = await api.getProjectMeta();
-    set({ meta });
+    // 项目重开或其它元数据事务完成后，迟到的旧读取即已失效。
+    set((s) => s.projectRoot === projectRoot && s.meta === previous ? { meta } : {});
   },
 
-  closeProject: async () => {
-    if (get().historyBusy) throw new Error(tr('st.operationBusy'));
+  closeProject: () => runExclusive(async () => {
     await get().persistAll();
     set({
       projectRoot: null, meta: null, cards: [], selectedId: null, dirtyIds: [],
-      undoStack: [], redoStack: [],
+      undoStack: [], redoStack: [], fieldFocus: null,
     });
-  },
+  }),
 }));
 
-async function runExclusive(operation: () => Promise<void>): Promise<void> {
+async function runExclusive<T>(operation: () => Promise<T>): Promise<T> {
   if (useStore.getState().historyBusy) throw new Error(tr('st.operationBusy'));
   useStore.setState({ historyBusy: true });
-  try { await operation(); }
+  try { return await operation(); }
   finally { useStore.setState({ historyBusy: false }); }
+}
+
+/** 立绘保存固定项目和目标卡，异步期间切卡仍写回发起裁剪的卡牌。 */
+export function saveCardPortrait(projectRoot: string, cardId: string, png: Uint8Array,
+  original?: { ext: string; bytes: Uint8Array }): Promise<void> {
+  return runExclusive(async () => {
+    const state = useStore.getState();
+    const previous = state.cards.find(card => card.id === cardId);
+    if (state.projectRoot !== projectRoot || !previous) throw new Error(tr('st.portraitTargetChanged'));
+    await state.persistAll();
+    try {
+      const portrait = await api.savePortrait(cardId, 'png', png);
+      const patch: Partial<CardDef> = { portrait };
+      if (original) patch.portrait_original = await api.savePortrait(`${cardId}_original`, original.ext, original.bytes);
+      if (previous.source_ref) {
+        patch.format_version = 2;
+        patch.override_fields = [...new Set([
+          ...(previous.override_fields ?? []), 'portrait', ...(original ? ['portrait_original'] : []),
+        ])];
+      }
+      const card = { ...previous, ...patch };
+      await api.saveCard(card);
+      useStore.setState(current => ({
+        cards: current.cards.map(item => item.id === cardId ? card : item),
+        dirtyIds: current.dirtyIds.filter(id => id !== cardId),
+        undoStack: [...current.undoStack, {
+          kind: 'edit' as const, cardId, before: JSON.parse(JSON.stringify(previous)) as CardDef, at: 0,
+        }].slice(-UNDO_LIMIT),
+        redoStack: [],
+      }));
+    } finally {
+      // 同路径图片可能已被部分写入，成功和失败都使图片缓存重新读取。
+      useStore.setState(current => ({ portraitRevision: current.portraitRevision + 1 }));
+    }
+  });
+}
+
+/** 导入等磁盘变更共享项目锁，并在部分失败后也重新读取实际已落盘的内容。 */
+export function runProjectMutation<T>(operation: () => Promise<T>): Promise<T> {
+  return runExclusive(async () => {
+    await useStore.getState().persistAll();
+    const root = useStore.getState().projectRoot;
+    if (!root) throw new Error(tr('st.noProject'));
+    let result: T;
+    try {
+      result = await operation();
+    } catch (error) {
+      await reloadProjectSnapshot(root, true).catch(() => {});
+      throw error;
+    }
+    await reloadProjectSnapshot(root);
+    return result;
+  });
+}
+
+async function reloadProjectSnapshot(root: string, preserveUnchanged = false): Promise<void> {
+  const [meta, cards] = await api.openProject(root);
+  const previous = useStore.getState();
+  if (preserveUnchanged && projectSnapshot(meta, cards) === projectSnapshot(previous.meta, previous.cards)) return;
+  const { selectedId, portraitRevision } = previous;
+  useStore.setState({
+    projectRoot: root, meta, cards,
+    selectedId: selectedId && cards.some((card) => card.id === selectedId) ? selectedId : null,
+    dirtyIds: [], undoStack: [], redoStack: [], fieldFocus: null,
+    portraitRevision: portraitRevision + 1,
+  });
+}
+
+function projectSnapshot(meta: ProjectMeta | null, cards: CardDef[]): string {
+  return JSON.stringify({ meta, cards }, (_key, value: unknown) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+    }
+    return value;
+  });
 }
 
 /** 文件删除需要等待后端事务；并发点击只应用一次，失败保留历史条目。 */
