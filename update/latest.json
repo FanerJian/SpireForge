@@ -1,17 +1,15 @@
 {
-  "version": "0.2.8",
+  "version": "0.4.3",
   "notes": {
-    "zhs": "新增 Mod 内容库，可浏览与引用卡牌、状态、怪物和已接入的特殊效果；支持导入第三方卡牌并仅覆盖编辑字段。内置 Runtime 0.1.16，特殊机制仍需适配。",
-    "eng": "Mod Content browser for cards, powers, monsters and registered effects; import third-party cards with only edited fields overridden. Bundled Runtime 0.1.16. Special mechanics still require adapters."
+    "zhs": "新增规则工作台与自定义状态，愚者加入默认卡池；适配 v0.113.0 public-beta，内置 Runtime 0.2.2，并加固更新、导入与执行预算。",
+    "eng": "Rule workspace and custom statuses, The Fool default pool, v0.113.0 public-beta support, Runtime 0.2.2, and update/import/execution safeguards."
   },
-  "pub_date": "2026-10-09T15:40:26.249Z",
+  "pub_date": "2026-11-13T10:44:09.595Z",
   "exe": {
-    "sha256": "b57a935aa253d1825b58777dad59cf3f8cf86833285737c6f0d74082c85b231a",
-    "size": 27659776,
+    "sha256": "4816aab8410f3531803642ea2200f6e1ff9d0469235f9aeef505e0d91cef2b21",
+    "size": 27691008,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.2.8/SpireForge-editor-v0.2.8.exe",
-      "https://ghfast.top/https://github.com/FanerJian/SpireForge/releases/download/v0.2.8/SpireForge-editor-v0.2.8.exe",
-      "https://gh-proxy.com/https://github.com/FanerJian/SpireForge/releases/download/v0.2.8/SpireForge-editor-v0.2.8.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.4.3/SpireForge-editor-v0.4.3.exe"
     ]
   }
 }
