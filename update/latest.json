@@ -1,15 +1,15 @@
 {
-  "version": "0.4.3",
+  "version": "0.4.4",
   "notes": {
-    "zhs": "新增规则工作台与自定义状态，愚者加入默认卡池；适配 v0.113.0 public-beta，内置 Runtime 0.2.2，并加固更新、导入与执行预算。",
-    "eng": "Rule workspace and custom statuses, The Fool default pool, v0.113.0 public-beta support, Runtime 0.2.2, and update/import/execution safeguards."
+    "zhs": "描述补齐攻击次数、目标与选牌操作顺序；Runtime 0.2.3 修复特殊属性和 Mod 特效路径的多段攻击。已有卡牌可点击“生成描述”更新文字。",
+    "eng": "Accurate rule descriptions for hits, targets and card operations. Runtime 0.2.3 fixes multi-hit attacks with custom properties and Mod effects. Regenerate descriptions to update existing cards."
   },
-  "pub_date": "2026-11-13T10:44:09.595Z",
+  "pub_date": "2026-11-13T15:31:43.734Z",
   "exe": {
-    "sha256": "4816aab8410f3531803642ea2200f6e1ff9d0469235f9aeef505e0d91cef2b21",
-    "size": 27691008,
+    "sha256": "ddf01764afd3424557f1e23f60b63edda08c743f98509b092e35bf9ef9513bf7",
+    "size": 27693056,
     "urls": [
-      "https://github.com/FanerJian/SpireForge/releases/download/v0.4.3/SpireForge-editor-v0.4.3.exe"
+      "https://github.com/FanerJian/SpireForge/releases/download/v0.4.4/SpireForge-editor-v0.4.4.exe"
     ]
   }
 }
