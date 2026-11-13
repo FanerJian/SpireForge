@@ -17,7 +17,7 @@ namespace SpireForge.Runtime;
 /// 仅当效果显式请求特效/多段时才编排（被动力不该带出手前摇）。
 /// AttackCommand 只支持 Move/Unpowered（Unblockable 等不可表达）；打击特效只吃官方
 /// res://scenes/ 内路径（mod 特效场景直结后用 SfVfx.PlayOnCreature 补演出）。
-/// 编排异常时回落直结，保证伤害不丢。
+/// 编排构建失败时回落直结，开始执行后的错误沿用效果入口的错误隔离。
 /// </summary>
 internal static class SfAttacks
 {
@@ -46,6 +46,25 @@ internal static class SfAttacks
         var wantFx = !string.IsNullOrWhiteSpace(vfx) || !string.IsNullOrWhiteSpace(sfx)
             || !string.IsNullOrWhiteSpace(attackerVfx) || hitCount > 1;
 
+        async Task RunDirectAsync()
+        {
+            // 全体直结沿用当前可被打的敌人快照，各段共享本次动作求出的数值。
+            var direct = allOpponents
+                ? card.Owner.Creature.CombatState?.HittableEnemies.ToList() ?? []
+                : targets!;
+            for (var hit = 0; hit < hitCount; hit++)
+            {
+                await CreatureCmd.Damage(ctx!, direct, amount, props, card.Owner.Creature, card, play);
+                if (!string.IsNullOrWhiteSpace(vfx))
+                {
+                    foreach (var target in direct)
+                    {
+                        SfVfx.PlayOnCreature(target, vfx);
+                    }
+                }
+            }
+        }
+
         // 打出 = 原版同款编排；钩子 = Tingsha 同款直结，显式要特效/多段才编排
         var choreograph = play != null || wantFx;
 
@@ -57,28 +76,11 @@ internal static class SfAttacks
             || SfVfx.Resolve(attackerVfx)?.StartsWith("res://scenes/", StringComparison.Ordinal) == true;
         if (!choreograph || !plainProps || !officialVfx || !officialAttacker)
         {
-            // 直结兜底。全体路径对当前可被打的敌人（快照）逐一直结。
-            List<Creature> direct;
-            if (allOpponents)
-            {
-                var cs = card.Owner.Creature.CombatState;
-                direct = cs != null ? new List<Creature>(cs.HittableEnemies) : new List<Creature>();
-            }
-            else
-            {
-                direct = targets!;
-            }
-            await CreatureCmd.Damage(ctx!, direct, amount, props, card.Owner.Creature, card, play);
-            if (!string.IsNullOrWhiteSpace(vfx))
-            {
-                foreach (var t in direct)
-                {
-                    SfVfx.PlayOnCreature(t, vfx);
-                }
-            }
+            await RunDirectAsync();
             return;
         }
 
+        var executionStarted = false;
         try
         {
             var cmd = DamageCmd.Attack(amount)
@@ -115,14 +117,15 @@ internal static class SfAttacks
             {
                 cmd = cmd.WithAttackerFx(InnerOf(SfVfx.Resolve(attackerVfx)));
             }
+            executionStarted = true;
             await cmd.Execute(ctx);
             return;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!executionStarted)
         {
-            SfLog.Warn("attack choreography failed, falling back to direct damage: " + ex.Message);
+            SfLog.Warn("attack choreography setup failed, falling back to direct damage: " + ex.Message);
         }
-        await CreatureCmd.Damage(ctx!, targets, amount, props, card.Owner.Creature, card, play);
+        await RunDirectAsync();
     }
 
     private static string? EmptyToNull(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

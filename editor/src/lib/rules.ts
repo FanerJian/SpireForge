@@ -1,5 +1,6 @@
 import type { EffectDef, LocText } from './types';
 import { defaultEffect } from './effects';
+import { effectSentence, type DescriptionContext } from './effectText';
 import { POWER_ZH } from './powers';
 
 export const RULES_VERSION = 1;
@@ -93,44 +94,94 @@ export function countNodes(nodes: RuleNode[]): number {
 export function valueText(value: RuleValue, en = false, statuses: RuleStatus[] = []): string {
   if (typeof value === 'number') return String(value);
   const base = VALUE_SOURCES[value.source]?.[en ? 1 : 0] ?? value.source;
-  let key = value.key;
-  if (value.source === 'status_stacks') {
-    const status = statuses.find(status => status.id === key);
-    key = status?.name[en ? 'eng' : 'zhs'] || status?.name[en ? 'zhs' : 'eng'] || key;
-  } else if (value.source === 'power_stacks' && !en && key && Object.prototype.hasOwnProperty.call(POWER_ZH, key)) {
-    key = POWER_ZH[key];
-  }
-  let result = `${value.subject === 'target' ? en ? 'target total ' : '目标合计' : ''}${base}${key ? `「${key}」` : ''}`;
+  const status = value.source === 'status_stacks' ? statuses.find(s => s.id === value.key) : undefined;
+  const key = status?.name[en ? 'eng' : 'zhs'] || status?.name[en ? 'zhs' : 'eng']
+    || (value.source === 'power_stacks' && !en && value.key && Object.prototype.hasOwnProperty.call(POWER_ZH, value.key) ? POWER_ZH[value.key] : value.key);
+  const stacks = value.source === 'status_stacks' || value.source === 'power_stacks';
+  let result = stacks
+    ? en ? `${value.subject === 'target' ? 'total target' : 'your'} 「${key ?? '?'}」 stacks` : `${value.subject === 'target' ? '目标合计' : '自身'}「${key ?? '?'}」层数`
+    : value.source === 'counter' ? `${en ? 'Counter' : '计数器'}「${key ?? '?'}」`
+    : `${value.source.startsWith('self_') ? en ? 'your ' : '自身' : ''}${base}`;
   if (value.source === 'counter') result += value.scope === 'turn' ? en ? ' (turn)' : '（本回合）' : en ? ' (combat)' : '（本场战斗）';
   if (value.factor != null && value.factor !== 1) result += ` × ${value.factor}`;
   if (value.offset) result += value.offset < 0 ? ` − ${-value.offset}` : ` + ${value.offset}`;
+  if (value.rounding || !Number.isInteger(value.factor ?? 1) || !Number.isInteger(value.offset ?? 0)) {
+    const rounding = value.rounding ?? 'floor';
+    result = `${en ? { floor: 'floor', ceil: 'ceil', round: 'round (ties away from zero)' }[rounding] : { floor: '向下取整', ceil: '向上取整', round: '四舍五入（中点远离零）' }[rounding]}（${result}）`;
+  }
   if (value.min != null) result += en ? `, minimum ${value.min}` : `，至少 ${value.min}`;
   if (value.max != null) result += en ? `, maximum ${value.max}` : `，至多 ${value.max}`;
   return result;
 }
 const OPS = { eq: '=', ne: '≠', gt: '>', gte: '≥', lt: '<', lte: '≤' };
-const ACTION_LABELS: Record<string, [string, string]> = { damage: ['造成伤害', 'Deal damage'], block: ['获得格挡', 'Gain Block'], draw: ['抽牌', 'Draw'], energy: ['获得能量', 'Gain energy'], heal: ['回复生命', 'Heal'], power: ['施加状态', 'Apply power'], discard: ['弃牌', 'Discard'], exhaust: ['消耗牌', 'Exhaust'], gold: ['获得金币', 'Gain gold'], lose_hp: ['失去生命', 'Lose HP'], max_hp: ['提高生命上限', 'Gain max HP'], spawn: ['生成卡牌', 'Create card'], summon: ['召唤敌人', 'Summon'], orb: ['生成充能球', 'Channel orb'], orb_slot: ['调整充能球栏位', 'Change orb slots'], vfx: ['播放特效', 'Play VFX'], delayed: ['延迟效果', 'Delayed effect'], custom: ['扩展效果', 'Custom effect'] };
-export function describeRules(nodes: RuleNode[], en = false, statuses: RuleStatus[] = [], depth = 0): string {
+const CARD_NAMES: Record<string, readonly [string, string]> = { Attack: ['攻击牌', 'Attack cards'], Skill: ['技能牌', 'Skill cards'], Power: ['能力牌', 'Power cards'], Status: ['状态牌', 'Status cards'], Curse: ['诅咒牌', 'Curse cards'], Quest: ['任务牌', 'Quest cards'] };
+
+/** Shared sentences preserve effect parameters; rule expressions replace only the amount slot. */
+function actionText(node: Extract<RuleNode, { type: 'action' }>, en: boolean, statuses: RuleStatus[], context: DescriptionContext): string {
+  const dynamic = node.amount != null && typeof node.amount !== 'number';
+  const effect = typeof node.amount === 'number' && 'amount' in node.effect ? { ...node.effect, amount: node.amount } : node.effect;
+  const sentence = effectSentence(effect, dynamic ? 'RuleAmount' : null, false, { ...context, ruleAction: true }, 'Rule');
+  let text = sentence[en ? 'eng' : 'zhs'];
+  if (dynamic) {
+    const amount = valueText(node.amount!, en, statuses);
+    if (effect.kind === 'damage') text = en
+      ? text.replace('Deal {RuleAmount} damage', `Deal damage equal to ${amount}`)
+      : text.replace('造成 {RuleAmount} 点伤害', `造成等同于${amount}的伤害`);
+    text = text.split('{RuleAmount}').join(en ? `(${amount})` : `（${amount}）`);
+  }
+  return text;
+}
+
+export function describeRules(nodes: RuleNode[], en = false, statuses: RuleStatus[] = [], depth = 0, context: DescriptionContext = { trigger: 'play' }): string {
   if (depth > RULE_LIMITS.depth) return en ? 'Nesting limit reached.' : '已达到嵌套上限。';
-  const nested = (items: RuleNode[]) => describeRules(items, en, statuses, depth + 1).split('\n').map(line => `  ${line}`).join('\n');
+  const value = (v: RuleValue) => valueText(v, en, statuses);
+  const nested = (items: RuleNode[]) => describeRules(items, en, statuses, depth + 1, context).split('\n').filter(Boolean).map(line => `  ${line}`).join('\n');
+  const count = (v: RuleValue) => typeof v === 'number' ? String(Math.max(0, Math.min(RULE_LIMITS.repeat, Math.floor(v)))) : `${value(v)}${en ? ' (floor, 0–100)' : '（向下取整，0–100）'}`;
   return nodes.filter(n => n.enabled !== false).map(node => {
     switch (node.type) {
-      case 'action': {
-        const effect = node.effect as EffectDef & { amount?: number; power?: string; card_entry?: string; monster?: string; target?: string };
-        const amount = node.amount ?? effect.amount;
-        const target = effect.target === 'self' ? en ? ' to self' : '（自身）' : effect.target === 'all_enemies' ? en ? ' to all enemies' : '（全体敌人）' : '';
-        const reference = effect.power || effect.card_entry || effect.monster;
-        const name = effect.power && !en && Object.prototype.hasOwnProperty.call(POWER_ZH, effect.power) ? POWER_ZH[effect.power] : reference;
-        return `${ACTION_LABELS[effect.kind]?.[en ? 1 : 0] ?? effect.kind}${amount != null ? ` ${valueText(amount, en, statuses)}` : ''}${name ? `「${name}」` : ''}${target}`;
+      case 'action': return actionText(node, en, statuses, context);
+      case 'if': return `${en ? 'If ' : '如果'}${node.conditions.map(c => `${value(c.left)} ${OPS[c.op]} ${value(c.right)}`).join(node.match === 'any' ? en ? ' or ' : ' 或 ' : en ? ' and ' : ' 且 ')}${en ? ':' : '：'}\n${nested(node.then)}${node.else.some(n => n.enabled !== false) ? `\n${en ? 'Otherwise:' : '否则：'}\n${nested(node.else)}` : ''}`;
+      case 'repeat': return `${en ? `Repeat ${count(node.count)} times:` : `重复执行 ${count(node.count)} 次：`}\n${nested(node.nodes)}`;
+      case 'random': return `${en ? `Randomly execute up to ${count(node.count)} of the following (each at most once):` : `随机执行以下至多 ${count(node.count)} 项（各项最多一次）：`}\n${nested(node.nodes)}`;
+      case 'counter': {
+        const scope = node.scope === 'turn' ? en ? 'this turn' : '本回合' : en ? 'this combat' : '本场战斗';
+        return en ? `${node.operation === 'set' ? 'Set' : 'Increase'} counter 「${node.key}」 (${scope}) ${node.operation === 'set' ? 'to' : 'by'} ${value(node.value)}.`
+          : node.operation === 'set' ? `将${scope}计数器「${node.key}」设为 ${value(node.value)}。`
+          : `${scope}计数器「${node.key}」${typeof node.value === 'number' && node.value < 0 ? `减少 ${-node.value}` : `增加 ${value(node.value)}`}。`;
       }
-      case 'if': return `${en ? 'If ' : '如果'}${node.conditions.map(c => `${valueText(c.left, en, statuses)} ${OPS[c.op]} ${valueText(c.right, en, statuses)}`).join(node.match === 'any' ? en ? ' or ' : ' 或 ' : en ? ' and ' : ' 且 ')}：\n${nested(node.then)}${node.else.length ? `\n${en ? 'Otherwise' : '否则'}：\n${nested(node.else)}` : ''}`;
-      case 'repeat': case 'random': return `${NODE_LABELS[node.type][en ? 1 : 0]} ${valueText(node.count, en, statuses)}${en ? ':' : node.type === 'repeat' ? ' 次：' : ' 项：'}\n${nested(node.nodes)}`;
-      case 'counter': return `${en ? 'Counter' : '计数器'}「${node.key}」${node.operation === 'set' ? ' = ' : ' + '}${valueText(node.value, en, statuses)}`;
-      case 'status': { const status = statuses.find(s => s.id === node.id); return `${node.operation === 'apply' ? en ? 'Apply' : '施加' : en ? 'Consume' : '消耗'} ${valueText(node.stacks, en, statuses)} ${en ? 'stacks of' : '层'}「${status?.name[en ? 'eng' : 'zhs'] || node.id}」`; }
-      case 'select': return `${en ? 'Select' : '从'} ${PILE_LABELS[node.from][en ? 1 : 0]} ${node.mode === 'all' ? en ? 'all' : '全部' : valueText(node.count, en, statuses)} ${node.card_type || ''}${en ? ' cards' : '张牌'}：${node.operations.map(op => op.type === 'move' || op.type === 'copy' ? `${op.type === 'move' ? en ? 'move to' : '移至' : en ? 'copy to' : '复制至'}${PILE_LABELS[op.pile][en ? 1 : 0]}` : op.type === 'cost' ? `${en ? 'cost adjustment' : '费用调整'} ${valueText(op.amount, en, statuses)}${op.duration === 'turn' ? en ? ' this turn' : '（本回合）' : en ? ' this combat' : '（本场战斗）'}` : op.type === 'upgrade' ? en ? 'upgrade' : '升级' : en ? 'exhaust' : '消耗').join('，')}`;
+      case 'status': {
+        const status = statuses.find(s => s.id === node.id);
+        const name = status?.name[en ? 'eng' : 'zhs'] || status?.name[en ? 'zhs' : 'eng'] || node.id;
+        const target = node.target === 'self' ? en ? 'yourself' : '自身' : node.target === 'all_enemies' ? en ? 'ALL enemies' : '所有敌人' : en ? 'the current target(s)' : '当前目标';
+        return en ? `${node.operation === 'apply' ? 'Apply' : 'Remove'} ${value(node.stacks)} stacks of 「${name}」 ${node.operation === 'apply' ? 'to' : 'from'} ${target}.`
+          : node.operation === 'apply' ? `给予${target} ${value(node.stacks)} 层「${name}」。` : `移除${target} ${value(node.stacks)} 层「${name}」。`;
+      }
+      case 'select': {
+        const pile = PILE_LABELS[node.from][en ? 1 : 0];
+        const cards = node.card_type ? CARD_NAMES[node.card_type]?.[en ? 1 : 0] ?? node.card_type : en ? 'cards' : '牌';
+        const selection = en ? `${node.mode === 'random' ? 'Randomly select' : 'Select'} ${node.mode === 'all' ? 'all' : value(node.count)} ${cards} from your ${pile.toLowerCase()}`
+          : `从${pile}${node.mode === 'random' ? '随机选择' : '选择'}${node.mode === 'all' ? '全部' : ` ${value(node.count)} 张`}${cards}`;
+        const operations = node.operations.map((op, i) => {
+          const original = node.operations.slice(0, i).some(previous => previous.type === 'copy');
+          const selected = en ? original ? 'the selected originals' : 'the selected cards' : original ? '所选原牌' : '所选牌';
+          if (op.type === 'move' || op.type === 'copy') {
+            const to = PILE_LABELS[op.pile][en ? 1 : 0];
+            return op.type === 'copy' ? en ? `add a copy of each selected card to your ${to.toLowerCase()}` : `将${selected}的副本加入${to}`
+              : en ? `move ${selected} to your ${to.toLowerCase()}` : `将${selected}移至${to}`;
+          }
+          if (op.type === 'cost') {
+            const duration = op.duration === 'turn' ? en ? 'this turn' : '本回合' : en ? 'this combat' : '本场战斗';
+            return en ? `adjust the cost of ${selected} by ${value(op.amount)} ${duration}`
+              :  `使${selected}的费用在${duration}内${typeof op.amount === 'number' ? op.amount < 0 ? `减少 ${-op.amount}` : `增加 ${op.amount}` : `增减 ${value(op.amount)}`}`;
+          }
+          return en ? `${op.type === 'upgrade' ? 'upgrade' : 'exhaust'} ${selected}` : `${op.type === 'upgrade' ? '升级' : '消耗'}${selected}`;
+        });
+        return `${selection}${en ? ': ' : '：'}${operations.join(en ? '; then ' : '，再')}${en ? '.' : '。'}`;
+      }
     }
-  }).join('\n');
+  }).filter(Boolean).join('\n');
 }
+
 export const RULE_TEMPLATES: { id: string; label: readonly [string, string]; program: RuleProgram }[] = [
   { id: 'branch', label: ['易伤追击', 'Vulnerable follow-up'], program: { ...emptyProgram(), nodes: [{ type: 'action', effect: { kind: 'damage', amount: 8, props: ['Move'] } }, { type: 'if', match: 'all', conditions: [{ left: { source: 'power_stacks', subject: 'target', key: 'Vulnerable' }, op: 'gt', right: 0 }], then: [{ type: 'action', effect: { kind: 'damage', amount: 4, props: ['Move'] } }, { type: 'action', effect: { kind: 'draw', amount: 1 } }], else: [{ type: 'action', effect: { kind: 'power', amount: 2, power: 'Vulnerable' } }] }] } },
   { id: 'block', label: ['格挡转伤害', 'Block as damage'], program: { ...emptyProgram(), nodes: [{ type: 'action', effect: { kind: 'damage', amount: 0, props: ['Move'] }, amount: { source: 'self_block' } }] } },

@@ -1,6 +1,6 @@
 [package]
 name = "editor"
-version = "0.4.3"
+version = "0.4.4"
 description = "SpireForge card pack editor"
 authors = ["SpireForge contributors"]
 edition = "2021"

@@ -10,8 +10,8 @@
 
 ## 使用
 
-1. 下载 `SpireForge-0.4.3-win64.zip`，完整解压，运行 `editor.exe`。需要 Windows 10/11 和 WebView2。
-2. 选择游戏目录。关闭游戏后，编辑器会安装随附的 Runtime 0.2.2。
+1. 下载 `SpireForge-0.4.4-win64.zip`，完整解压，运行 `editor.exe`。需要 Windows 10/11 和 WebView2。
+2. 选择游戏目录。关闭游戏后，编辑器会安装随附的 Runtime 0.2.3。
 3. 新建或打开卡包，编辑卡牌，再通过「发布 / 安装」安装到游戏。
 
 当前适配目标为 **v0.113.0 public-beta**，默认卡池包含**愚者**。已完成接口检查、真实游戏程序集编译和自动回归；游戏内战斗与新模式继续按[适配记录](docs/GAME-COMPATIBILITY-0.113.0.md)验收。

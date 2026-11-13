@@ -146,4 +146,56 @@ check('description generation uses the latest shared name without mutating porta
   assert.match(composeCardDescription(card, shared).zhs, /烈焰/);
   assert.equal(sample.statuses[0].name.zhs, '星火');
 });
+check('screenshot: two block-based hits and copy-then-exhaust retain their complete meaning', () => {
+  const attack = { type: 'action', effect: { kind: 'damage', amount: 0, hit_count: 2, target: 'target', props: ['Move'] }, amount: { source: 'self_block' } };
+  const select = { type: 'select', from: 'discard', mode: 'choose', count: 1, operations: [{ type: 'copy', pile: 'hand' }, { type: 'exhaust' }] };
+  const text = composeCardDescription({ ...newCard('screenshot'), effects: [rules.rulesEffect({ ...rules.emptyProgram(), nodes: [select] })], on_turn_end_in_hand: [rules.rulesEffect({ ...rules.emptyProgram(), nodes: [attack] })] });
+  assert.equal(text.zhs, '从弃牌堆选择 1 张牌：将所选牌的副本加入手牌，再消耗所选原牌。\n回合结束时若在手中，对随机敌人造成等同于自身当前格挡的伤害两次。');
+  assert.match(text.eng, /copy.*then exhaust the selected originals/);
+  assert.match(text.eng, /damage equal to your Block to a random enemy twice/);
+  assert.match(rules.describeRules([attack]), /当前目标.*自身当前格挡.*两次/);
+});
+check('rule actions inherit card and trigger targets while honoring explicit overrides', () => {
+  for (const [target, expected] of [['AllEnemies', '所有敌人'], ['RandomEnemy', '随机敌人'], ['Self', '自身'], ['None', '随机敌人']]) {
+    for (const override of [undefined, 'target', 'self', 'all_enemies', 'random_enemy']) {
+      const node = { type: 'action', effect: { kind: 'damage', amount: 4, hit_count: 3, target: override } };
+      const text = composeCardDescription({ ...newCard('targets'), target, effects: [rules.rulesEffect({ ...rules.emptyProgram(), nodes: [node] })] }).zhs;
+      assert.match(text, new RegExp(`对${({ self: '自身', all_enemies: '所有敌人', random_enemy: '随机敌人' })[override] ?? expected}造成 4 点伤害三次`));
+    }
+  }
+});
+check('rule actions reuse full base effect parameters including nested delayed schedules', () => {
+  const nodes = [
+    { type: 'action', effect: { kind: 'spawn', amount: 2, card_entry: 'STRIKE', pile: 'hand' } },
+    { type: 'action', effect: { kind: 'orb', amount: 3, orb: 'frost' } },
+    { type: 'action', effect: { kind: 'delayed', turns: 2, timing: 'turn_start', side: 'enemy', every_turn: false, effects: [{ kind: 'damage', amount: 5, hit_count: 2 }] } },
+  ];
+  const text = rules.describeRules(nodes);
+  assert.match(text, /2 张「STRIKE」置入手牌/);
+  assert.match(text, /3 个冰霜充能球/);
+  assert.match(text, /第 2 次敌方回合开始/);
+  assert.match(text, /随机敌人造成 5 点伤害两次/);
+  const amountOverride = rules.describeRules([{ type: 'action', effect: { kind: 'gold', amount: 10 }, amount: -3 }]);
+  assert.equal(amountOverride, '失去 3 金币。');
+});
+check('selection distinguishes mode, type, order and original-card cost changes', () => {
+  for (const mode of ['choose', 'random', 'all']) {
+    const text = rules.describeRules([{ type: 'select', from: 'draw', mode, card_type: 'Attack', count: 2, operations: [{ type: 'copy', pile: 'hand' }, { type: 'cost', amount: -1, duration: 'combat' }, { type: 'upgrade' }] }]);
+    assert.match(text, mode === 'random' ? /随机选择 2 张攻击牌/ : mode === 'all' ? /选择全部攻击牌/ : /选择 2 张攻击牌/);
+    assert.match(text, /副本加入手牌，再使所选原牌的费用在本场战斗内减少 1，再升级所选原牌/);
+  }
+});
+check('status targets, counter lifetime, rounding, disabled branches and X repetition are explicit', () => {
+  const status = { ...rules.defaultStatus('spark'), name: { zhs: '星火', eng: 'Spark' } };
+  for (const target of ['self', 'target', 'all_enemies']) {
+    assert.match(rules.describeRules([{ type: 'status', id: 'spark', target, operation: 'remove', stacks: 2 }], false, [status]), new RegExp(`移除${{ self: '自身', target: '当前目标', all_enemies: '所有敌人' }[target]} 2 层「星火」`));
+  }
+  assert.match(rules.describeRules([{ type: 'counter', scope: 'turn', key: 'combo', operation: 'add', value: -1 }]), /本回合计数器「combo」减少 1/);
+  assert.match(rules.valueText({ source: 'self_block', factor: 0.5 }), /向下取整.*自身当前格挡 × 0.5/);
+  assert.match(rules.valueText({ source: 'self_block', rounding: 'ceil', min: 1, max: 9 }), /向上取整.*至少 1.*至多 9/);
+  assert.match(rules.valueText({ source: 'self_block', rounding: 'round' }, true), /ties away from zero/);
+  assert.match(rules.describeRules([{ type: 'repeat', count: 101.5, nodes: [] }]), /100 次/);
+  const text = composeCardDescription({ ...newCard('x'), costs_x: true, effects: [rules.rulesEffect({ ...rules.emptyProgram(), nodes: [{ type: 'action', effect: { kind: 'damage', amount: 2, hit_count: 2 } }] })] }).zhs;
+  assert.match(text, /^重复 X 次：/); assert.equal((text.match(/X/g) ?? []).length, 1); assert.match(text, /伤害两次/);
+});
 console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));

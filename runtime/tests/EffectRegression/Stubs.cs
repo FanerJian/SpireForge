@@ -243,7 +243,14 @@ namespace SpireForge.Runtime
     public static class SfVfx
     {
         public static string? Resolve(string value) => value;
-        public static void PlayOnCreature(Creature target, string spec) => throw new NotSupportedException();
+        public static void PlayOnCreature(Creature target, string spec)
+        {
+#if RULE_ATTACK_PRODUCTION
+            SfAttackProbe.Effects.Add((target, spec));
+#else
+            throw new NotSupportedException();
+#endif
+        }
         public static void PlayFullScreen(string spec, Creature? source) => throw new NotSupportedException();
         public static void PlayOnSide(CombatSide side, string spec, ICombatState combat) => throw new NotSupportedException();
     }

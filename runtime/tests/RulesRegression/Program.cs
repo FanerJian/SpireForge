@@ -283,6 +283,85 @@ await Check("single-target play keeps AttackCommand while status ownership remai
         && SfAttackProbe.AttackCommands == 0 && SfAttackProbe.DirectCalls == 1,
         "Status owner target inherited the triggering card's play target or attack lifecycle");
 });
+await Check("rule damage preserves its dynamic amount across every hit", async () =>
+{
+    var card = new CardModel { TargetType = TargetType.AnyEnemy };
+    card.Owner.Creature.Block = 7;
+    var enemy = new Creature();
+    card.Owner.Creature.CombatState = new TestCombat { Targets = [enemy] };
+    await SfEffectEngine.RunAsync(card, [Rules("""
+    [{"type":"action","effect":{"kind":"damage","props":["Move"],"hit_count":2},"amount":{"source":"self_block"}}]
+    """)], null, new CardPlay { Target = enemy }, "play");
+    Assert(SfAttackProbe.Hits.Count == 2 && SfAttackProbe.Hits.All(hit => hit.Amount == 7 && ReferenceEquals(hit.Target, enemy)),
+        "Dynamic rule damage lost its per-hit amount or hit count.");
+    Assert(SfAttackProbe.AttackCommands == 1 && SfAttackProbe.AfterAttacks == 1 && SfAttackProbe.DirectCalls == 0,
+        "Dynamic multi-hit rule damage changed its attack lifecycle.");
+});
+await Check("direct multi-hit damage keeps each hit and its effect for every target", async () =>
+{
+    foreach (var (props, vfx) in new[]
+    {
+        (new[] { "Move" }, "res://test_pack/custom_hit.tscn"),
+        (new[] { "Move", "Unblockable" }, "res://scenes/vfx/test_hit.tscn"),
+    })
+    {
+        SfAttackProbe.Reset();
+        var card = new CardModel { TargetType = TargetType.AllEnemies };
+        var enemies = new[] { new Creature(), new Creature() };
+        card.Owner.Creature.CombatState = new TestCombat { Targets = enemies };
+        var effect = new SfEffect
+        {
+            KindName = "damage", Amount = 5, Props = props.ToList(), HitCount = 3,
+            Vfx = vfx,
+        };
+        await SfEffectEngine.RunAsync(card, [effect], null, new CardPlay(), "play");
+        Assert(SfAttackProbe.Hits.Count == 6 && SfAttackProbe.Hits.All(hit => hit.Amount == 5),
+            "Direct damage lost hits or changed the per-hit amount.");
+        Assert(enemies.All(enemy => SfAttackProbe.Hits.Count(hit => ReferenceEquals(hit.Target, enemy)) == 3),
+            "Direct damage lost a target on a later hit.");
+        Assert(SfAttackProbe.Effects.Count == 6 && SfAttackProbe.Effects.All(effect => effect.Spec == vfx),
+            "Direct damage did not play its effect for every target and hit.");
+        Assert(SfAttackProbe.DirectCalls == 3 && SfAttackProbe.AttackCommands == 0 && Log.Errors.Count == 0,
+            "Direct multi-hit damage used the wrong execution path.");
+    }
+});
+await Check("attack setup failure falls back with all targets and hits", async () =>
+{
+    var card = new CardModel { TargetType = TargetType.AllEnemies };
+    var enemies = new[] { new Creature(), new Creature() };
+    card.Owner.Creature.CombatState = new TestCombat { Targets = enemies };
+    SfAttackProbe.FailSetup = true;
+    await SfEffectEngine.RunAsync(card,
+        [new SfEffect { KindName = "damage", Amount = 4, Props = ["Move"], HitCount = 2, Vfx = "res://scenes/vfx/test_hit.tscn" }],
+        null, new CardPlay(), "play");
+    Assert(SfAttackProbe.Hits.Count == 4 && SfAttackProbe.Hits.All(hit => hit.Amount == 4)
+        && SfAttackProbe.DirectCalls == 2 && SfAttackProbe.AttackCommands == 0,
+        "Attack setup fallback lost its target snapshot or multi-hit count.");
+    Assert(Log.Errors.Count == 0, "Recoverable attack setup failure reached the effect error boundary.");
+    Assert(SfAttackProbe.Effects.Count == 4, "Attack setup fallback lost its per-target hit effects.");
+});
+await Check("attack execution errors preserve completed hits and continue later effects", async () =>
+{
+    foreach (var completedHits in new[] { 0, 1 })
+    {
+        SfAttackProbe.Reset();
+        Log.Errors.Clear();
+        CardPileCmd.Draws.Clear();
+        var card = new CardModel { TargetType = TargetType.AnyEnemy };
+        var enemy = new Creature();
+        card.Owner.Creature.CombatState = new TestCombat { Targets = [enemy] };
+        SfAttackProbe.FailExecutionAfterHits = completedHits;
+        await SfEffectEngine.RunAsync(card,
+            [new SfEffect { KindName = "damage", Amount = 4, Props = ["Move"], HitCount = 3 },
+             new SfEffect { KindName = "draw", Amount = 1 }],
+            null, new CardPlay { Target = enemy }, "play");
+        Assert(SfAttackProbe.Hits.Count == completedHits && SfAttackProbe.DirectCalls == 0,
+            "Attack execution failure replayed an uncertain completed attack.");
+        Assert(SfAttackProbe.AttackCommands == 1 && SfAttackProbe.AfterAttacks == 0 && Log.Errors.Count == 1,
+            "Attack execution failure lost the effect error boundary.");
+        Assert(CardPileCmd.Draws.SequenceEqual(new[] { 1 }), "Attack execution error interrupted later effects.");
+    }
+});
 await Check("target power expressions and conditions read total stacks across the collection", async () =>
 {
     var card = new CardModel { TargetType = TargetType.AllEnemies };

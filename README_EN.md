@@ -10,8 +10,8 @@ A card editor for Slay the Spire 2. Design cards, rules and custom statuses, pre
 
 ## Getting started
 
-1. Download and extract `SpireForge-0.4.3-win64.zip`, then run `editor.exe`. Requires Windows 10/11 and WebView2.
-2. Select your game folder. Close the game while the editor installs the bundled Runtime 0.2.2.
+1. Download and extract `SpireForge-0.4.4-win64.zip`, then run `editor.exe`. Requires Windows 10/11 and WebView2.
+2. Select your game folder. Close the game while the editor installs the bundled Runtime 0.2.3.
 3. Create or open a pack, edit cards, and use **Publish / Install**.
 
 The current compatibility target is **v0.113.0 public-beta**, including **The Fool** in the default pools. API metadata checks, compilation against installed game assemblies and automated regressions have passed. In-game combat and new-mode verification remain follow-up work; see the [compatibility record](docs/GAME-COMPATIBILITY-0.113.0.md).

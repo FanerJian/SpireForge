@@ -10,17 +10,23 @@ namespace SpireForge.Runtime
     internal static class SfAttackProbe
     {
         public static List<(Creature Target, decimal Amount)> Hits { get; } = [];
+        public static List<(Creature Target, string Spec)> Effects { get; } = [];
         public static int DirectCalls;
         public static int AttackCommands;
         public static int AfterAttacks;
         public static CardPlay? LastPlay;
+        public static bool FailSetup;
+        public static int? FailExecutionAfterHits;
         public static void Reset()
         {
             Hits.Clear();
+            Effects.Clear();
             DirectCalls = 0;
             AttackCommands = 0;
             AfterAttacks = 0;
             LastPlay = null;
+            FailSetup = false;
+            FailExecutionAfterHits = null;
         }
     }
 }
@@ -28,7 +34,8 @@ namespace MegaCrit.Sts2.Core.Commands
 {
     public static class DamageCmd
     {
-        public static TestAttackCommand Attack(decimal amount) => new(amount);
+        public static TestAttackCommand Attack(decimal amount) => SpireForge.Runtime.SfAttackProbe.FailSetup
+            ? throw new InvalidOperationException("Attack setup failed.") : new(amount);
     }
     public sealed class TestAttackCommand(decimal amount)
     {
@@ -47,8 +54,14 @@ namespace MegaCrit.Sts2.Core.Commands
         {
             SpireForge.Runtime.SfAttackProbe.AttackCommands++;
             SpireForge.Runtime.SfAttackProbe.LastPlay = _play;
+            if (SpireForge.Runtime.SfAttackProbe.FailExecutionAfterHits == 0)
+                throw new InvalidOperationException("Attack execution failed before its first hit.");
             for (var hit = 0; hit < _hitCount; hit++)
+            {
                 SpireForge.Runtime.SfAttackProbe.Hits.AddRange(_targets.Select(target => (target, amount)));
+                if (SpireForge.Runtime.SfAttackProbe.FailExecutionAfterHits == hit + 1)
+                    throw new InvalidOperationException("Attack execution failed after a hit.");
+            }
             SpireForge.Runtime.SfAttackProbe.AfterAttacks++;
             return Task.CompletedTask;
         }
